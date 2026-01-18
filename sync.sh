@@ -5,9 +5,13 @@
 
 set -e
 
-FULL_REPO="/tmp/cube-demper-full"
-FRONTEND_REPO="${FRONTEND_REPO:-/path/to/Demper_front}"
-BACKEND_REPO="${BACKEND_REPO:-/path/to/cube-demper-}"
+FULL_REPO="/Users/adilhamitov/Desktop/cube-demper-full"
+FRONTEND_REPO="${FRONTEND_REPO:-/Users/adilhamitov/Desktop/Cube Demper/frontend}"
+BACKEND_REPO="${BACKEND_REPO:-/Users/adilhamitov/Desktop/Cube Demper/new-backend}"
+
+# GitHub URLs for reference:
+# Frontend: https://github.com/Admjral/Demper_front
+# Backend: https://github.com/Admjral/cube-demper-
 
 echo "=== Cube Demper Sync ==="
 
