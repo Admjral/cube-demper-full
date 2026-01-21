@@ -3,7 +3,7 @@ from typing import Optional
 import uuid
 
 from .core.database import get_db_pool
-from .core.redis import get_redis
+from .core.redis import get_redis, set_user_activity
 from .core.security import decode_access_token
 from .core.exceptions import AuthenticationError, AuthorizationError
 import asyncpg
@@ -37,12 +37,24 @@ async def get_current_user(
     # Fetch user from database
     async with pool.acquire() as conn:
         user = await conn.fetchrow(
-            "SELECT id, email, full_name, role, created_at, updated_at FROM users WHERE id = $1",
+            "SELECT id, email, full_name, role, is_blocked, created_at, updated_at FROM users WHERE id = $1",
             user_uuid
         )
 
     if not user:
         raise AuthenticationError("User not found")
+
+    # Check if user is blocked
+    if user.get('is_blocked', False):
+        raise AuthenticationError("Account is blocked. Please contact support.")
+
+    # Track user activity in Redis
+    try:
+        redis_client = await get_redis()
+        await set_user_activity(str(user['id']))
+    except Exception:
+        # Don't fail if Redis is unavailable, just log
+        pass
 
     return dict(user)
 

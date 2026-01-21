@@ -15,6 +15,7 @@ from ..schemas.auth import (
     ResetPasswordRequest,
 )
 from ..core.database import get_db_pool
+from ..core.redis import get_redis, set_user_activity
 from ..core.security import (
     get_password_hash,
     verify_password,
@@ -84,21 +85,29 @@ async def register(
 @router.post("/login", response_model=Token)
 async def login(
     credentials: UserLogin,
-    pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
+    pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
+    redis_client = Depends(get_redis)
 ):
     """Login user and return JWT token"""
     async with pool.acquire() as conn:
         user = await conn.fetchrow(
-            "SELECT id, email, password_hash, role FROM users WHERE email = $1",
+            "SELECT id, email, password_hash, role, is_blocked FROM users WHERE email = $1",
             credentials.email
         )
 
         if not user:
             raise AuthenticationError("Invalid email or password")
 
+        # Check if user is blocked
+        if user.get('is_blocked', False):
+            raise AuthenticationError("Account is blocked. Please contact support.")
+
         # Verify password
         if not verify_password(credentials.password, user['password_hash']):
             raise AuthenticationError("Invalid email or password")
+
+        # Track user activity in Redis
+        await set_user_activity(str(user['id']))
 
         # Create access token
         access_token = create_access_token(

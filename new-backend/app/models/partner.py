@@ -5,29 +5,23 @@ import uuid
 
 
 @dataclass
-class User:
-    """User model - represents application users"""
+class Partner:
+    """Partner model - represents referral partners"""
     id: uuid.UUID
     email: str
     password_hash: str
     full_name: Optional[str]
-    role: str  # 'user' or 'admin'
-    is_blocked: bool
-    partner_id: Optional[uuid.UUID]
     created_at: datetime
     updated_at: datetime
 
     @classmethod
     def from_row(cls, row):
-        """Create User from database row"""
+        """Create Partner from database row"""
         return cls(
             id=row['id'],
             email=row['email'],
             password_hash=row['password_hash'],
             full_name=row.get('full_name'),
-            role=row['role'],
-            is_blocked=row.get('is_blocked', False),
-            partner_id=row.get('partner_id'),
             created_at=row['created_at'],
             updated_at=row['updated_at']
         )
@@ -38,9 +32,6 @@ class User:
             'id': str(self.id),
             'email': self.email,
             'full_name': self.full_name,
-            'role': self.role,
-            'is_blocked': self.is_blocked,
-            'partner_id': str(self.partner_id) if self.partner_id else None,
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat(),
         }
