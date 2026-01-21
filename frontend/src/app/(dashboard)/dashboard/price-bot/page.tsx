@@ -6,6 +6,7 @@ import { useProducts, useDempingSettings, useUpdateProduct, useUpdateDempingSett
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -124,6 +125,7 @@ export default function PriceBotPage() {
   const [showSettingsDialog, setShowSettingsDialog] = useState(false)
   const [editingProduct, setEditingProduct] = useState<KaspiProduct | null>(null)
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
+  const [excludedMerchantsInput, setExcludedMerchantsInput] = useState("")
 
   const {
     data: products,
@@ -181,6 +183,12 @@ export default function PriceBotPage() {
   const saveGlobalSettings = async () => {
     if (!selectedStore?.id || !dempingSettings) return
 
+    // Parse excluded merchant IDs from input (comma or newline separated)
+    const excludedIds = excludedMerchantsInput
+      .split(/[,\n]/)
+      .map(id => id.trim())
+      .filter(id => id.length > 0)
+
     try {
       await updateDempingSettings.mutateAsync({
         storeId: selectedStore.id,
@@ -189,6 +197,7 @@ export default function PriceBotPage() {
           price_step: dempingSettings.price_step,
           min_margin_percent: dempingSettings.min_margin_percent,
           check_interval_minutes: dempingSettings.check_interval_minutes,
+          excluded_merchant_ids: excludedIds,
         },
       })
       toast.success(locale === "ru" ? "Настройки сохранены" : "Settings saved")
@@ -196,6 +205,16 @@ export default function PriceBotPage() {
     } catch (error) {
       toast.error(locale === "ru" ? "Ошибка сохранения" : "Save failed")
     }
+  }
+
+  // Initialize excluded merchants input when settings load
+  const handleOpenSettingsDialog = () => {
+    if (dempingSettings?.excluded_merchant_ids) {
+      setExcludedMerchantsInput(dempingSettings.excluded_merchant_ids.join(", "))
+    } else {
+      setExcludedMerchantsInput("")
+    }
+    setShowSettingsDialog(true)
   }
 
   const activeBotsCount = products?.filter((p) => p.bot_active).length || 0
@@ -232,7 +251,7 @@ export default function PriceBotPage() {
             )}
             {locale === "ru" ? "Обновить товары" : "Sync products"}
           </Button>
-          <Button onClick={() => setShowSettingsDialog(true)} disabled={!selectedStore}>
+          <Button onClick={handleOpenSettingsDialog} disabled={!selectedStore}>
             <Settings2 className="h-4 w-4 mr-2" />
             {locale === "ru" ? "Настройки" : "Settings"}
           </Button>
@@ -588,6 +607,28 @@ export default function PriceBotPage() {
                     defaultValue={dempingSettings.work_hours_end}
                   />
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="excluded-merchants">
+                  {locale === "ru" 
+                    ? "Исключённые магазины (не конкурировать с ними)" 
+                    : "Excluded stores (don't compete with them)"}
+                </Label>
+                <Textarea
+                  id="excluded-merchants"
+                  placeholder={locale === "ru" 
+                    ? "Введите ID магазинов через запятую или с новой строки" 
+                    : "Enter store IDs separated by comma or newline"}
+                  value={excludedMerchantsInput}
+                  onChange={(e) => setExcludedMerchantsInput(e.target.value)}
+                  rows={3}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {locale === "ru"
+                    ? "Укажите merchant ID магазинов, с которыми не нужно конкурировать (например, ваши собственные магазины)"
+                    : "Enter merchant IDs of stores you don't want to compete with (e.g., your own stores)"}
+                </p>
               </div>
             </div>
           )}

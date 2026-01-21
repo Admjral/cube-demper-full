@@ -188,6 +188,7 @@ export interface DempingSettings {
   work_hours_start: string
   work_hours_end: string
   is_enabled: boolean
+  excluded_merchant_ids: string[]
   last_check: string | null
   created_at: string
   updated_at: string
@@ -202,6 +203,7 @@ export interface DempingSettingsUpdate {
   work_hours_start?: string
   work_hours_end?: string
   is_enabled?: boolean
+  excluded_merchant_ids?: string[]
 }
 
 // =============================================
@@ -284,4 +286,89 @@ export interface TopProduct {
   current_price: number
   sales_count: number
   revenue: number
+}
+
+// =============================================
+// City-based Pricing
+// =============================================
+
+export const KASPI_CITIES: Record<string, string> = {
+  "750000000": "Алматы",
+  "770000000": "Астана",
+  "730000000": "Шымкент",
+  "710000000": "Караганда",
+  "790000000": "Актобе",
+  "630000000": "Атырау",
+  "610000000": "Актау",
+  "510000000": "Костанай",
+  "550000000": "Павлодар",
+  "590000000": "Семей",
+  "620000000": "Уральск",
+  "470000000": "Тараз",
+  "310000000": "Усть-Каменогорск",
+  "350000000": "Кызылорда",
+  "430000000": "Талдыкорган",
+  "530000000": "Петропавловск",
+  "570000000": "Экибастуз",
+  "390000000": "Туркестан",
+}
+
+export interface CityInfo {
+  city_id: string
+  city_name: string
+}
+
+export interface ProductCityPrice {
+  id: string
+  product_id: string
+  city_id: string
+  city_name: string
+  price: number | null
+  min_price: number | null
+  max_price: number | null
+  bot_active: boolean
+  last_check_time: string | null
+  competitor_price: number | null
+  our_position: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ProductCityPriceCreate {
+  city_id: string
+  price?: number | null
+  min_price?: number | null
+  max_price?: number | null
+  bot_active?: boolean
+}
+
+export interface ProductCityPriceUpdate {
+  price?: number | null
+  min_price?: number | null
+  max_price?: number | null
+  bot_active?: boolean
+}
+
+export interface ProductCityPricesRequest {
+  apply_to_all_cities: boolean
+  cities: ProductCityPriceCreate[]
+}
+
+export interface CityDempingResult {
+  city_id: string
+  city_name: string
+  status: 'success' | 'no_change' | 'waiting' | 'error' | 'no_competitors' | 'no_data' | 'no_offers' | 'sync_failed'
+  message: string
+  old_price?: number
+  new_price?: number
+  competitor_price?: number
+  our_position?: number
+}
+
+export interface MultiCityDempingResult {
+  product_id: string
+  product_name: string
+  results: CityDempingResult[]
+  total_cities: number
+  successful_updates: number
 }

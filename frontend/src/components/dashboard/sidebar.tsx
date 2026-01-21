@@ -19,6 +19,7 @@ import {
   User,
   Settings,
   X,
+  FileStack,
 } from "lucide-react"
 
 const navigation = [
@@ -39,6 +40,12 @@ const navigation = [
     nameRu: "Продажи",
     href: "/dashboard/sales",
     icon: BarChart3,
+  },
+  {
+    name: "Invoice Merger",
+    nameRu: "Склейка накладных",
+    href: "/dashboard/invoice-merger",
+    icon: FileStack,
   },
   {
     name: "Unit Economics",

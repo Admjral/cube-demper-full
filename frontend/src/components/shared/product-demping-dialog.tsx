@@ -13,7 +13,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useProductDempingDetails, useUpdateProductDemping, usePriceHistory, useCheckProductDemping, useRunProductDemping } from '@/hooks/api/use-products'
 import { formatPrice } from '@/lib/utils'
 import { PriceHistoryView } from './price-history-view'
-import { RefreshCw, Loader2, CheckCircle, AlertCircle, Play } from 'lucide-react'
+import { CityPricesDialog } from './city-prices-dialog'
+import { RefreshCw, Loader2, CheckCircle, AlertCircle, Play, MapPin } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface ProductDempingDialogProps {
@@ -35,6 +36,7 @@ export function ProductDempingDialog({ productId, open, onOpenChange }: ProductD
   const [maxPrice, setMaxPrice] = useState<number | null>(null)
   const [useGlobalStep, setUseGlobalStep] = useState(true)
   const [customStep, setCustomStep] = useState(100)
+  const [showCityDialog, setShowCityDialog] = useState(false)
 
   // Load initial values from details
   useEffect(() => {
@@ -198,6 +200,30 @@ export function ProductDempingDialog({ productId, open, onOpenChange }: ProductD
                 </CardContent>
               </Card>
 
+              {/* Демпинг по городам */}
+              <Card className="border-primary/50 bg-primary/5">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <MapPin className="h-5 w-5 text-primary" />
+                      <div>
+                        <p className="font-medium">Демпинг по городам</p>
+                        <p className="text-sm text-muted-foreground">
+                          Настройте разные цены для разных городов Казахстана
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowCityDialog(true)}
+                    >
+                      <MapPin className="h-4 w-4 mr-2" />
+                      Настроить города
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
               {/* Стратегия демпинга */}
               <div className="space-y-2">
                 <Label>Стратегия демпинга</Label>
@@ -317,6 +343,15 @@ export function ProductDempingDialog({ productId, open, onOpenChange }: ProductD
           </Button>
         </div>
       </DialogContent>
+
+      {/* City Prices Dialog */}
+      <CityPricesDialog
+        productId={productId}
+        productName={details?.product_name}
+        basePrice={details?.current_price || 0}
+        open={showCityDialog}
+        onOpenChange={setShowCityDialog}
+      />
     </Dialog>
   )
 }
