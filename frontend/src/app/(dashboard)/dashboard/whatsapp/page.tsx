@@ -82,7 +82,18 @@ export default function WhatsAppPage() {
     name_en: "",
     message: "",
     variables: [] as string[],
+    trigger_event: "" as string,
   })
+
+  // Order event types for templates
+  const orderEventTypes = [
+    { value: "order_approved", label: locale === "ru" ? "Заказ оплачен" : "Order paid" },
+    { value: "order_accepted_by_merchant", label: locale === "ru" ? "Заказ принят" : "Order accepted" },
+    { value: "order_shipped", label: locale === "ru" ? "Заказ отправлен" : "Order shipped" },
+    { value: "order_delivered", label: locale === "ru" ? "Заказ доставлен" : "Order delivered" },
+    { value: "order_completed", label: locale === "ru" ? "Заказ завершён" : "Order completed" },
+    { value: "review_request", label: locale === "ru" ? "Запрос отзыва" : "Review request" },
+  ]
 
   // Message filters
   const [messageFilters, setMessageFilters] = useState<MessageHistoryFilters>({
@@ -162,6 +173,7 @@ export default function WhatsAppPage() {
           name_en: templateForm.name_en,
           message: templateForm.message,
           variables: templateForm.variables,
+          trigger_event: templateForm.trigger_event || undefined,
         })
         toast.success(locale === "ru" ? "Шаблон обновлён" : "Template updated")
       } else {
@@ -170,12 +182,13 @@ export default function WhatsAppPage() {
           name_en: templateForm.name_en,
           message: templateForm.message,
           variables: templateForm.variables,
+          trigger_event: templateForm.trigger_event || undefined,
         })
         toast.success(locale === "ru" ? "Шаблон создан" : "Template created")
       }
       setShowTemplateDialog(false)
       setEditingTemplate(null)
-      setTemplateForm({ name: "", name_en: "", message: "", variables: [] })
+      setTemplateForm({ name: "", name_en: "", message: "", variables: [], trigger_event: "" })
     } catch {
       toast.error(locale === "ru" ? "Ошибка сохранения" : "Error saving")
     }
@@ -209,8 +222,15 @@ export default function WhatsAppPage() {
       name_en: template.name_en || "",
       message: template.message,
       variables: template.variables,
+      trigger_event: template.trigger_event || "",
     })
     setShowTemplateDialog(true)
+  }
+
+  // Get trigger event label by value
+  const getTriggerEventLabel = (value: string) => {
+    const event = orderEventTypes.find(e => e.value === value)
+    return event?.label || value
   }
 
   // Manual send handler
@@ -427,7 +447,7 @@ export default function WhatsAppPage() {
                   <FileText className="h-5 w-5" />
                   {locale === "ru" ? "Шаблоны сообщений" : "Message Templates"}
                 </span>
-                <Button size="sm" onClick={() => { setEditingTemplate(null); setTemplateForm({ name: "", name_en: "", message: "", variables: [] }); setShowTemplateDialog(true) }}>
+                <Button size="sm" onClick={() => { setEditingTemplate(null); setTemplateForm({ name: "", name_en: "", message: "", variables: [], trigger_event: "" }); setShowTemplateDialog(true) }}>
                   <Plus className="h-4 w-4 mr-2" />
                   {locale === "ru" ? "Добавить" : "Add"}
                 </Button>
@@ -444,8 +464,14 @@ export default function WhatsAppPage() {
                     <div key={template.id} className="p-4 rounded-lg bg-muted/30">
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1">
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-3 flex-wrap">
                             <h3 className="font-semibold">{locale === "ru" ? template.name : template.name_en || template.name}</h3>
+                            {template.trigger_event && (
+                              <Badge variant="secondary" className="text-xs gap-1">
+                                <Clock className="h-3 w-3" />
+                                {getTriggerEventLabel(template.trigger_event)}
+                              </Badge>
+                            )}
                             <Switch checked={template.is_active} onCheckedChange={() => handleToggleTemplate(template)} />
                           </div>
                           <p className="text-sm text-muted-foreground mt-2 p-3 bg-background/50 rounded-lg">{template.message}</p>
@@ -1039,11 +1065,35 @@ export default function WhatsAppPage() {
               <Textarea
                 value={templateForm.message}
                 onChange={(e) => setTemplateForm({ ...templateForm, message: e.target.value })}
-                placeholder={locale === "ru" ? "Здравствуйте, {{name}}! Ваш заказ #{{order_id}} принят." : "Hello, {{name}}! Your order #{{order_id}} is received."}
+                placeholder={locale === "ru" ? "Здравствуйте, {customer_name}! Ваш заказ #{order_code} принят." : "Hello, {customer_name}! Your order #{order_code} is received."}
                 rows={4}
               />
               <p className="text-xs text-muted-foreground">
-                {locale === "ru" ? "Используйте {{переменная}} для подстановки данных" : "Use {{variable}} for data substitution"}
+                {locale === "ru"
+                  ? "Переменные: {customer_name}, {order_code}, {order_total}, {store_name}, {items_list}, {promo_code}"
+                  : "Variables: {customer_name}, {order_code}, {order_total}, {store_name}, {items_list}, {promo_code}"}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>{locale === "ru" ? "Автоматический триггер" : "Auto trigger"}</Label>
+              <Select
+                value={templateForm.trigger_event || "none"}
+                onValueChange={(v) => setTemplateForm({ ...templateForm, trigger_event: v === "none" ? "" : v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={locale === "ru" ? "Выберите событие" : "Select event"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">{locale === "ru" ? "Без триггера (вручную)" : "No trigger (manual)"}</SelectItem>
+                  {orderEventTypes.map((event) => (
+                    <SelectItem key={event.value} value={event.value}>{event.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {locale === "ru"
+                  ? "Сообщение отправится автоматически при наступлении события"
+                  : "Message will be sent automatically when event occurs"}
               </p>
             </div>
             <Button onClick={handleSaveTemplate} disabled={createTemplate.isPending || updateTemplate.isPending} className="w-full">
