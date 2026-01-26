@@ -108,6 +108,32 @@ class ApiClient {
     return response.json()
   }
 
+  async put<T>(endpoint: string, data?: unknown): Promise<T> {
+    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      method: 'PUT',
+      headers: this.getAuthHeaders(),
+      body: data ? JSON.stringify(data) : undefined,
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      let errorMessage = errorText
+      try {
+        const errorJson = JSON.parse(errorText)
+        errorMessage = errorJson.detail || errorText
+      } catch {
+        // Keep errorText as is
+      }
+      const error: ApiError = {
+        message: errorMessage,
+        status: response.status,
+      }
+      throw error
+    }
+
+    return response.json()
+  }
+
   async delete<T>(endpoint: string): Promise<T> {
     const response = await fetch(`${this.baseUrl}${endpoint}`, {
       method: 'DELETE',
