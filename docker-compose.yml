@@ -19,15 +19,19 @@ services:
     restart: unless-stopped
 
   waha:
-    image: devlikeapro/waha:arm
-    platform: linux/arm64
+    image: devlikeapro/waha:${WAHA_IMAGE_TAG:-latest}
+    platform: ${WAHA_PLATFORM:-linux/amd64}
     container_name: demper_waha
     environment:
-      WHATSAPP_HOOK_URL: http://backend:8010/webhooks/whatsapp
-      WHATSAPP_HOOK_EVENTS: message,session.status
+      # Webhook configuration - sends events to backend
+      WHATSAPP_HOOK_URL: http://backend:8010/whatsapp/webhook
+      WHATSAPP_HOOK_EVENTS: message,session.status,message.ack
+      # Dashboard access (for debugging)
       WAHA_DASHBOARD_ENABLED: "true"
       WAHA_DASHBOARD_USERNAME: admin
       WAHA_DASHBOARD_PASSWORD: ${WAHA_PASSWORD}
+      # Optional: API key for WAHA (set in .env if needed)
+      # WAHA_API_KEY: ${WAHA_API_KEY:-}
     ports:
       - "3002:3000"
     volumes:
@@ -35,6 +39,12 @@ services:
     depends_on:
       - postgres
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   backend:
     build:
