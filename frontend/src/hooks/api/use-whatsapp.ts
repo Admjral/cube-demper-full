@@ -204,3 +204,179 @@ export function useUpdateWhatsAppSettings() {
     },
   })
 }
+
+// ===== Message History Types =====
+
+export interface WhatsAppMessageHistory {
+  id: string
+  recipient_phone: string
+  recipient_name: string | null
+  message_content: string
+  message_type: string
+  status: 'pending' | 'sent' | 'delivered' | 'read' | 'failed'
+  template_name: string | null
+  error_message: string | null
+  sent_at: string | null
+  delivered_at: string | null
+  read_at: string | null
+  created_at: string
+}
+
+export interface MessageHistoryResponse {
+  messages: WhatsAppMessageHistory[]
+  total: number
+  page: number
+  per_page: number
+}
+
+export interface MessageHistoryFilters {
+  status_filter?: string
+  phone?: string
+  date_from?: string
+  date_to?: string
+  page?: number
+  per_page?: number
+}
+
+// ===== Statistics Types =====
+
+export interface WhatsAppStats {
+  total_sent: number
+  total_delivered: number
+  total_read: number
+  total_failed: number
+  total_pending: number
+  delivery_rate: number
+  read_rate: number
+  today_sent: number
+  today_limit: number
+  messages_by_day: {
+    date: string
+    sent: number
+    delivered: number
+    read: number
+    failed: number
+  }[]
+}
+
+// ===== AI Salesman Types =====
+
+export interface AISalesmanSettings {
+  store_id: string
+  store_name: string
+  ai_enabled: boolean
+  ai_tone: string | null
+  ai_discount_percent: number | null
+  ai_promo_code: string | null
+  ai_review_bonus: string | null
+  ai_send_delay_minutes: number
+  ai_max_messages_per_day: number
+}
+
+export interface AISalesmanMessage {
+  id: string
+  order_id: string | null
+  customer_phone: string
+  customer_name: string | null
+  trigger: string
+  text: string
+  products_suggested: string[]
+  created_at: string
+}
+
+export interface AISalesmanStats {
+  total_messages: number
+  by_trigger: Record<string, number>
+  by_day: { date: string; count: number }[]
+  top_products: { product: string; count: number }[]
+}
+
+// ===== Extended Query Keys =====
+
+export const whatsappKeysExtended = {
+  ...whatsappKeys,
+  messages: (filters?: MessageHistoryFilters) => [...whatsappKeys.all, 'messages', filters] as const,
+  stats: (days?: number) => [...whatsappKeys.all, 'stats', days] as const,
+  salesmanSettings: () => [...whatsappKeys.all, 'salesman', 'settings'] as const,
+  salesmanHistory: (limit?: number) => [...whatsappKeys.all, 'salesman', 'history', limit] as const,
+  salesmanStats: (days?: number) => [...whatsappKeys.all, 'salesman', 'stats', days] as const,
+}
+
+// ===== Message History Hooks =====
+
+export function useWhatsAppMessages(filters: MessageHistoryFilters = {}) {
+  const params = new URLSearchParams()
+  if (filters.status_filter) params.set('status_filter', filters.status_filter)
+  if (filters.phone) params.set('phone', filters.phone)
+  if (filters.date_from) params.set('date_from', filters.date_from)
+  if (filters.date_to) params.set('date_to', filters.date_to)
+  if (filters.page) params.set('page', String(filters.page))
+  if (filters.per_page) params.set('per_page', String(filters.per_page))
+
+  const queryString = params.toString()
+  const url = queryString ? `/whatsapp/messages?${queryString}` : '/whatsapp/messages'
+
+  return useQuery({
+    queryKey: whatsappKeysExtended.messages(filters),
+    queryFn: () => api.get<MessageHistoryResponse>(url),
+  })
+}
+
+// ===== Statistics Hooks =====
+
+export function useWhatsAppStats(days: number = 7) {
+  return useQuery({
+    queryKey: whatsappKeysExtended.stats(days),
+    queryFn: () => api.get<WhatsAppStats>(`/whatsapp/stats?days=${days}`),
+  })
+}
+
+// ===== AI Salesman Hooks =====
+
+export function useAISalesmanSettings() {
+  return useQuery({
+    queryKey: whatsappKeysExtended.salesmanSettings(),
+    queryFn: () => api.get<AISalesmanSettings[]>('/ai/salesman/settings'),
+  })
+}
+
+export function useUpdateAISalesmanSettings() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ storeId, ...data }: { storeId: string } & Partial<AISalesmanSettings>) =>
+      api.put<AISalesmanSettings>(`/ai/salesman/settings/${storeId}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: whatsappKeysExtended.salesmanSettings() })
+    },
+  })
+}
+
+export function useAISalesmanHistory(limit: number = 50) {
+  return useQuery({
+    queryKey: whatsappKeysExtended.salesmanHistory(limit),
+    queryFn: () => api.get<{ messages: AISalesmanMessage[]; total: number }>(`/ai/salesman/history?limit=${limit}`),
+  })
+}
+
+export function useAISalesmanStats(days: number = 7) {
+  return useQuery({
+    queryKey: whatsappKeysExtended.salesmanStats(days),
+    queryFn: () => api.get<AISalesmanStats>(`/ai/salesman/stats?days=${days}`),
+  })
+}
+
+export function useProcessOrderSalesman() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (data: { order_id: string; send_message?: boolean }) =>
+      api.post<{ text: string; trigger: string; products_suggested: string[]; generated_at: string }>(
+        '/ai/salesman/process-order',
+        data
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: whatsappKeysExtended.salesmanHistory() })
+    },
+  })
+}
