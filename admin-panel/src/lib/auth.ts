@@ -1,5 +1,4 @@
-'use client';
-import Cookies from 'js-cookie';  // ✅ ПРАВИЛЬНЫЙ ИМПОРТ
+import Cookies from 'js-cookie'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8010'
 const TOKEN_KEY = 'auth_token'
@@ -88,6 +87,7 @@ class AuthClient {
 
       const tokenData = await response.json()
 
+      // Fetch user data using the token
       const userResponse = await fetch(`${API_URL}/auth/me`, {
         headers: {
           'Authorization': `Bearer ${tokenData.access_token}`,
@@ -101,6 +101,7 @@ class AuthClient {
 
       const user: User = await userResponse.json()
       
+      // Check if user is admin
       if (user.role !== 'admin') {
         return { data: null, error: new Error('Доступ разрешен только администраторам') }
       }
@@ -144,6 +145,7 @@ class AuthClient {
 
       const user: User = await response.json()
       
+      // Check if user is admin
       if (user.role !== 'admin') {
         this.clearAuth()
         return { user: null, error: new Error('Доступ разрешен только администраторам') }
