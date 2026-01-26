@@ -1068,11 +1068,13 @@ export default function WhatsAppPage() {
                 placeholder={locale === "ru" ? "Здравствуйте, {customer_name}! Ваш заказ #{order_code} принят." : "Hello, {customer_name}! Your order #{order_code} is received."}
                 rows={4}
               />
-              <p className="text-xs text-muted-foreground">
-                {locale === "ru"
-                  ? "Переменные: {customer_name}, {order_code}, {order_total}, {store_name}, {items_list}, {promo_code}"
-                  : "Variables: {customer_name}, {order_code}, {order_total}, {store_name}, {items_list}, {promo_code}"}
-              </p>
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p className="font-medium">{locale === "ru" ? "Доступные переменные:" : "Available variables:"}</p>
+                <p>{locale === "ru" ? "Клиент:" : "Customer:"} {"{customer_name}"}, {"{customer_first_name}"}</p>
+                <p>{locale === "ru" ? "Заказ:" : "Order:"} {"{order_code}"}, {"{order_total}"}, {"{items_list}"}, {"{items_count}"}, {"{first_item}"}</p>
+                <p>{locale === "ru" ? "Доставка:" : "Delivery:"} {"{delivery_address}"}, {"{delivery_city}"}</p>
+                <p>{locale === "ru" ? "Магазин:" : "Store:"} {"{store_name}"}, {"{promo_code}"}</p>
+              </div>
             </div>
             <div className="space-y-2">
               <Label>{locale === "ru" ? "Автоматический триггер" : "Auto trigger"}</Label>
