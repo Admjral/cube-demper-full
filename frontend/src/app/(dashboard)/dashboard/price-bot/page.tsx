@@ -131,6 +131,12 @@ export default function PriceBotPage() {
   const [excludedMerchantsInput, setExcludedMerchantsInput] = useState("")
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set())
 
+  // Form state for demping settings
+  const [formIsEnabled, setFormIsEnabled] = useState(true)
+  const [formPriceStep, setFormPriceStep] = useState(1)
+  const [formMinMargin, setFormMinMargin] = useState(5)
+  const [formCheckInterval, setFormCheckInterval] = useState(15)
+
   const {
     data: products,
     isLoading: productsLoading,
@@ -186,7 +192,7 @@ export default function PriceBotPage() {
   }
 
   const saveGlobalSettings = async () => {
-    if (!selectedStore?.id || !dempingSettings) return
+    if (!selectedStore?.id) return
 
     // Parse excluded merchant IDs from input (comma or newline separated)
     const excludedIds = excludedMerchantsInput
@@ -198,10 +204,10 @@ export default function PriceBotPage() {
       await updateDempingSettings.mutateAsync({
         storeId: selectedStore.id,
         data: {
-          is_enabled: dempingSettings.is_enabled,
-          price_step: dempingSettings.price_step,
-          min_margin_percent: dempingSettings.min_margin_percent,
-          check_interval_minutes: dempingSettings.check_interval_minutes,
+          is_enabled: formIsEnabled,
+          price_step: formPriceStep,
+          min_margin_percent: formMinMargin,
+          check_interval_minutes: formCheckInterval,
           excluded_merchant_ids: excludedIds,
         },
       })
@@ -212,11 +218,19 @@ export default function PriceBotPage() {
     }
   }
 
-  // Initialize excluded merchants input when settings load
+  // Initialize form state when settings dialog opens
   const handleOpenSettingsDialog = () => {
-    if (dempingSettings?.excluded_merchant_ids) {
-      setExcludedMerchantsInput(dempingSettings.excluded_merchant_ids.join(", "))
+    if (dempingSettings) {
+      setFormIsEnabled(dempingSettings.is_enabled ?? true)
+      setFormPriceStep(dempingSettings.price_step ?? 1)
+      setFormMinMargin(dempingSettings.min_margin_percent ?? 5)
+      setFormCheckInterval(dempingSettings.check_interval_minutes ?? 15)
+      setExcludedMerchantsInput(dempingSettings.excluded_merchant_ids?.join(", ") || "")
     } else {
+      setFormIsEnabled(true)
+      setFormPriceStep(1)
+      setFormMinMargin(5)
+      setFormCheckInterval(15)
       setExcludedMerchantsInput("")
     }
     setShowSettingsDialog(true)
@@ -645,10 +659,8 @@ export default function PriceBotPage() {
                 </Label>
                 <Switch
                   id="demping-enabled"
-                  checked={dempingSettings.is_enabled}
-                  onCheckedChange={(checked) => {
-                    // This would need a local state to work properly
-                  }}
+                  checked={formIsEnabled}
+                  onCheckedChange={setFormIsEnabled}
                 />
               </div>
 
@@ -659,7 +671,8 @@ export default function PriceBotPage() {
                 <Input
                   id="price-step"
                   type="number"
-                  defaultValue={dempingSettings.price_step}
+                  value={formPriceStep}
+                  onChange={(e) => setFormPriceStep(parseInt(e.target.value) || 1)}
                   min={1}
                 />
               </div>
@@ -671,7 +684,8 @@ export default function PriceBotPage() {
                 <Input
                   id="min-margin"
                   type="number"
-                  defaultValue={dempingSettings.min_margin_percent}
+                  value={formMinMargin}
+                  onChange={(e) => setFormMinMargin(parseInt(e.target.value) || 0)}
                   min={0}
                   max={100}
                 />
@@ -686,30 +700,35 @@ export default function PriceBotPage() {
                 <Input
                   id="check-interval"
                   type="number"
-                  defaultValue={dempingSettings.check_interval_minutes}
+                  value={formCheckInterval}
+                  onChange={(e) => setFormCheckInterval(parseInt(e.target.value) || 5)}
                   min={5}
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="work-start">
+                  <Label htmlFor="work-start" className="text-muted-foreground">
                     {locale === "ru" ? "Начало работы" : "Work start"}
                   </Label>
                   <Input
                     id="work-start"
                     type="time"
-                    defaultValue={dempingSettings.work_hours_start}
+                    value={dempingSettings.work_hours_start || "00:00"}
+                    disabled
+                    className="bg-muted"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="work-end">
+                  <Label htmlFor="work-end" className="text-muted-foreground">
                     {locale === "ru" ? "Конец работы" : "Work end"}
                   </Label>
                   <Input
                     id="work-end"
                     type="time"
-                    defaultValue={dempingSettings.work_hours_end}
+                    value={dempingSettings.work_hours_end || "23:59"}
+                    disabled
+                    className="bg-muted"
                   />
                 </div>
               </div>
