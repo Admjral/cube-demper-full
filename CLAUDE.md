@@ -49,7 +49,7 @@ Services:
 - `backemd` - FastAPI backend (typo in name, don't change)
 - `Postgres` - PostgreSQL database
 - `Redis` - Redis cache
-- `worker-1`, `worker-2`, `worker-3`, `worker-4` - Demping workers
+- `worker-1`, `worker-2` - Demping workers (2 шарда достаточно для 10-20 юзеров)
 
 ### Backend Dockerfile
 ```dockerfile
@@ -64,8 +64,10 @@ sh -c 'alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port $
 
 ### Worker Environment Variables
 Each worker needs:
-- `INSTANCE_INDEX` - 0, 1, 2, or 3
-- `INSTANCE_COUNT` - 4
+- `INSTANCE_INDEX` - 0 or 1
+- `INSTANCE_COUNT` - 2
+
+> Сократили с 4 до 2 воркеров для экономии. 2 воркера достаточно для ~2000 товаров.
 
 ## Git Workflow
 
