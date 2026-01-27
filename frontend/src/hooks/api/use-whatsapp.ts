@@ -380,3 +380,41 @@ export function useProcessOrderSalesman() {
     },
   })
 }
+
+// ===== Orders Polling Types =====
+
+export interface OrdersPollingStatus {
+  store_id: string
+  store_name: string
+  orders_polling_enabled: boolean
+  last_orders_sync: string | null
+}
+
+// ===== Orders Polling Keys =====
+
+export const ordersPollingKeys = {
+  all: ['orders-polling'] as const,
+  status: (storeId: string) => [...ordersPollingKeys.all, 'status', storeId] as const,
+}
+
+// ===== Orders Polling Hooks =====
+
+export function useOrdersPollingStatus(storeId: string | undefined) {
+  return useQuery({
+    queryKey: ordersPollingKeys.status(storeId || ''),
+    queryFn: () => api.get<OrdersPollingStatus>(`/kaspi/stores/${storeId}/orders-polling`),
+    enabled: !!storeId,
+  })
+}
+
+export function useToggleOrdersPolling() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ storeId, enabled }: { storeId: string; enabled: boolean }) =>
+      api.patch<OrdersPollingStatus>(`/kaspi/stores/${storeId}/orders-polling`, { enabled }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ordersPollingKeys.status(data.store_id) })
+    },
+  })
+}

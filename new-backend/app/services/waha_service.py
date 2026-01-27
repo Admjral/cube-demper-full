@@ -293,7 +293,11 @@ class WahaService:
             )
             
             if response.status_code == 200:
-                if qr_format == "image":
+                content_type = response.headers.get("content-type", "")
+                # WAHA may return JSON even for "image" format
+                if "application/json" in content_type:
+                    return response.json()
+                elif qr_format == "image":
                     return response.content  # PNG bytes
                 return response.json()
             elif response.status_code == 404:
@@ -699,9 +703,12 @@ def get_waha_service() -> WahaService:
     
     if _waha_service is None:
         from ..config import settings
-        
+
+        # Remove trailing slash from URL to prevent double slashes
+        waha_url = getattr(settings, 'waha_url', 'http://waha:3000').rstrip('/')
+
         config = WahaConfig(
-            base_url=getattr(settings, 'waha_url', 'http://waha:3000'),
+            base_url=waha_url,
             api_key=getattr(settings, 'waha_api_key', None),
             webhook_url=getattr(settings, 'waha_webhook_url', None),
         )

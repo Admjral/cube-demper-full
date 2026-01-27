@@ -40,6 +40,7 @@ import {
   Eye,
   AlertCircle,
   TrendingUp,
+  ShoppingBag,
 } from "lucide-react"
 import { toast } from "sonner"
 import {
@@ -60,10 +61,58 @@ import {
   useUpdateAISalesmanSettings,
   useAISalesmanHistory,
   useAISalesmanStats,
+  useOrdersPollingStatus,
+  useToggleOrdersPolling,
   WhatsAppSession,
   WhatsAppTemplate,
   MessageHistoryFilters,
 } from "@/hooks/api/use-whatsapp"
+import { useStores } from "@/hooks/api/use-stores"
+
+// Orders Polling Toggle Component
+function OrdersPollingToggle({
+  storeId,
+  storeName,
+  onToggle,
+  locale,
+}: {
+  storeId: string
+  storeName: string
+  onToggle: (enabled: boolean) => void
+  locale: string
+}) {
+  const { data: pollingStatus, isLoading } = useOrdersPollingStatus(storeId)
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+        <span className="text-sm font-medium">{storeName}</span>
+        <Loader2 className="h-4 w-4 animate-spin" />
+      </div>
+    )
+  }
+
+  const isEnabled = pollingStatus?.orders_polling_enabled || false
+  const lastSync = pollingStatus?.last_orders_sync
+
+  return (
+    <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+      <div className="flex-1">
+        <span className="text-sm font-medium">{storeName}</span>
+        {lastSync && (
+          <p className="text-xs text-muted-foreground">
+            {locale === "ru" ? "Последняя синхронизация: " : "Last sync: "}
+            {new Date(lastSync).toLocaleString(locale === "ru" ? "ru-RU" : "en-US")}
+          </p>
+        )}
+      </div>
+      <Switch
+        checked={isEnabled}
+        onCheckedChange={onToggle}
+      />
+    </div>
+  )
+}
 
 export default function WhatsAppPage() {
   const { locale } = useStore()
@@ -127,6 +176,10 @@ export default function WhatsAppPage() {
   const updateSettings = useUpdateWhatsAppSettings()
   const sendMessage = useSendWhatsAppMessage()
   const updateSalesmanSettings = useUpdateAISalesmanSettings()
+
+  // Kaspi stores for orders polling
+  const { data: kaspiStores } = useStores()
+  const toggleOrdersPolling = useToggleOrdersPolling()
 
   // Get active session
   const activeSession = sessions?.find((s) => s.status === "connected")
@@ -434,6 +487,56 @@ export default function WhatsAppPage() {
               {!isConnected && (
                 <p className="text-sm text-destructive">
                   {locale === "ru" ? "Подключите WhatsApp для отправки сообщений" : "Connect WhatsApp to send messages"}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Orders Monitoring */}
+          <Card className="glass-card">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ShoppingBag className="h-5 w-5" />
+                {locale === "ru" ? "Мониторинг заказов" : "Orders Monitoring"}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-4">
+                {locale === "ru"
+                  ? "Включите мониторинг для автоматической отправки WhatsApp при изменении статуса заказа"
+                  : "Enable monitoring to automatically send WhatsApp when order status changes"}
+              </p>
+              {kaspiStores && kaspiStores.length > 0 ? (
+                <div className="space-y-3">
+                  {kaspiStores.map((store) => (
+                    <OrdersPollingToggle
+                      key={store.id}
+                      storeId={store.id}
+                      storeName={store.name}
+                      onToggle={(enabled) => {
+                        toggleOrdersPolling.mutate(
+                          { storeId: store.id, enabled },
+                          {
+                            onSuccess: () => {
+                              toast.success(
+                                locale === "ru"
+                                  ? `Мониторинг ${enabled ? "включён" : "выключен"} для ${store.name}`
+                                  : `Monitoring ${enabled ? "enabled" : "disabled"} for ${store.name}`
+                              )
+                            },
+                            onError: () => {
+                              toast.error(locale === "ru" ? "Ошибка" : "Error")
+                            },
+                          }
+                        )
+                      }}
+                      locale={locale}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  {locale === "ru" ? "Нет подключенных магазинов" : "No connected stores"}
                 </p>
               )}
             </CardContent>
