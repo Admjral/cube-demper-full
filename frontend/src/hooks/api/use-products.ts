@@ -242,3 +242,28 @@ export function useSyncProducts() {
     },
   })
 }
+
+// Bulk update products (toggle demping for multiple products)
+export interface BulkUpdateRequest {
+  product_ids: string[]
+  bot_active?: boolean
+  price_change_percent?: number
+  price_change_tiyns?: number
+}
+
+export interface BulkUpdateResponse {
+  status: string
+  updated_count: number
+}
+
+export function useBulkUpdateProducts() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (data: BulkUpdateRequest) =>
+      api.post<BulkUpdateResponse>('/kaspi/products/bulk-update', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: productKeys.all })
+    },
+  })
+}

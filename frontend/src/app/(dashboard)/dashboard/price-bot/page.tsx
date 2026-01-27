@@ -2,13 +2,14 @@
 
 import { useState } from "react"
 import { useStore } from "@/store/use-store"
-import { useProducts, useDempingSettings, useUpdateProduct, useUpdateDempingSettings, useSyncProducts } from "@/hooks/api/use-products"
+import { useProducts, useDempingSettings, useUpdateProduct, useUpdateDempingSettings, useSyncProducts, useBulkUpdateProducts } from "@/hooks/api/use-products"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Label } from "@/components/ui/label"
 import {
@@ -41,6 +42,8 @@ import {
   AlertCircle,
   DollarSign,
   RefreshCw,
+  CheckSquare,
+  Square,
 } from "lucide-react"
 import Link from "next/link"
 import { toast } from "sonner"
@@ -126,6 +129,7 @@ export default function PriceBotPage() {
   const [editingProduct, setEditingProduct] = useState<KaspiProduct | null>(null)
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
   const [excludedMerchantsInput, setExcludedMerchantsInput] = useState("")
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set())
 
   const {
     data: products,
@@ -144,6 +148,7 @@ export default function PriceBotPage() {
   const updateProduct = useUpdateProduct()
   const updateDempingSettings = useUpdateDempingSettings()
   const syncProducts = useSyncProducts()
+  const bulkUpdate = useBulkUpdateProducts()
 
   const handleSyncProducts = async () => {
     if (!selectedStore?.id) return
@@ -219,6 +224,47 @@ export default function PriceBotPage() {
 
   const activeBotsCount = products?.filter((p) => p.bot_active).length || 0
   const totalProducts = products?.length || 0
+
+  // Selection handlers
+  const isAllSelected = products && products.length > 0 && selectedProductIds.size === products.length
+  const isSomeSelected = selectedProductIds.size > 0 && !isAllSelected
+
+  const toggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedProductIds(new Set())
+    } else if (products) {
+      setSelectedProductIds(new Set(products.map(p => p.id)))
+    }
+  }
+
+  const toggleSelectProduct = (productId: string) => {
+    const newSelected = new Set(selectedProductIds)
+    if (newSelected.has(productId)) {
+      newSelected.delete(productId)
+    } else {
+      newSelected.add(productId)
+    }
+    setSelectedProductIds(newSelected)
+  }
+
+  const handleBulkToggleDemping = async (enable: boolean) => {
+    if (selectedProductIds.size === 0) return
+
+    try {
+      await bulkUpdate.mutateAsync({
+        product_ids: Array.from(selectedProductIds),
+        bot_active: enable,
+      })
+      toast.success(
+        locale === "ru"
+          ? `Демпинг ${enable ? "включён" : "отключён"} для ${selectedProductIds.size} товаров`
+          : `Demping ${enable ? "enabled" : "disabled"} for ${selectedProductIds.size} products`
+      )
+      setSelectedProductIds(new Set())
+    } catch (error) {
+      toast.error(locale === "ru" ? "Ошибка обновления" : "Update failed")
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -361,6 +407,50 @@ export default function PriceBotPage() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Bulk actions */}
+              {selectedProductIds.size > 0 && (
+                <div className="flex items-center gap-2 mt-4 pt-4 border-t">
+                  <span className="text-sm text-muted-foreground">
+                    {locale === "ru"
+                      ? `Выбрано: ${selectedProductIds.size}`
+                      : `Selected: ${selectedProductIds.size}`}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleBulkToggleDemping(true)}
+                    disabled={bulkUpdate.isPending}
+                  >
+                    {bulkUpdate.isPending ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Play className="h-4 w-4 mr-2" />
+                    )}
+                    {locale === "ru" ? "Включить демпинг" : "Enable demping"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleBulkToggleDemping(false)}
+                    disabled={bulkUpdate.isPending}
+                  >
+                    {bulkUpdate.isPending ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Pause className="h-4 w-4 mr-2" />
+                    )}
+                    {locale === "ru" ? "Отключить демпинг" : "Disable demping"}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedProductIds(new Set())}
+                  >
+                    {locale === "ru" ? "Сбросить" : "Clear"}
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -454,6 +544,13 @@ export default function PriceBotPage() {
                     <table className="w-full">
                       <thead>
                         <tr className="border-b border-border">
+                          <th className="w-12 p-4">
+                            <Checkbox
+                              checked={isAllSelected}
+                              onCheckedChange={toggleSelectAll}
+                              aria-label={locale === "ru" ? "Выбрать все" : "Select all"}
+                            />
+                          </th>
                           <th className="text-left p-4 text-sm font-medium text-muted-foreground">
                             {locale === "ru" ? "Товар" : "Product"}
                           </th>
@@ -475,10 +572,18 @@ export default function PriceBotPage() {
                         {products.map((product) => (
                           <tr
                             key={product.id}
-                            className="border-b border-border last:border-0 hover:bg-muted/50 transition-colors cursor-pointer"
-                            onClick={() => setSelectedProductId(product.id)}
+                            className={`border-b border-border last:border-0 hover:bg-muted/50 transition-colors cursor-pointer ${
+                              selectedProductIds.has(product.id) ? "bg-muted/30" : ""
+                            }`}
                           >
-                            <td className="p-4">
+                            <td className="p-4" onClick={(e) => e.stopPropagation()}>
+                              <Checkbox
+                                checked={selectedProductIds.has(product.id)}
+                                onCheckedChange={() => toggleSelectProduct(product.id)}
+                                aria-label={locale === "ru" ? "Выбрать товар" : "Select product"}
+                              />
+                            </td>
+                            <td className="p-4" onClick={() => setSelectedProductId(product.id)}>
                               <div>
                                 <p className="font-medium">{product.name}</p>
                                 <p className="text-sm text-muted-foreground">
@@ -486,20 +591,20 @@ export default function PriceBotPage() {
                                 </p>
                               </div>
                             </td>
-                            <td className="p-4">
+                            <td className="p-4" onClick={() => setSelectedProductId(product.id)}>
                               <p className="font-semibold">
                                 {formatPrice(product.price)}
                               </p>
                             </td>
-                            <td className="p-4">
+                            <td className="p-4" onClick={() => setSelectedProductId(product.id)}>
                               <p className="text-sm">
                                 {formatPrice(product.min_profit)}
                               </p>
                             </td>
-                            <td className="p-4 text-center">
+                            <td className="p-4 text-center" onClick={() => setSelectedProductId(product.id)}>
                               <Badge variant="secondary">{product.kaspi_sku || "N/A"}</Badge>
                             </td>
-                            <td className="p-4 text-center">
+                            <td className="p-4 text-center" onClick={(e) => e.stopPropagation()}>
                               <Switch
                                 checked={product.bot_active}
                                 onCheckedChange={() => toggleDemping(product)}
