@@ -231,12 +231,19 @@ class DemperWorker:
                         # Wait for all tasks to complete
                         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                        # Count successes and failures
-                        successes = sum(1 for r in results if r is True)
-                        failures = sum(1 for r in results if isinstance(r, Exception))
+                        # Count results by category
+                        updated = sum(1 for r in results if r is True)
+                        skipped = sum(1 for r in results if r is False)
+                        errors = sum(1 for r in results if isinstance(r, Exception))
+
+                        # Log errors for debugging
+                        for r in results:
+                            if isinstance(r, Exception):
+                                logger.error(f"Product processing error: {r}")
+
                         logger.info(
-                            f"Cycle #{cycle_count} complete: {successes} successful, "
-                            f"{failures} failed"
+                            f"Cycle #{cycle_count}: {updated} updated, "
+                            f"{skipped} skipped, {errors} errors"
                         )
 
                 cycle_duration = time.time() - cycle_start
