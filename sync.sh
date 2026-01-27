@@ -36,7 +36,7 @@ case "$1" in
 
   "push-frontend")
     echo "Pushing frontend changes to $FRONTEND_REPO..."
-    rsync -av --exclude='.git' --exclude='node_modules' --exclude='.next' \
+    rsync -av --delete --exclude='.git' --exclude='node_modules' --exclude='.next' \
       "$FULL_REPO/frontend/" "$FRONTEND_REPO/"
     cd "$FRONTEND_REPO"
     git add -A
@@ -46,7 +46,7 @@ case "$1" in
 
   "push-backend")
     echo "Pushing backend changes to $BACKEND_REPO..."
-    rsync -av --exclude='.git' --exclude='__pycache__' --exclude='.venv' --exclude='venv' \
+    rsync -av --delete --exclude='.git' --exclude='__pycache__' --exclude='.venv' --exclude='venv' \
       "$FULL_REPO/new-backend/" "$BACKEND_REPO/"
     cd "$BACKEND_REPO"
     git add -A
