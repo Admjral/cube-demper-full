@@ -5,7 +5,7 @@ import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/use-auth'
 import type { ChatMessage, ChatRequest, ChatResponse } from '@/types/api'
 
-export type AssistantType = 'lawyer' | 'accountant' | 'salesman'
+export type AssistantType = 'lawyer' | 'salesman'
 
 // Query keys
 export const aiChatKeys = {

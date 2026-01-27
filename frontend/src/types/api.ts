@@ -78,7 +78,7 @@ export interface ChatMessage {
 
 export interface ChatRequest {
   user_id: string
-  assistant_type: 'lawyer' | 'accountant' | 'salesman'
+  assistant_type: 'lawyer' | 'salesman'
   message: string
 }
 

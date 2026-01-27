@@ -14,7 +14,6 @@ import {
   Package,
   MessageSquare,
   Plug,
-  Receipt,
   Scale,
   User,
   Settings,
@@ -70,12 +69,6 @@ const navigation = [
     nameRu: "Интеграции",
     href: "/dashboard/integrations",
     icon: Plug,
-  },
-  {
-    name: "AI Accountant",
-    nameRu: "AI-Бухгалтер",
-    href: "/dashboard/ai-accountant",
-    icon: Receipt,
   },
   {
     name: "AI Lawyer",
