@@ -225,3 +225,31 @@ SELECT * FROM price_history ORDER BY created_at DESC LIMIT 20;
 3. **Check Railway deploy logs after pushing**
 4. **Migrations run automatically on backend deploy**
 5. **Workers need manual configuration in Railway Dashboard**
+
+---
+
+## Claude Instructions
+
+### После успешного фикса
+Когда пользователь подтверждает что правка заработала — добавь инсайт в секцию "Learned Insights" ниже.
+
+### Управление размером файла
+Если CLAUDE.md превышает ~300 строк — сократи устаревшую информацию, оставь только актуальное.
+
+---
+
+## Learned Insights
+
+### Railway Deployment
+- **Healthcheck timeout**: Railway Network healthcheck может занимать 2-5 минут даже если приложение стартует быстро. Это нормально — инфраструктура Railway (DNS, load balancer).
+- **railway.toml**: Может конфликтовать с UI настройками. Лучше использовать дефолты Railway или настраивать через UI.
+- **Playwright при старте**: Блокирует startup на 30-60 секунд. Решение — запускать проверку в background через `asyncio.create_task()`.
+
+### Admin Panel (2026-01-28)
+- Добавлена админ-панель из форка `hasabasa/cube-demper-full` branch `admin-panel`
+- Новые роутеры: `admin.py`, `partner_auth.py`
+- Новые таблицы: `partners`, колонка `is_blocked` в `users`
+- **Важно**: При добавлении роутера не забыть подключить в `main.py`
+
+### Authentication
+- Login endpoint должен проверять `is_blocked` перед выдачей токена
