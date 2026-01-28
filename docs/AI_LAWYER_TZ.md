@@ -132,8 +132,8 @@
                                                           │
                                                           ▼
 ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│   Ответ         │◀────│  LLM (GPT-4)     │◀────│  Prompt +       │
-│   пользователю  │     │                  │     │  Контекст       │
+│   Ответ         │◀────│  Gemini 1.5 Pro  │◀────│  Prompt +       │
+│   пользователю  │     │  (или 2.0 Flash) │     │  Контекст       │
 └─────────────────┘     └──────────────────┘     └─────────────────┘
 ```
 
@@ -167,7 +167,7 @@ CREATE TABLE legal_articles (
     article_number VARCHAR(50),   -- Номер статьи
     title VARCHAR(500),           -- Название статьи
     content TEXT,                 -- Текст статьи
-    embedding VECTOR(1536),       -- OpenAI embedding
+    embedding VECTOR(768),        -- Gemini embedding (text-embedding-004)
     created_at TIMESTAMP DEFAULT NOW()
 );
 
@@ -310,10 +310,11 @@ ALTER TABLE users ADD COLUMN lawyer_language VARCHAR(10) DEFAULT 'ru';
 
 ## 5. Интеграции
 
-### 5.1 OpenAI API
-- Модель: GPT-4 Turbo (или GPT-4o)
-- Embeddings: text-embedding-3-small
-- Контекст: до 128k токенов
+### 5.1 Google Gemini API
+- Модель: Gemini 1.5 Pro (или Gemini 2.0 Flash)
+- Embeddings: text-embedding-004
+- Контекст: до 1M токенов (значительно больше чем GPT-4)
+- SDK: `google-generativeai` для Python
 
 ### 5.2 База законов (парсинг)
 - Adilet.zan.kz - официальный источник
@@ -402,20 +403,23 @@ ALTER TABLE users ADD COLUMN lawyer_language VARCHAR(10) DEFAULT 'ru';
 ### 9.1 Внешние сервисы
 | Сервис | Назначение | Ориентир. стоимость |
 |--------|------------|---------------------|
-| OpenAI GPT-4 | Генерация ответов | ~$0.03/1K tokens |
-| OpenAI Embeddings | Векторный поиск | ~$0.0001/1K tokens |
+| Gemini 1.5 Pro | Генерация ответов | ~$0.00125/1K tokens (input), $0.005/1K (output) |
+| Gemini 2.0 Flash | Быстрые ответы | Бесплатно до лимитов, затем ~$0.0001/1K tokens |
+| Gemini Embeddings | Векторный поиск | Бесплатно до лимитов |
 | PostgreSQL + pgvector | Хранение | Уже есть |
 
 ### 9.2 Ориентировочная стоимость на 1000 пользователей
 - ~1000 запросов/день × ~2000 токенов = 2M токенов/день
-- GPT-4: ~$60/день = ~$1800/месяц
-- Embeddings: ~$10/месяц
-- **Итого: ~$1900/месяц** при активном использовании
+- Gemini 1.5 Pro: ~$5/день = ~$150/месяц
+- Gemini 2.0 Flash: почти бесплатно при умеренной нагрузке
+- Embeddings: бесплатно
+- **Итого: ~$150-200/месяц** (в 10 раз дешевле OpenAI!)
 
-### 9.3 Оптимизация стоимости
-- Кеширование частых вопросов
-- Использование GPT-4o-mini для простых вопросов
-- Ограничение контекста до необходимого минимума
+### 9.3 Преимущества Gemini
+- Контекст до 1M токенов (можно загрузить весь закон целиком)
+- Значительно дешевле OpenAI
+- Бесплатный tier для разработки
+- Gemini 2.0 Flash - очень быстрый и дешёвый для простых вопросов
 
 ---
 
