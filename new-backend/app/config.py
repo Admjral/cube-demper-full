@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
 from typing import Optional
 
 
@@ -24,6 +25,7 @@ class Settings(BaseSettings):
     workers: int = 4
 
     # Database
+    database_url_env: Optional[str] = Field(None, alias="DATABASE_URL")  # Railway provides DATABASE_URL
     postgres_host: str = "localhost"
     postgres_port: Optional[int] = 5432
     postgres_db: str = "cube_demper"
@@ -34,6 +36,9 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> str:
+        """Get database URL, preferring DATABASE_URL from Railway if available"""
+        if self.database_url_env:
+            return self.database_url_env
         return (
             f"postgresql://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"

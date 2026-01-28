@@ -23,12 +23,60 @@ export default function AdminPaymentsPage() {
 
   // Mock data for demo
   const mockPayments = payments || [
-    { id: '1', user_id: '1', user_email: 'seller1@mail.kz', amount: 25000, status: 'completed', plan: 'Комбо 500', created_at: '2024-01-25T10:30:00' },
-    { id: '2', user_id: '2', user_email: 'shop2@gmail.com', amount: 20000, status: 'completed', plan: 'Бот 1000', created_at: '2024-01-25T09:15:00' },
-    { id: '3', user_id: '4', user_email: 'store3@inbox.kz', amount: 5000, status: 'completed', plan: 'Бот 500', created_at: '2024-01-24T18:45:00' },
-    { id: '4', user_id: '5', user_email: 'newuser@test.kz', amount: 25000, status: 'pending', plan: 'Комбо 500', created_at: '2024-01-25T11:00:00' },
-    { id: '5', user_id: '6', user_email: 'failed@mail.kz', amount: 30000, status: 'failed', plan: 'Комбо 1000', created_at: '2024-01-25T08:00:00' },
-    { id: '6', user_id: '7', user_email: 'refund@test.kz', amount: 20000, status: 'refunded', plan: 'Бот 1000', created_at: '2024-01-23T14:30:00' },
+    {
+      id: '1',
+      user_id: '1',
+      user_email: 'seller1@mail.kz',
+      amount: 27990,
+      status: 'completed',
+      plan: 'Plus',
+      created_at: '2024-01-25T10:30:00',
+    },
+    {
+      id: '2',
+      user_id: '2',
+      user_email: 'shop2@gmail.com',
+      amount: 33990,
+      status: 'completed',
+      plan: 'Ultra',
+      created_at: '2024-01-25T09:15:00',
+    },
+    {
+      id: '3',
+      user_id: '4',
+      user_email: 'store3@inbox.kz',
+      amount: 21990,
+      status: 'completed',
+      plan: 'Standart',
+      created_at: '2024-01-24T18:45:00',
+    },
+    {
+      id: '4',
+      user_id: '5',
+      user_email: 'newuser@test.kz',
+      amount: 27990,
+      status: 'pending',
+      plan: 'Plus',
+      created_at: '2024-01-25T11:00:00',
+    },
+    {
+      id: '5',
+      user_id: '6',
+      user_email: 'failed@mail.kz',
+      amount: 33990,
+      status: 'failed',
+      plan: 'Ultra',
+      created_at: '2024-01-25T08:00:00',
+    },
+    {
+      id: '6',
+      user_id: '7',
+      user_email: 'refund@test.kz',
+      amount: 21990,
+      status: 'refunded',
+      plan: 'Standart',
+      created_at: '2024-01-23T14:30:00',
+    },
   ]
 
   const filteredPayments = mockPayments.filter((payment) =>

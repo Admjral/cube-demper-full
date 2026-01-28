@@ -96,9 +96,10 @@ async def root():
 
 
 # Include all routers
-from .routers import auth, kaspi, preorders, whatsapp, ai, billing, admin
+from .routers import auth, kaspi, preorders, whatsapp, ai, billing, admin, partner_auth
 
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
+app.include_router(partner_auth.router, prefix="/partner/auth", tags=["Partner Authentication"])
 app.include_router(kaspi.router, prefix="/kaspi", tags=["Kaspi"])
 app.include_router(preorders.router, prefix="/preorders", tags=["Preorders"])
 app.include_router(whatsapp.router, prefix="/whatsapp", tags=["WhatsApp"])

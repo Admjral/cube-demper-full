@@ -20,60 +20,62 @@ import { toast } from 'sonner'
 
 const plans = [
   {
-    id: 'bot-500',
-    name: 'Бот 500',
-    description: 'Для начинающих продавцов',
-    price: 5000,
+    id: 'standart',
+    name: 'Standart',
+    description: 'Базовый тариф для стабильных продаж',
+    price: 21990,
     features: [
-      'Price Bot до 500 товаров',
-      'Мониторинг конкурентов',
-      'Автоматический демпинг',
-      'Базовая аналитика',
+      'Аналитика 500 товаров',
+      'Демпинг 50 товаров',
+      'Не конкурировать со своими магазинами',
+      'Склейка накладных',
+      'Управление заказами',
+      'Юнит экономика',
+      'ИИ юрист',
+      'ИИ бухгалтер',
+      'Приоритетная поддержка 24/7',
     ],
     popular: false,
     icon: Zap,
   },
   {
-    id: 'bot-1000',
-    name: 'Бот 1000',
-    description: 'Для растущего бизнеса',
-    price: 20000,
+    id: 'plus',
+    name: 'Plus',
+    description: 'Расширенный тариф для роста бизнеса',
+    price: 27990,
     features: [
-      'Price Bot до 1000 товаров',
-      'Мониторинг конкурентов',
-      'Автоматический демпинг',
-      'Расширенная аналитика',
-      'Приоритетная поддержка',
-    ],
-    popular: false,
-    icon: Zap,
-  },
-  {
-    id: 'combo-500',
-    name: 'Комбо 500',
-    description: 'Всё включено',
-    price: 25000,
-    features: [
-      'Price Bot до 500 товаров',
-      'Аналитика ниш',
-      'Управление предзаказами',
-      'WhatsApp рассылки',
-      'Все базовые функции',
+      'Аналитика 1000 товаров',
+      'Демпинг 100 товаров',
+      'Предзаказ',
+      'Поиск ниш',
+      'Авто рассылка',
+      'Склейка накладных',
+      'Управление заказами',
+      'Юнит экономика',
+      'ИИ юрист',
+      'ИИ бухгалтер',
+      'Приоритетная поддержка 24/7',
     ],
     popular: true,
     icon: Crown,
   },
   {
-    id: 'combo-1000',
-    name: 'Комбо 1000',
-    description: 'Максимум возможностей',
-    price: 30000,
+    id: 'ultra',
+    name: 'Ultra',
+    description: 'Максимум возможностей для крупных продавцов',
+    price: 33990,
     features: [
-      'Price Bot до 1000 товаров',
-      'Аналитика ниш',
-      'Управление предзаказами',
-      'WhatsApp рассылки',
-      'Приоритетная поддержка',
+      'Аналитика безлимит',
+      'Демпинг 200 товаров',
+      'Предзаказ',
+      'Авто рассылка',
+      'Склейка накладных',
+      'Управление заказами',
+      'Юнит экономика',
+      'ИИ юрист',
+      'ИИ бухгалтер',
+      'Приоритетная поддержка 24/7',
+      'Массовая рассылка',
     ],
     popular: false,
     icon: Crown,
@@ -81,9 +83,36 @@ const plans = [
 ]
 
 const addons = [
-  { id: 'bot-4000', name: 'Бот 4000', price: 30000, description: 'Price Bot до 4000 товаров' },
-  { id: 'analytics', name: 'Аналитика ниш', price: 15000, description: 'Отдельный модуль аналитики' },
-  { id: 'ai-salesman', name: 'ИИ Продажник', price: 15000, description: 'Автоответы в WhatsApp через ИИ' },
+  {
+    id: 'ai-salesman',
+    name: 'ИИ продажник',
+    price: 15000,
+    description: 'ИИ-ассистент для продаж и общения с клиентами',
+  },
+  {
+    id: 'demping-100',
+    name: 'Демпинг (каждые 100 товаров)',
+    price: 10000,
+    description: 'Дополнительный пакет демпинга на каждые 100 товаров',
+  },
+  {
+    id: 'preorder',
+    name: 'Предзаказ',
+    price: 10000,
+    description: 'Модуль управления предзаказами',
+  },
+  {
+    id: 'whatsapp-mailing',
+    name: 'WhatsApp рассылка',
+    price: 15000,
+    description: 'Модуль рассылок и коммуникаций в WhatsApp',
+  },
+  {
+    id: 'analytics-unlimited',
+    name: 'Аналитика безлимит',
+    price: 20000,
+    description: 'Безлимитная аналитика по всем товарам',
+  },
 ]
 
 export default function BillingPage() {
@@ -235,7 +264,7 @@ export default function BillingPage() {
                   <h3 className="font-medium text-foreground">{addon.name}</h3>
                   <p className="text-2xl font-bold text-foreground mt-1">
                     {addon.price.toLocaleString()}
-                    <span className="text-sm font-normal text-muted-foreground">₸/мес</span>
+                    <span className="text-sm font-normal text-muted-foreground">₸</span>
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">{addon.description}</p>
                   <Button

@@ -28,11 +28,56 @@ export default function AdminUsersPage() {
 
   // Mock data for demo
   const mockUsers = users || [
-    { id: '1', email: 'seller1@mail.kz', full_name: 'Асхат Нурланов', role: 'user', subscription_plan: 'Комбо 500', subscription_status: 'active', stores_count: 2, created_at: '2024-01-15' },
-    { id: '2', email: 'shop2@gmail.com', full_name: 'Мария Иванова', role: 'user', subscription_plan: 'Бот 1000', subscription_status: 'active', stores_count: 1, created_at: '2024-01-10' },
-    { id: '3', email: 'admin@demper.kz', full_name: 'Admin', role: 'admin', subscription_plan: null, subscription_status: null, stores_count: 0, created_at: '2024-01-01' },
-    { id: '4', email: 'store3@inbox.kz', full_name: null, role: 'user', subscription_plan: 'Бот 500', subscription_status: 'canceled', stores_count: 1, created_at: '2024-01-20' },
-    { id: '5', email: 'newuser@test.kz', full_name: 'Новый Пользователь', role: 'user', subscription_plan: null, subscription_status: null, stores_count: 0, created_at: '2024-01-25' },
+    {
+      id: '1',
+      email: 'seller1@mail.kz',
+      full_name: 'Асхат Нурланов',
+      role: 'user',
+      subscription_plan: 'Plus',
+      subscription_status: 'active',
+      stores_count: 2,
+      created_at: '2024-01-15',
+    },
+    {
+      id: '2',
+      email: 'shop2@gmail.com',
+      full_name: 'Мария Иванова',
+      role: 'user',
+      subscription_plan: 'Ultra',
+      subscription_status: 'active',
+      stores_count: 1,
+      created_at: '2024-01-10',
+    },
+    {
+      id: '3',
+      email: 'admin@demper.kz',
+      full_name: 'Admin',
+      role: 'admin',
+      subscription_plan: null,
+      subscription_status: null,
+      stores_count: 0,
+      created_at: '2024-01-01',
+    },
+    {
+      id: '4',
+      email: 'store3@inbox.kz',
+      full_name: null,
+      role: 'user',
+      subscription_plan: 'Standart',
+      subscription_status: 'canceled',
+      stores_count: 1,
+      created_at: '2024-01-20',
+    },
+    {
+      id: '5',
+      email: 'newuser@test.kz',
+      full_name: 'Новый Пользователь',
+      role: 'user',
+      subscription_plan: null,
+      subscription_status: null,
+      stores_count: 0,
+      created_at: '2024-01-25',
+    },
   ]
 
   const filteredUsers = mockUsers.filter(

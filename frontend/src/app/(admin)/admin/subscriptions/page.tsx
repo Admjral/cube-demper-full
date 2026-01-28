@@ -26,11 +26,51 @@ export default function AdminSubscriptionsPage() {
 
   // Mock data for demo
   const mockSubscriptions = subscriptions || [
-    { id: '1', user_id: '1', user_email: 'seller1@mail.kz', plan: 'Комбо 500', status: 'active', current_period_end: '2024-02-25', created_at: '2024-01-25' },
-    { id: '2', user_id: '2', user_email: 'shop2@gmail.com', plan: 'Бот 1000', status: 'active', current_period_end: '2024-02-20', created_at: '2024-01-20' },
-    { id: '3', user_id: '4', user_email: 'store3@inbox.kz', plan: 'Бот 500', status: 'canceled', current_period_end: '2024-01-30', created_at: '2024-01-10' },
-    { id: '4', user_id: '6', user_email: 'trial@test.kz', plan: 'Комбо 1000', status: 'trialing', current_period_end: '2024-02-01', created_at: '2024-01-25' },
-    { id: '5', user_id: '7', user_email: 'expired@mail.kz', plan: 'Бот 500', status: 'past_due', current_period_end: '2024-01-15', created_at: '2024-01-01' },
+    {
+      id: '1',
+      user_id: '1',
+      user_email: 'seller1@mail.kz',
+      plan: 'Plus',
+      status: 'active',
+      current_period_end: '2024-02-25',
+      created_at: '2024-01-25',
+    },
+    {
+      id: '2',
+      user_id: '2',
+      user_email: 'shop2@gmail.com',
+      plan: 'Ultra',
+      status: 'active',
+      current_period_end: '2024-02-20',
+      created_at: '2024-01-20',
+    },
+    {
+      id: '3',
+      user_id: '4',
+      user_email: 'store3@inbox.kz',
+      plan: 'Standart',
+      status: 'canceled',
+      current_period_end: '2024-01-30',
+      created_at: '2024-01-10',
+    },
+    {
+      id: '4',
+      user_id: '6',
+      user_email: 'trial@test.kz',
+      plan: 'Ultra',
+      status: 'trialing',
+      current_period_end: '2024-02-01',
+      created_at: '2024-01-25',
+    },
+    {
+      id: '5',
+      user_id: '7',
+      user_email: 'expired@mail.kz',
+      plan: 'Standart',
+      status: 'past_due',
+      current_period_end: '2024-01-15',
+      created_at: '2024-01-01',
+    },
   ]
 
   const filteredSubscriptions = mockSubscriptions.filter((sub) =>
