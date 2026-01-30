@@ -1,4 +1,4 @@
-from fastapi import Depends, Header
+from fastapi import Depends, Header  # pyright: ignore[reportMissingImports]
 from typing import Optional
 import uuid
 
@@ -6,8 +6,8 @@ from .core.database import get_db_pool
 from .core.redis import get_redis
 from .core.security import decode_access_token
 from .core.exceptions import AuthenticationError, AuthorizationError
-import asyncpg
-import redis.asyncio as redis
+import asyncpg  # pyright: ignore[reportMissingImports]
+import redis.asyncio as redis  # pyright: ignore[reportMissingImports]
 
 
 async def get_current_user(
