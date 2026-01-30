@@ -1,31 +1,31 @@
 import Cookies from "js-cookie"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8010"
-const TOKEN_KEY = "partner_auth_token"
-const PARTNER_KEY = "partner_auth_user"
+const TOKEN_KEY = "support_auth_token"
+const USER_KEY = "support_auth_user"
 
-export interface PartnerUser {
+export interface SupportUser {
   id: string
   email: string
   full_name: string | null
+  role: string
   created_at: string
-  updated_at: string
 }
 
-export interface PartnerAuthResponse {
+export interface SupportAuthResponse {
   access_token: string
   token_type: string
-  user: PartnerUser
+  user: SupportUser
 }
 
-class PartnerAuthClient {
+class SupportAuthClient {
   private token: string | null = null
-  private user: PartnerUser | null = null
+  private user: SupportUser | null = null
 
   constructor() {
     if (typeof window !== "undefined") {
       this.token = Cookies.get(TOKEN_KEY) || null
-      const userJson = localStorage.getItem(PARTNER_KEY)
+      const userJson = localStorage.getItem(USER_KEY)
       this.user = userJson && userJson !== "undefined" ? JSON.parse(userJson) : null
     }
   }
@@ -37,9 +37,9 @@ class PartnerAuthClient {
     return this.token
   }
 
-  getUser(): PartnerUser | null {
+  getUser(): SupportUser | null {
     if (typeof window !== "undefined") {
-      const userJson = localStorage.getItem(PARTNER_KEY)
+      const userJson = localStorage.getItem(USER_KEY)
       return userJson && userJson !== "undefined" ? JSON.parse(userJson) : null
     }
     return this.user
@@ -49,7 +49,7 @@ class PartnerAuthClient {
     return !!this.getToken()
   }
 
-  private setAuth(token: string, user: PartnerUser) {
+  private setAuth(token: string, user: SupportUser) {
     this.token = token
     this.user = user
     Cookies.set(TOKEN_KEY, token, {
@@ -57,22 +57,22 @@ class PartnerAuthClient {
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
     })
-    localStorage.setItem(PARTNER_KEY, JSON.stringify(user))
+    localStorage.setItem(USER_KEY, JSON.stringify(user))
   }
 
   private clearAuth() {
     this.token = null
     this.user = null
     Cookies.remove(TOKEN_KEY)
-    localStorage.removeItem(PARTNER_KEY)
+    localStorage.removeItem(USER_KEY)
   }
 
   async signIn(
     email: string,
     password: string,
-  ): Promise<{ data: PartnerAuthResponse | null; error: Error | null }> {
+  ): Promise<{ data: SupportAuthResponse | null; error: Error | null }> {
     try {
-      const response = await fetch(`${API_URL}/partner/login`, {
+      const response = await fetch(`${API_URL}/support/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -85,7 +85,7 @@ class PartnerAuthClient {
 
       const tokenData = await response.json()
 
-      const meResponse = await fetch(`${API_URL}/partner/me`, {
+      const meResponse = await fetch(`${API_URL}/support/me`, {
         headers: {
           Authorization: `Bearer ${tokenData.access_token}`,
           "Content-Type": "application/json",
@@ -95,12 +95,21 @@ class PartnerAuthClient {
       if (!meResponse.ok) {
         return {
           data: null,
-          error: new Error("Не удалось получить данные партнёра"),
+          error: new Error("Не удалось получить данные пользователя"),
         }
       }
 
-      const user: PartnerUser = await meResponse.json()
-      const data: PartnerAuthResponse = {
+      const user: SupportUser = await meResponse.json()
+
+      // Проверка роли - только admin и support могут входить
+      if (user.role !== "admin" && user.role !== "support") {
+        return {
+          data: null,
+          error: new Error("Доступ запрещён. Требуется роль admin или support"),
+        }
+      }
+
+      const data: SupportAuthResponse = {
         access_token: tokenData.access_token,
         token_type: tokenData.token_type,
         user,
@@ -118,14 +127,14 @@ class PartnerAuthClient {
     return { error: null }
   }
 
-  async getCurrentPartner(): Promise<{ user: PartnerUser | null; error: Error | null }> {
+  async getCurrentUser(): Promise<{ user: SupportUser | null; error: Error | null }> {
     const token = this.getToken()
     if (!token) {
       return { user: null, error: null }
     }
 
     try {
-      const response = await fetch(`${API_URL}/partner/me`, {
+      const response = await fetch(`${API_URL}/support/me`, {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
@@ -137,16 +146,16 @@ class PartnerAuthClient {
         return { user: null, error: new Error("Сессия истекла") }
       }
 
-      const user: PartnerUser = await response.json()
+      const user: SupportUser = await response.json()
       this.user = user
-      localStorage.setItem(PARTNER_KEY, JSON.stringify(user))
+      localStorage.setItem(USER_KEY, JSON.stringify(user))
       return { user, error: null }
     } catch (e) {
       return { user: null, error: e as Error }
     }
   }
 
-  getSession(): { user: PartnerUser | null; token: string | null } {
+  getSession(): { user: SupportUser | null; token: string | null } {
     return {
       user: this.getUser(),
       token: this.getToken(),
@@ -154,5 +163,4 @@ class PartnerAuthClient {
   }
 }
 
-export const partnerAuthClient = new PartnerAuthClient()
-
+export const supportAuthClient = new SupportAuthClient()

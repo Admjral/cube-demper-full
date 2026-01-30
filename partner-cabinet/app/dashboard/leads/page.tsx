@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import {
     Card,
     CardContent,
@@ -16,47 +17,46 @@ import {
     TableRow,
 } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
-
-// Mock data for leads
-const leads = [
-    {
-        id: "user_102",
-        date: "2024-05-18",
-        status: "paid",
-        amount: 5000,
-        source: "Instagram",
-    },
-    {
-        id: "user_101",
-        date: "2024-05-17",
-        status: "registered",
-        amount: 0,
-        source: "Telegram",
-    },
-    {
-        id: "user_100",
-        date: "2024-05-16",
-        status: "registered",
-        amount: 0,
-        source: "Direct Link",
-    },
-    {
-        id: "user_99",
-        date: "2024-05-15",
-        status: "paid",
-        amount: 5000,
-        source: "Instagram",
-    },
-    {
-        id: "user_98",
-        date: "2024-05-14",
-        status: "clicked",
-        amount: 0,
-        source: "Unknown",
-    },
-]
+import { Loader2 } from "lucide-react"
+import { getPartnerLeads, PartnerLead } from "@/lib/api"
 
 export default function LeadsPage() {
+    const [leads, setLeads] = useState<PartnerLead[]>([])
+    const [total, setTotal] = useState(0)
+    const [loading, setLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null)
+
+    useEffect(() => {
+        async function loadLeads() {
+            try {
+                const data = await getPartnerLeads(50, 0)
+                setLeads(data.leads)
+                setTotal(data.total)
+            } catch (e) {
+                setError(e instanceof Error ? e.message : "Ошибка загрузки")
+            } finally {
+                setLoading(false)
+            }
+        }
+        loadLeads()
+    }, [])
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+        )
+    }
+
+    if (error) {
+        return (
+            <div className="text-center text-red-500 py-8">
+                {error}
+            </div>
+        )
+    }
+
     return (
         <div className="grid gap-6">
             <Card>
@@ -64,35 +64,50 @@ export default function LeadsPage() {
                     <CardTitle>Мои Клиенты</CardTitle>
                     <CardDescription>
                         Список пользователей, перешедших по вашей ссылке или использовавших промокод.
+                        Всего: {total}
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Пользователь (ID)</TableHead>
-                                <TableHead>Дата регистрации</TableHead>
-                                <TableHead>Источник</TableHead>
-                                <TableHead>Статус</TableHead>
-                                <TableHead className="text-right">Ваш доход</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {leads.map((lead) => (
-                                <TableRow key={lead.id}>
-                                    <TableCell className="font-medium">{lead.id}</TableCell>
-                                    <TableCell>{lead.date}</TableCell>
-                                    <TableCell>{lead.source}</TableCell>
-                                    <TableCell>
-                                        <StatusBadge status={lead.status} />
-                                    </TableCell>
-                                    <TableCell className={cn("text-right font-bold", lead.amount > 0 ? "text-green-600" : "text-muted-foreground")}>
-                                        {lead.amount > 0 ? `+${lead.amount} ₸` : "0 ₸"}
-                                    </TableCell>
+                    {leads.length === 0 ? (
+                        <div className="text-center text-muted-foreground py-8">
+                            Пока нет приведённых клиентов
+                        </div>
+                    ) : (
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Email</TableHead>
+                                    <TableHead>Имя</TableHead>
+                                    <TableHead>Дата регистрации</TableHead>
+                                    <TableHead>Статус</TableHead>
+                                    <TableHead className="text-right">Ваш доход</TableHead>
                                 </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
+                            </TableHeader>
+                            <TableBody>
+                                {leads.map((lead) => (
+                                    <TableRow key={lead.id}>
+                                        <TableCell className="font-medium">{lead.email}</TableCell>
+                                        <TableCell>{lead.full_name || "—"}</TableCell>
+                                        <TableCell>
+                                            {lead.registered_at
+                                                ? new Date(lead.registered_at).toLocaleDateString("ru-RU")
+                                                : "—"
+                                            }
+                                        </TableCell>
+                                        <TableCell>
+                                            <StatusBadge status={lead.status} />
+                                        </TableCell>
+                                        <TableCell className={cn(
+                                            "text-right font-bold",
+                                            lead.partner_earned > 0 ? "text-green-600" : "text-muted-foreground"
+                                        )}>
+                                            {lead.partner_earned > 0 ? `+${lead.partner_earned.toLocaleString()} ₸` : "0 ₸"}
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    )}
                 </CardContent>
             </Card>
         </div>
@@ -107,16 +122,9 @@ function StatusBadge({ status }: { status: string }) {
             </span>
         )
     }
-    if (status === 'registered') {
-        return (
-            <span className="inline-flex items-center rounded-full border border-transparent bg-blue-500/15 px-2.5 py-0.5 text-xs font-semibold text-blue-600 transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
-                Зарегистрирован
-            </span>
-        )
-    }
     return (
-        <span className="inline-flex items-center rounded-full border border-transparent bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
-            Переход
+        <span className="inline-flex items-center rounded-full border border-transparent bg-blue-500/15 px-2.5 py-0.5 text-xs font-semibold text-blue-600 transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+            Зарегистрирован
         </span>
     )
 }

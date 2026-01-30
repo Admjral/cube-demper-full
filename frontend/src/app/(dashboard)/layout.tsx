@@ -3,6 +3,7 @@
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { Header } from "@/components/dashboard/header"
 import { BottomNav } from "@/components/dashboard/bottom-nav"
+import { SupportChatWidget } from "@/components/support/chat-widget"
 
 export default function DashboardLayout({
   children,
@@ -27,6 +28,9 @@ export default function DashboardLayout({
         {/* Mobile bottom navigation */}
         <BottomNav />
       </div>
+
+      {/* Support chat widget */}
+      <SupportChatWidget />
     </div>
   )
 }
