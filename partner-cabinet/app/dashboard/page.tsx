@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import {
     Card,
     CardContent,
@@ -7,11 +8,50 @@ import {
     CardTitle,
     CardDescription,
 } from "@/components/ui/card"
-import { DollarSign, MousePointerClick, Users, CreditCard } from "lucide-react"
+import { DollarSign, MousePointerClick, Users, CreditCard, Loader2 } from "lucide-react"
 import { EarningsChart } from "@/components/dashboard/earnings-chart"
 import { PromoCodeCard } from "@/components/dashboard/promo-code-card"
+import { getPartnerStats, PartnerStats } from "@/lib/api"
 
 export default function DashboardPage() {
+    const [stats, setStats] = useState<PartnerStats | null>(null)
+    const [loading, setLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null)
+
+    useEffect(() => {
+        async function loadStats() {
+            try {
+                const data = await getPartnerStats()
+                setStats(data)
+            } catch (e) {
+                setError(e instanceof Error ? e.message : "Ошибка загрузки")
+            } finally {
+                setLoading(false)
+            }
+        }
+        loadStats()
+    }, [])
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+        )
+    }
+
+    if (error) {
+        return (
+            <div className="text-center text-red-500 py-8">
+                {error}
+            </div>
+        )
+    }
+
+    const conversionRate = stats && stats.registrations > 0
+        ? Math.round((stats.paid_users / stats.registrations) * 100)
+        : 0
+
     return (
         <div className="grid gap-4 md:gap-8">
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -21,8 +61,8 @@ export default function DashboardPage() {
                         <MousePointerClick className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">1,234</div>
-                        <p className="text-xs text-muted-foreground">+20.1% за месяц</p>
+                        <div className="text-2xl font-bold">{stats?.clicks.toLocaleString() || 0}</div>
+                        <p className="text-xs text-muted-foreground">Всего переходов</p>
                     </CardContent>
                 </Card>
                 <Card>
@@ -31,8 +71,13 @@ export default function DashboardPage() {
                         <Users className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">345</div>
-                        <p className="text-xs text-muted-foreground">+15% конверсия</p>
+                        <div className="text-2xl font-bold">{stats?.registrations.toLocaleString() || 0}</div>
+                        <p className="text-xs text-muted-foreground">
+                            {stats && stats.clicks > 0
+                                ? `${Math.round((stats.registrations / stats.clicks) * 100)}% конверсия`
+                                : "Приведённых пользователей"
+                            }
+                        </p>
                     </CardContent>
                 </Card>
                 <Card>
@@ -41,8 +86,8 @@ export default function DashboardPage() {
                         <CreditCard className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">42</div>
-                        <p className="text-xs text-muted-foreground">12% от регистраций</p>
+                        <div className="text-2xl font-bold">{stats?.paid_users || 0}</div>
+                        <p className="text-xs text-muted-foreground">{conversionRate}% от регистраций</p>
                     </CardContent>
                 </Card>
                 <Card>
@@ -51,8 +96,10 @@ export default function DashboardPage() {
                         <DollarSign className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">210,000 ₸</div>
-                        <p className="text-xs text-muted-foreground">5000 ₸ за клиента</p>
+                        <div className="text-2xl font-bold">{stats?.total_earned.toLocaleString() || 0} ₸</div>
+                        <p className="text-xs text-muted-foreground">
+                            Доступно: {stats?.available_balance.toLocaleString() || 0} ₸
+                        </p>
                     </CardContent>
                 </Card>
             </div>

@@ -1,14 +1,13 @@
 "use client"
 
-import { useState } from "react"
-import { Plus, Wallet, ArrowUpRight, ArrowDownLeft } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Plus, Wallet, ArrowUpRight, ArrowDownLeft, Loader2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
     Card,
     CardContent,
-    CardDescription,
     CardHeader,
     CardTitle,
 } from "@/components/ui/card"
@@ -31,55 +30,81 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table"
-
-// Mock data
-const transactions = [
-    {
-        id: "TRX-9821",
-        date: "2024-05-12",
-        description: "Начисление за клиента (user_88)",
-        amount: 5000,
-        type: "income",
-        status: "completed",
-    },
-    {
-        id: "TRX-9822",
-        date: "2024-05-14",
-        description: "Начисление за клиента (user_91)",
-        amount: 5000,
-        type: "income",
-        status: "completed",
-    },
-    {
-        id: "PAY-001",
-        date: "2024-05-15",
-        description: "Вывод средств на Kaspi",
-        amount: -10000,
-        type: "payout",
-        status: "processed",
-    },
-    {
-        id: "TRX-9825",
-        date: "2024-05-18",
-        description: "Начисление за клиента (user_102)",
-        amount: 5000,
-        type: "income",
-        status: "completed",
-    },
-]
+import {
+    getPartnerStats,
+    getPartnerTransactions,
+    requestPayout,
+    PartnerStats,
+    PartnerTransaction,
+} from "@/lib/api"
 
 export default function FinancePage() {
+    const [stats, setStats] = useState<PartnerStats | null>(null)
+    const [transactions, setTransactions] = useState<PartnerTransaction[]>([])
+    const [loading, setLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null)
+
     const [isPayoutOpen, setIsPayoutOpen] = useState(false)
+    const [payoutLoading, setPayoutLoading] = useState(false)
     const [amount, setAmount] = useState("")
     const [requisites, setRequisites] = useState("")
 
-    const handleRequestPayout = (e: React.FormEvent) => {
+    useEffect(() => {
+        async function loadData() {
+            try {
+                const [statsData, transactionsData] = await Promise.all([
+                    getPartnerStats(),
+                    getPartnerTransactions(50, 0),
+                ])
+                setStats(statsData)
+                setTransactions(transactionsData.transactions)
+            } catch (e) {
+                setError(e instanceof Error ? e.message : "Ошибка загрузки")
+            } finally {
+                setLoading(false)
+            }
+        }
+        loadData()
+    }, [])
+
+    const handleRequestPayout = async (e: React.FormEvent) => {
         e.preventDefault()
-        // Logic to send request to backend would go here
-        setIsPayoutOpen(false)
-        alert(`Запрос на выплату ${amount} ₸ отправлен!`)
-        setAmount("")
-        setRequisites("")
+        setPayoutLoading(true)
+
+        try {
+            const result = await requestPayout(Number(amount), requisites)
+            alert(result.message)
+            setIsPayoutOpen(false)
+            setAmount("")
+            setRequisites("")
+            // Reload data
+            const [statsData, transactionsData] = await Promise.all([
+                getPartnerStats(),
+                getPartnerTransactions(50, 0),
+            ])
+            setStats(statsData)
+            setTransactions(transactionsData.transactions)
+        } catch (e) {
+            alert(e instanceof Error ? e.message : "Ошибка при запросе выплаты")
+        } finally {
+            setPayoutLoading(false)
+        }
+    }
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+        )
+    }
+
+    if (error) {
+        return (
+            <div className="text-center text-red-500 py-8">
+                {error}
+            </div>
+        )
     }
 
     return (
@@ -91,7 +116,9 @@ export default function FinancePage() {
                         <Wallet className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">5,000 ₸</div>
+                        <div className="text-2xl font-bold">
+                            {stats?.available_balance.toLocaleString() || 0} ₸
+                        </div>
                         <p className="text-xs text-muted-foreground">Минимальный вывод: 5 000 ₸</p>
                     </CardContent>
                 </Card>
@@ -101,7 +128,9 @@ export default function FinancePage() {
                         <ArrowUpRight className="h-4 w-4 text-green-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">210,000 ₸</div>
+                        <div className="text-2xl font-bold">
+                            {stats?.total_earned.toLocaleString() || 0} ₸
+                        </div>
                     </CardContent>
                 </Card>
                 <Card>
@@ -110,7 +139,9 @@ export default function FinancePage() {
                         <ArrowDownLeft className="h-4 w-4 text-red-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">205,000 ₸</div>
+                        <div className="text-2xl font-bold">
+                            {stats?.total_withdrawn.toLocaleString() || 0} ₸
+                        </div>
                     </CardContent>
                 </Card>
             </div>
@@ -120,7 +151,7 @@ export default function FinancePage() {
 
                 <Dialog open={isPayoutOpen} onOpenChange={setIsPayoutOpen}>
                     <DialogTrigger asChild>
-                        <Button>
+                        <Button disabled={(stats?.available_balance || 0) < 5000}>
                             <Plus className="mr-2 h-4 w-4" />
                             Запросить выплату
                         </Button>
@@ -130,6 +161,8 @@ export default function FinancePage() {
                             <DialogTitle>Запрос выплаты</DialogTitle>
                             <DialogDescription>
                                 Укажите сумму и реквизиты для получения средств. Обработка занимает до 24 часов.
+                                <br />
+                                Доступно: <strong>{stats?.available_balance.toLocaleString() || 0} ₸</strong>
                             </DialogDescription>
                         </DialogHeader>
                         <form onSubmit={handleRequestPayout}>
@@ -146,6 +179,7 @@ export default function FinancePage() {
                                         className="col-span-3"
                                         type="number"
                                         min="5000"
+                                        max={stats?.available_balance || 0}
                                         required
                                     />
                                 </div>
@@ -164,7 +198,10 @@ export default function FinancePage() {
                                 </div>
                             </div>
                             <DialogFooter>
-                                <Button type="submit">Отправить запрос</Button>
+                                <Button type="submit" disabled={payoutLoading}>
+                                    {payoutLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                    Отправить запрос
+                                </Button>
                             </DialogFooter>
                         </form>
                     </DialogContent>
@@ -172,35 +209,71 @@ export default function FinancePage() {
             </div>
 
             <Card>
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>ID</TableHead>
-                            <TableHead>Дата</TableHead>
-                            <TableHead>Описание</TableHead>
-                            <TableHead className="text-right">Сумма</TableHead>
-                            <TableHead>Статус</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {transactions.map((t) => (
-                            <TableRow key={t.id}>
-                                <TableCell className="font-medium">{t.id}</TableCell>
-                                <TableCell>{t.date}</TableCell>
-                                <TableCell>{t.description}</TableCell>
-                                <TableCell className={cn("text-right font-bold", t.amount > 0 ? "text-green-600" : "text-black")}>
-                                    {t.amount > 0 ? "+" : ""}{t.amount} ₸
-                                </TableCell>
-                                <TableCell>
-                                    <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80">
-                                        {t.status === 'completed' ? 'Выполнено' : 'В обработке'}
-                                    </span>
-                                </TableCell>
+                {transactions.length === 0 ? (
+                    <div className="text-center text-muted-foreground py-8">
+                        Пока нет транзакций
+                    </div>
+                ) : (
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>ID</TableHead>
+                                <TableHead>Дата</TableHead>
+                                <TableHead>Описание</TableHead>
+                                <TableHead className="text-right">Сумма</TableHead>
+                                <TableHead>Статус</TableHead>
                             </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
+                        </TableHeader>
+                        <TableBody>
+                            {transactions.map((t) => (
+                                <TableRow key={t.id}>
+                                    <TableCell className="font-medium font-mono text-xs">
+                                        {t.id.slice(0, 8)}...
+                                    </TableCell>
+                                    <TableCell>
+                                        {t.created_at
+                                            ? new Date(t.created_at).toLocaleDateString("ru-RU")
+                                            : "—"
+                                        }
+                                    </TableCell>
+                                    <TableCell>{t.description}</TableCell>
+                                    <TableCell className={cn(
+                                        "text-right font-bold",
+                                        t.amount > 0 ? "text-green-600" : "text-black"
+                                    )}>
+                                        {t.amount > 0 ? "+" : ""}{t.amount.toLocaleString()} ₸
+                                    </TableCell>
+                                    <TableCell>
+                                        <StatusBadge status={t.status} />
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                )}
             </Card>
         </div>
+    )
+}
+
+function StatusBadge({ status }: { status: string }) {
+    if (status === 'completed') {
+        return (
+            <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold border-transparent bg-green-500/15 text-green-600">
+                Выполнено
+            </span>
+        )
+    }
+    if (status === 'rejected') {
+        return (
+            <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold border-transparent bg-red-500/15 text-red-600">
+                Отклонено
+            </span>
+        )
+    }
+    return (
+        <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold border-transparent bg-secondary text-secondary-foreground">
+            В обработке
+        </span>
     )
 }

@@ -13,14 +13,14 @@ const footerLinks = {
     { name: 'Оферта', href: '/offer' },
   ],
   support: [
-    { name: 'Связаться с нами', href: 'https://wa.me/77001234567' },
+    { name: 'Связаться с нами', href: 'https://wa.me/77476117623' },
     { name: 'Telegram', href: 'https://t.me/demper_support' },
     { name: 'Email', href: 'mailto:support@demper.kz' },
   ],
 }
 
 const socialLinks = [
-  { name: 'WhatsApp', href: 'https://wa.me/77001234567', icon: MessageSquare },
+  { name: 'WhatsApp', href: 'https://wa.me/77476117623', icon: MessageSquare },
   { name: 'Telegram', href: 'https://t.me/demper_kz', icon: Send },
   { name: 'Instagram', href: 'https://instagram.com/demper.kz', icon: Instagram },
 ]

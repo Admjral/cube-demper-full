@@ -72,7 +72,7 @@ class PartnerAuthClient {
     password: string,
   ): Promise<{ data: PartnerAuthResponse | null; error: Error | null }> {
     try {
-      const response = await fetch(`${API_URL}/partner/auth/login`, {
+      const response = await fetch(`${API_URL}/partner/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -85,7 +85,7 @@ class PartnerAuthClient {
 
       const tokenData = await response.json()
 
-      const meResponse = await fetch(`${API_URL}/partner/auth/me`, {
+      const meResponse = await fetch(`${API_URL}/partner/me`, {
         headers: {
           Authorization: `Bearer ${tokenData.access_token}`,
           "Content-Type": "application/json",
@@ -125,7 +125,7 @@ class PartnerAuthClient {
     }
 
     try {
-      const response = await fetch(`${API_URL}/partner/auth/me`, {
+      const response = await fetch(`${API_URL}/partner/me`, {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
