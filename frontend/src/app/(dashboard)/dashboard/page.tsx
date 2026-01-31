@@ -15,6 +15,7 @@ import {
   ArrowRight,
   AlertCircle,
   Store,
+  Users,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -42,6 +43,14 @@ const quickActions = [
     descriptionEn: "Message automation",
     href: "/dashboard/whatsapp",
     icon: Package,
+  },
+  {
+    title: "Реферальная программа",
+    titleEn: "Referral Program",
+    description: "Приглашай друзей и зарабатывай",
+    descriptionEn: "Invite friends and earn",
+    href: "/partner",
+    icon: Users,
   },
 ]
 
