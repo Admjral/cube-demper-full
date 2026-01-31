@@ -4,6 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useStore } from "@/store/use-store"
+import { useAuth } from "@/hooks/use-auth"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
 import {
@@ -19,6 +20,7 @@ import {
   Settings,
   X,
   FileStack,
+  Shield,
 } from "lucide-react"
 
 const navigation = [
@@ -96,6 +98,8 @@ const bottomNavigation = [
 export function Sidebar() {
   const pathname = usePathname()
   const { sidebarOpen, setSidebarOpen, locale } = useStore()
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'admin'
 
   return (
     <>
@@ -160,6 +164,22 @@ export function Sidebar() {
 
           {/* Bottom navigation */}
           <div className="border-t border-sidebar-border p-3 space-y-1">
+            {/* Admin Panel button - only for admins */}
+            {isAdmin && (
+              <Link
+                href="/admin"
+                onClick={() => setSidebarOpen(false)}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors touch-target",
+                  pathname.startsWith('/admin')
+                    ? "bg-primary text-primary-foreground"
+                    : "text-primary hover:bg-primary/10"
+                )}
+              >
+                <Shield className="h-5 w-5 shrink-0" />
+                <span>{locale === 'ru' ? 'Админ-панель' : 'Admin Panel'}</span>
+              </Link>
+            )}
             {bottomNavigation.map((item) => {
               const isActive = pathname === item.href
               return (

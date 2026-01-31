@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
   const token = request.cookies.get('auth_token')?.value
+  const partnerToken = request.cookies.get('partner_token')?.value
   const { pathname } = request.nextUrl
 
   // Protected routes - redirect to login if not authenticated
@@ -33,6 +34,15 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // Partner routes - use partner_token
+  if (pathname.startsWith('/partner') && pathname !== '/partner/login') {
+    if (!partnerToken) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/partner/login'
+      return NextResponse.redirect(url)
+    }
+  }
+
   // Auth routes - redirect to dashboard if already authenticated
   if (
     pathname.startsWith('/login') ||
@@ -53,6 +63,7 @@ export const config = {
   matcher: [
     '/dashboard/:path*',
     '/admin/:path*',
+    '/partner/:path*',
     '/login',
     '/register',
     '/forgot-password',
