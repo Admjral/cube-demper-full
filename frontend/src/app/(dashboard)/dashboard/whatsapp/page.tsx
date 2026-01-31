@@ -68,6 +68,7 @@ import {
   MessageHistoryFilters,
 } from "@/hooks/api/use-whatsapp"
 import { useStores } from "@/hooks/api/use-stores"
+import { FeatureGate } from "@/components/shared/feature-gate"
 
 // Orders Polling Toggle Component
 function OrdersPollingToggle({
@@ -493,6 +494,7 @@ export default function WhatsAppPage() {
           </Card>
 
           {/* Orders Monitoring */}
+          <FeatureGate feature="whatsapp_auto">
           <Card className="glass-card">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -541,6 +543,7 @@ export default function WhatsAppPage() {
               )}
             </CardContent>
           </Card>
+          </FeatureGate>
 
           {/* Templates */}
           <Card className="glass-card">
@@ -647,6 +650,7 @@ export default function WhatsAppPage() {
 
         {/* AI Salesman Tab */}
         <TabsContent value="salesman" className="space-y-6 mt-6">
+          <FeatureGate feature="ai_salesman">
           {/* AI Settings */}
           <Card className="glass-card">
             <CardHeader>
@@ -853,6 +857,7 @@ export default function WhatsAppPage() {
               )}
             </CardContent>
           </Card>
+          </FeatureGate>
         </TabsContent>
 
         {/* Messages Tab */}

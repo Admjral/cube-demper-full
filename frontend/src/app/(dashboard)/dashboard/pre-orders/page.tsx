@@ -26,6 +26,7 @@ import {
   Construction,
 } from "lucide-react"
 import Link from "next/link"
+import { FeatureGate } from "@/components/shared/feature-gate"
 
 interface PreOrder {
   id: string
@@ -142,8 +143,13 @@ export default function PreOrdersPage() {
       {/* No store selected */}
       {!selectedStore && <NoStoreSelected locale={locale} />}
 
-      {/* Coming soon message when store is selected */}
-      {selectedStore && <ComingSoon locale={locale} />}
+      {/* Feature gate for preorder access */}
+      {selectedStore && (
+        <FeatureGate feature="preorder">
+          {/* Coming soon message when store is selected and has access */}
+          <ComingSoon locale={locale} />
+        </FeatureGate>
+      )}
 
       {/* Stats and list - will be shown when backend is ready and preorders exist */}
       {selectedStore && preorders.length > 0 && (

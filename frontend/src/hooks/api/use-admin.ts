@@ -11,6 +11,39 @@ import type {
   AdminPayment,
   AdminPaymentListResponse,
 } from '@/types/api'
+import type { Plan, Addon } from '@/hooks/api/use-features'
+
+// Types for subscription details
+export interface UserSubscriptionDetails {
+  user_id: string
+  subscription: {
+    id: string | null
+    plan_id: string | null
+    plan_code: string | null
+    plan_name: string | null
+    status: string | null
+    analytics_limit: number
+    demping_limit: number
+    is_trial: boolean
+    trial_ends_at: string | null
+    ends_at: string | null
+    notes: string | null
+  } | null
+  addons: Array<{
+    id: string
+    code: string
+    name: string
+    quantity: number
+    status: string
+    starts_at: string
+    expires_at: string | null
+  }>
+  computed_features: string[]
+  computed_limits: {
+    analytics_limit: number
+    demping_limit: number
+  }
+}
 
 // Query keys
 export const adminKeys = {
@@ -129,6 +162,89 @@ export function useExtendSubscription() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: adminKeys.users() })
       queryClient.invalidateQueries({ queryKey: adminKeys.subscriptions() })
+    },
+  })
+}
+
+// Get user subscription details
+export function useUserSubscriptionDetails(userId: string, enabled = true) {
+  return useQuery({
+    queryKey: [...adminKeys.all, 'user-subscription', userId],
+    queryFn: () => api.get<UserSubscriptionDetails>(`/admin/users/${userId}/subscription-details`),
+    enabled: enabled && !!userId,
+  })
+}
+
+// Assign subscription to user
+export function useAssignSubscription() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({
+      userId,
+      planCode,
+      days,
+      isTrial,
+      notes
+    }: {
+      userId: string
+      planCode: string
+      days?: number
+      isTrial?: boolean
+      notes?: string
+    }) =>
+      api.post(`/admin/users/${userId}/subscription`, {
+        plan_code: planCode,
+        days: days ?? 30,
+        is_trial: isTrial ?? false,
+        notes,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: adminKeys.users() })
+      queryClient.invalidateQueries({ queryKey: adminKeys.subscriptions() })
+      queryClient.invalidateQueries({ queryKey: [...adminKeys.all, 'user-subscription'] })
+    },
+  })
+}
+
+// Assign add-on to user
+export function useAssignAddon() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({
+      userId,
+      addonCode,
+      quantity,
+      days
+    }: {
+      userId: string
+      addonCode: string
+      quantity?: number
+      days?: number
+    }) =>
+      api.post(`/admin/users/${userId}/addon`, {
+        addon_code: addonCode,
+        quantity: quantity ?? 1,
+        days: days ?? 30,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: adminKeys.users() })
+      queryClient.invalidateQueries({ queryKey: [...adminKeys.all, 'user-subscription'] })
+    },
+  })
+}
+
+// Remove add-on from user
+export function useRemoveAddon() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ userId, addonCode }: { userId: string; addonCode: string }) =>
+      api.delete(`/admin/users/${userId}/addon/${addonCode}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: adminKeys.users() })
+      queryClient.invalidateQueries({ queryKey: [...adminKeys.all, 'user-subscription'] })
     },
   })
 }

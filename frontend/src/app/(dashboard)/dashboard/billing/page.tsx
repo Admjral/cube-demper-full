@@ -1,10 +1,9 @@
 'use client'
 
-import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { useSubscription, useCreatePayment } from '@/hooks/api/use-billing'
+import { useFeatures, usePlansV2, useAddons } from '@/hooks/api/use-features'
 import { useAuth } from '@/hooks/use-auth'
 import {
   CreditCard,
@@ -14,103 +13,64 @@ import {
   Zap,
   Loader2,
   AlertCircle,
+  MessageSquare,
+  BarChart3,
+  ShoppingCart,
+  Bot,
+  Package,
+  TrendingUp,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { toast } from 'sonner'
+import { format } from 'date-fns'
+import { ru } from 'date-fns/locale'
 
-const plans = [
-  {
-    id: 'bot-500',
-    name: 'Бот 500',
-    description: 'Для начинающих продавцов',
-    price: 5000,
-    features: [
-      'Price Bot до 500 товаров',
-      'Мониторинг конкурентов',
-      'Автоматический демпинг',
-      'Базовая аналитика',
-    ],
-    popular: false,
-    icon: Zap,
-  },
-  {
-    id: 'bot-1000',
-    name: 'Бот 1000',
-    description: 'Для растущего бизнеса',
-    price: 20000,
-    features: [
-      'Price Bot до 1000 товаров',
-      'Мониторинг конкурентов',
-      'Автоматический демпинг',
-      'Расширенная аналитика',
-      'Приоритетная поддержка',
-    ],
-    popular: false,
-    icon: Zap,
-  },
-  {
-    id: 'combo-500',
-    name: 'Комбо 500',
-    description: 'Всё включено',
-    price: 25000,
-    features: [
-      'Price Bot до 500 товаров',
-      'Аналитика ниш',
-      'Управление предзаказами',
-      'WhatsApp рассылки',
-      'Все базовые функции',
-    ],
-    popular: true,
-    icon: Crown,
-  },
-  {
-    id: 'combo-1000',
-    name: 'Комбо 1000',
-    description: 'Максимум возможностей',
-    price: 30000,
-    features: [
-      'Price Bot до 1000 товаров',
-      'Аналитика ниш',
-      'Управление предзаказами',
-      'WhatsApp рассылки',
-      'Приоритетная поддержка',
-    ],
-    popular: false,
-    icon: Crown,
-  },
-]
+// Feature labels for display
+const featureLabels: Record<string, string> = {
+  analytics: 'Аналитика',
+  demping: 'Демпинг',
+  exclude_own_stores: 'Не конкурировать со своими',
+  invoice_glue: 'Склейка накладных',
+  orders_view: 'Просмотр заказов',
+  unit_economics: 'Юнит экономика',
+  ai_lawyer: 'ИИ юрист',
+  priority_support: 'Приоритетная поддержка 24/7',
+  preorder: 'Предзаказы',
+  whatsapp_auto: 'Авто рассылка WhatsApp',
+  whatsapp_bulk: 'Массовая рассылка WhatsApp',
+  ai_salesman: 'ИИ продажник',
+}
 
-const addons = [
-  { id: 'bot-4000', name: 'Бот 4000', price: 30000, description: 'Price Bot до 4000 товаров' },
-  { id: 'analytics', name: 'Аналитика ниш', price: 15000, description: 'Отдельный модуль аналитики' },
-  { id: 'ai-salesman', name: 'ИИ Продажник', price: 15000, description: 'Автоответы в WhatsApp через ИИ' },
-]
+// Plan icons and styles
+const planConfig: Record<string, { icon: typeof Zap; color: string }> = {
+  basic: { icon: Zap, color: 'text-blue-500' },
+  standard: { icon: Crown, color: 'text-amber-500' },
+  premium: { icon: Sparkles, color: 'text-purple-500' },
+}
 
 export default function BillingPage() {
   const { user } = useAuth()
-  const { data: subscription, isLoading: subscriptionLoading } = useSubscription()
-  const { mutate: createPayment, isPending: paymentPending } = useCreatePayment()
-  const [selectedPlan, setSelectedPlan] = useState<string | null>(null)
+  const { data: features, isLoading: featuresLoading } = useFeatures()
+  const { data: plans, isLoading: plansLoading } = usePlansV2()
+  const { data: addons, isLoading: addonsLoading } = useAddons()
 
-  const handleSelectPlan = (planId: string) => {
-    if (!user) {
-      toast.error('Войдите в аккаунт для оформления подписки')
-      return
-    }
+  const isLoading = featuresLoading || plansLoading || addonsLoading
 
-    setSelectedPlan(planId)
-    createPayment(planId, {
-      onSuccess: (data) => {
-        // In production, redirect to payment URL
-        toast.success('Перенаправление на страницу оплаты...')
-        // window.location.href = data.payment_url
-        console.log('Payment URL:', data.payment_url)
-      },
-      onError: () => {
-        toast.error('Ошибка при создании платежа')
-        setSelectedPlan(null)
-      },
-    })
+  const handleContactSupport = () => {
+    // Open support widget or redirect to contact
+    window.open('https://wa.me/77771234567', '_blank')
+  }
+
+  // Calculate limit usage (mock values - in production, get from backend)
+  const analyticsUsed = 0 // TODO: get from backend
+  const dempingUsed = 0 // TODO: get from backend
+
+  const getLimitDisplay = (limit: number) => {
+    return limit === -1 ? 'Безлимит' : limit.toString()
+  }
+
+  const getLimitProgress = (used: number, limit: number) => {
+    if (limit === -1) return 0
+    return Math.min((used / limit) * 100, 100)
   }
 
   return (
@@ -126,146 +86,300 @@ export default function BillingPage() {
         </p>
       </div>
 
-      {/* Current subscription */}
-      {subscription && (
-        <Card className="glass-card border-primary/20 bg-primary/5">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Текущий план</p>
-                <p className="text-xl font-semibold text-foreground">{subscription.plan}</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Активен до {new Date(subscription.current_period_end).toLocaleDateString('ru-RU')}
-                </p>
-              </div>
-              <Badge variant={subscription.status === 'active' ? 'default' : 'secondary'}>
-                {subscription.status === 'active' ? 'Активна' : subscription.status}
-              </Badge>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Promo banner */}
-      <Card className="glass-card border-warning/20 bg-warning/5">
-        <CardContent className="pt-6">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-warning/20 flex items-center justify-center">
-              <Sparkles className="h-5 w-5 text-warning" />
-            </div>
-            <div>
-              <p className="font-medium text-foreground">Бонус для первых пользователей</p>
-              <p className="text-sm text-muted-foreground">
-                При оплате любого тарифа: ИИ Продажник + ИИ Юрист + ИИ Бухгалтер бесплатно на 1 месяц
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Plans */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {plans.map((plan) => (
-          <Card
-            key={plan.id}
-            className={cn(
-              'glass-card relative',
-              plan.popular && 'ring-2 ring-primary'
-            )}
-          >
-            {plan.popular && (
-              <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-primary text-primary-foreground text-xs font-medium rounded-full">
-                Популярный
-              </div>
-            )}
-            <CardHeader className="pb-2">
-              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center mb-2">
-                <plan.icon className="h-5 w-5 text-primary" />
-              </div>
-              <CardTitle className="text-lg">{plan.name}</CardTitle>
-              <p className="text-sm text-muted-foreground">{plan.description}</p>
-            </CardHeader>
-            <CardContent>
-              <div className="mb-4">
-                <span className="text-3xl font-bold text-foreground">
-                  {plan.price.toLocaleString()}
-                </span>
-                <span className="text-muted-foreground">₸/мес</span>
-              </div>
-
-              <ul className="space-y-2 mb-6">
-                {plan.features.map((feature) => (
-                  <li key={feature} className="flex items-start gap-2 text-sm">
-                    <Check className="h-4 w-4 text-success mt-0.5 shrink-0" />
-                    <span className="text-muted-foreground">{feature}</span>
-                  </li>
-                ))}
-              </ul>
-
-              <Button
-                className="w-full"
-                variant={plan.popular ? 'default' : 'outline'}
-                disabled={paymentPending || !user}
-                onClick={() => handleSelectPlan(plan.id)}
-              >
-                {paymentPending && selectedPlan === plan.id ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Обработка...
-                  </>
-                ) : subscription?.plan === plan.name ? (
-                  'Текущий план'
-                ) : (
-                  'Выбрать'
-                )}
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Addons */}
-      <div>
-        <h2 className="text-lg font-semibold mb-4">Дополнительные модули</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {addons.map((addon) => (
-            <Card key={addon.id} className="glass-card">
+      {isLoading ? (
+        <div className="flex justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      ) : (
+        <>
+          {/* Current subscription */}
+          {features?.has_active_subscription ? (
+            <Card className="glass-card border-primary/20 bg-primary/5">
               <CardContent className="pt-6">
-                <div className="text-center">
-                  <h3 className="font-medium text-foreground">{addon.name}</h3>
-                  <p className="text-2xl font-bold text-foreground mt-1">
-                    {addon.price.toLocaleString()}
-                    <span className="text-sm font-normal text-muted-foreground">₸/мес</span>
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">{addon.description}</p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-4"
-                    disabled={!user}
-                    onClick={() => handleSelectPlan(addon.id)}
-                  >
-                    Добавить
-                  </Button>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Текущий план</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <p className="text-xl font-semibold text-foreground">
+                        {features.plan_name || 'Нет подписки'}
+                      </p>
+                      {features.is_trial && (
+                        <Badge variant="outline" className="gap-1">
+                          <Sparkles className="h-3 w-3" />
+                          Пробный период
+                        </Badge>
+                      )}
+                    </div>
+                    {features.subscription_ends_at && (
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Активен до {format(new Date(features.subscription_ends_at), 'd MMMM yyyy', { locale: ru })}
+                      </p>
+                    )}
+                    {features.is_trial && features.trial_ends_at && (
+                      <p className="text-sm text-muted-foreground">
+                        Пробный период до {format(new Date(features.trial_ends_at), 'd MMMM yyyy', { locale: ru })}
+                      </p>
+                    )}
+                  </div>
+                  <Badge variant="default" className="self-start sm:self-center">
+                    Активна
+                  </Badge>
+                </div>
+
+                {/* Limits */}
+                <div className="grid sm:grid-cols-2 gap-4 mt-6">
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground flex items-center gap-2">
+                        <BarChart3 className="h-4 w-4" />
+                        Аналитика
+                      </span>
+                      <span className="font-medium">
+                        {analyticsUsed} / {getLimitDisplay(features.analytics_limit)}
+                      </span>
+                    </div>
+                    {features.analytics_limit !== -1 && (
+                      <div className="h-2 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-primary rounded-full transition-all"
+                          style={{ width: `${getLimitProgress(analyticsUsed, features.analytics_limit)}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground flex items-center gap-2">
+                        <TrendingUp className="h-4 w-4" />
+                        Демпинг
+                      </span>
+                      <span className="font-medium">
+                        {dempingUsed} / {features.demping_limit}
+                      </span>
+                    </div>
+                    <div className="h-2 bg-muted rounded-full overflow-hidden">
+                      <div
+                        className={cn(
+                          "h-full rounded-full transition-all",
+                          getLimitProgress(dempingUsed, features.demping_limit) >= 80
+                            ? "bg-yellow-500"
+                            : "bg-primary"
+                        )}
+                        style={{ width: `${getLimitProgress(dempingUsed, features.demping_limit)}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Features */}
+                {features.features.length > 0 && (
+                  <div className="mt-6 pt-4 border-t">
+                    <p className="text-sm text-muted-foreground mb-3">Доступные функции:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {features.features.map((feature) => (
+                        <Badge key={feature} variant="secondary">
+                          {featureLabels[feature] || feature}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="glass-card border-yellow-500/20 bg-yellow-500/5">
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-yellow-500/20 flex items-center justify-center">
+                    <AlertCircle className="h-5 w-5 text-yellow-500" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-foreground">Нет активной подписки</p>
+                    <p className="text-sm text-muted-foreground">
+                      Свяжитесь с поддержкой для оформления подписки
+                    </p>
+                  </div>
                 </div>
               </CardContent>
             </Card>
-          ))}
-        </div>
-      </div>
+          )}
 
-      {/* Info */}
-      {!user && (
-        <Card className="glass-card border-muted">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3 text-muted-foreground">
-              <AlertCircle className="h-5 w-5" />
-              <p className="text-sm">
-                Войдите в аккаунт для оформления подписки
-              </p>
+          {/* Promo banner */}
+          <Card className="glass-card border-green-500/20 bg-green-500/5">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center">
+                  <Sparkles className="h-5 w-5 text-green-500" />
+                </div>
+                <div>
+                  <p className="font-medium text-foreground">Бета-тест бесплатно!</p>
+                  <p className="text-sm text-muted-foreground">
+                    Попробуйте тариф Базовый бесплатно в течение 3 дней
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Plans */}
+          <div>
+            <h2 className="text-lg font-semibold mb-4">Тарифные планы</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {plans?.map((plan) => {
+                const config = planConfig[plan.code] || { icon: Zap, color: 'text-primary' }
+                const Icon = config.icon
+                const isCurrentPlan = features?.plan_code === plan.code
+
+                return (
+                  <Card
+                    key={plan.id}
+                    className={cn(
+                      'glass-card relative',
+                      plan.code === 'standard' && 'ring-2 ring-primary',
+                      isCurrentPlan && 'border-primary bg-primary/5'
+                    )}
+                  >
+                    {plan.code === 'standard' && (
+                      <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-primary text-primary-foreground text-xs font-medium rounded-full">
+                        Популярный
+                      </div>
+                    )}
+                    <CardHeader className="pb-2">
+                      <div className={cn("w-10 h-10 rounded-xl bg-muted flex items-center justify-center mb-2")}>
+                        <Icon className={cn("h-5 w-5", config.color)} />
+                      </div>
+                      <CardTitle className="text-lg">{plan.name}</CardTitle>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <BarChart3 className="h-4 w-4" />
+                        {plan.analytics_limit === -1 ? 'Безлимит' : plan.analytics_limit} товаров
+                        <span className="mx-1">•</span>
+                        <TrendingUp className="h-4 w-4" />
+                        {plan.demping_limit} демпинг
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="mb-4">
+                        <span className="text-3xl font-bold text-foreground">
+                          {(plan.price / 100).toLocaleString()}
+                        </span>
+                        <span className="text-muted-foreground"> ₸/мес</span>
+                      </div>
+
+                      <ul className="space-y-2 mb-6">
+                        {plan.features.map((feature) => (
+                          <li key={feature} className="flex items-start gap-2 text-sm">
+                            <Check className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+                            <span className="text-muted-foreground">
+                              {featureLabels[feature] || feature}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+
+                      {plan.trial_days > 0 && (
+                        <p className="text-xs text-muted-foreground mb-4 text-center">
+                          {plan.trial_days} дней бесплатно
+                        </p>
+                      )}
+
+                      <Button
+                        className="w-full"
+                        variant={isCurrentPlan ? 'secondary' : plan.code === 'standard' ? 'default' : 'outline'}
+                        disabled={isCurrentPlan}
+                        onClick={handleContactSupport}
+                      >
+                        {isCurrentPlan ? (
+                          'Текущий план'
+                        ) : (
+                          <>
+                            <MessageSquare className="h-4 w-4 mr-2" />
+                            Связаться
+                          </>
+                        )}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )
+              })}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+
+          {/* Addons */}
+          <div>
+            <h2 className="text-lg font-semibold mb-4">Дополнительные услуги</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {addons?.map((addon) => {
+                const hasAddon = features?.features.some(f =>
+                  addon.features.includes(f)
+                )
+
+                return (
+                  <Card key={addon.id} className={cn("glass-card", hasAddon && "border-green-500/30")}>
+                    <CardContent className="pt-6">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-medium text-foreground">{addon.name}</h3>
+                            {hasAddon && (
+                              <Badge variant="default" className="bg-green-500">
+                                <Check className="h-3 w-3 mr-1" />
+                                Активно
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            {addon.description}
+                          </p>
+                          {addon.stackable && (
+                            <Badge variant="outline" className="mt-2 text-xs">
+                              <Package className="h-3 w-3 mr-1" />
+                              Можно покупать несколько раз
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xl font-bold text-foreground">
+                            {(addon.price / 100).toLocaleString()}
+                          </p>
+                          <span className="text-xs text-muted-foreground">₸/мес</span>
+                        </div>
+                      </div>
+                      {!hasAddon && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full mt-4"
+                          onClick={handleContactSupport}
+                        >
+                          <MessageSquare className="h-4 w-4 mr-2" />
+                          Подключить
+                        </Button>
+                      )}
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Contact info */}
+          <Card className="glass-card">
+            <CardContent className="pt-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="font-medium text-foreground">Как оформить подписку?</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Свяжитесь с нами в WhatsApp для оформления подписки или активации бета-теста
+                  </p>
+                </div>
+                <Button onClick={handleContactSupport}>
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  Написать в WhatsApp
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </>
       )}
     </div>
   )
