@@ -3,33 +3,19 @@
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { partnerApi } from '@/hooks/use-partner-auth'
+import { getReferralTransactions, ReferralTransactionsResponse } from '@/hooks/use-referral'
 import { Loader2, Receipt, ArrowUpRight, ArrowDownLeft } from 'lucide-react'
 import { format } from 'date-fns'
 import { ru } from 'date-fns/locale'
 
-interface Transaction {
-  id: string
-  type: 'income' | 'payout'
-  amount: number
-  description: string
-  status: 'pending' | 'completed' | 'failed'
-  created_at: string
-}
-
-interface TransactionsResponse {
-  transactions: Transaction[]
-  total: number
-}
-
 export default function PartnerTransactionsPage() {
-  const [data, setData] = useState<TransactionsResponse | null>(null)
+  const [data, setData] = useState<ReferralTransactionsResponse | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const result = await partnerApi<TransactionsResponse>('/partner/transactions?limit=100')
+        const result = await getReferralTransactions(100)
         setData(result)
       } catch (error) {
         console.error('Failed to fetch transactions:', error)

@@ -6,15 +6,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { partnerApi } from '@/hooks/use-partner-auth'
+import { getReferralStats, requestPayout, ReferralStats } from '@/hooks/use-referral'
 import { Loader2, CreditCard, CheckCircle } from 'lucide-react'
 
-interface PartnerStats {
-  available_balance: number
-}
-
 export default function PartnerPayoutPage() {
-  const [stats, setStats] = useState<PartnerStats | null>(null)
+  const [stats, setStats] = useState<ReferralStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [success, setSuccess] = useState(false)
@@ -26,7 +22,7 @@ export default function PartnerPayoutPage() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const result = await partnerApi<PartnerStats>('/partner/stats')
+        const result = await getReferralStats()
         setStats(result)
       } catch (error) {
         console.error('Failed to fetch stats:', error)
@@ -45,20 +41,14 @@ export default function PartnerPayoutPage() {
     try {
       const amountInTiyns = Math.round(parseFloat(amount) * 100)
 
-      await partnerApi('/partner/payout', {
-        method: 'POST',
-        body: JSON.stringify({
-          amount: amountInTiyns,
-          requisites,
-        }),
-      })
+      await requestPayout(amountInTiyns, requisites)
 
       setSuccess(true)
       setAmount('')
       setRequisites('')
 
       // Refresh stats
-      const newStats = await partnerApi<PartnerStats>('/partner/stats')
+      const newStats = await getReferralStats()
       setStats(newStats)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Ошибка при создании заявки')

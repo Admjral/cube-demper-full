@@ -3,33 +3,19 @@
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { partnerApi } from '@/hooks/use-partner-auth'
+import { getReferralLeads, ReferralLeadsResponse } from '@/hooks/use-referral'
 import { Loader2, Users } from 'lucide-react'
 import { format } from 'date-fns'
 import { ru } from 'date-fns/locale'
 
-interface Lead {
-  id: string
-  email: string
-  full_name: string | null
-  registered_at: string
-  status: 'registered' | 'paid'
-  partner_earned: number
-}
-
-interface LeadsResponse {
-  leads: Lead[]
-  total: number
-}
-
 export default function PartnerLeadsPage() {
-  const [data, setData] = useState<LeadsResponse | null>(null)
+  const [data, setData] = useState<ReferralLeadsResponse | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const result = await partnerApi<LeadsResponse>('/partner/leads?limit=100')
+        const result = await getReferralLeads(100)
         setData(result)
       } catch (error) {
         console.error('Failed to fetch leads:', error)

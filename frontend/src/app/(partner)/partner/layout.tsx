@@ -5,14 +5,14 @@ import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { ThemeToggle } from '@/components/shared/theme-toggle'
 import { Button } from '@/components/ui/button'
-import { usePartnerAuth } from '@/hooks/use-partner-auth'
+import { useAuth } from '@/hooks/use-auth'
 import {
   LayoutDashboard,
   Users,
   Receipt,
   CreditCard,
   LogOut,
-  Link as LinkIcon,
+  ArrowLeft,
 } from 'lucide-react'
 
 const navigation = [
@@ -29,22 +29,22 @@ export default function PartnerLayout({
 }) {
   const pathname = usePathname()
   const router = useRouter()
-  const { partner, signOut, loading } = usePartnerAuth()
+  const { user, signOut, loading } = useAuth()
 
   const handleSignOut = async () => {
     await signOut()
-    router.push('/partner/login')
+    router.push('/login')
   }
 
-  // If not authenticated and not on login page, redirect
-  if (!loading && !partner && pathname !== '/partner/login') {
-    router.push('/partner/login')
+  // If loading, show nothing
+  if (loading) {
     return null
   }
 
-  // Show login page without layout
-  if (pathname === '/partner/login') {
-    return <>{children}</>
+  // If not authenticated, redirect
+  if (!user) {
+    router.push('/login')
+    return null
   }
 
   return (
@@ -57,12 +57,19 @@ export default function PartnerLayout({
               <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
                 <span className="text-primary-foreground font-bold text-sm">D</span>
               </div>
-              <span className="font-semibold text-lg">Demper Partner</span>
+              <span className="font-semibold text-lg">Реферальная программа</span>
             </Link>
           </div>
           <div className="flex items-center gap-4">
+            <Link
+              href="/dashboard"
+              className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span className="hidden sm:inline">Назад в Dashboard</span>
+            </Link>
             <span className="text-sm text-muted-foreground hidden sm:block">
-              {partner?.email}
+              {user?.email}
             </span>
             <ThemeToggle />
             <Button variant="ghost" size="icon" onClick={handleSignOut}>

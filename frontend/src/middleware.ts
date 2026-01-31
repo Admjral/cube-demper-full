@@ -34,11 +34,11 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // Partner routes - use partner_token
-  if (pathname.startsWith('/partner') && pathname !== '/partner/login') {
-    if (!partnerToken) {
+  // Partner/Referral routes - use regular auth_token (any logged in user)
+  if (pathname.startsWith('/partner')) {
+    if (!token) {
       const url = request.nextUrl.clone()
-      url.pathname = '/partner/login'
+      url.pathname = '/login'
       return NextResponse.redirect(url)
     }
   }
