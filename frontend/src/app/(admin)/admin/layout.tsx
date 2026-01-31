@@ -11,6 +11,7 @@ import {
   Repeat,
   Store,
   ArrowLeft,
+  MessageSquare,
 } from 'lucide-react'
 
 const navigation = [
@@ -19,6 +20,7 @@ const navigation = [
   { name: 'Платежи', href: '/admin/payments', icon: CreditCard },
   { name: 'Подписки', href: '/admin/subscriptions', icon: Repeat },
   { name: 'Магазины', href: '/admin/stores', icon: Store },
+  { name: 'Поддержка', href: '/admin/support', icon: MessageSquare },
 ]
 
 export default function AdminLayout({
