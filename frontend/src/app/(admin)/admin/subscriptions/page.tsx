@@ -5,54 +5,71 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { useAdminSubscriptions } from '@/hooks/api/use-admin'
+import { useAdminUsers } from '@/hooks/api/use-admin'
 import {
   Repeat,
   Search,
   Loader2,
   Calendar,
-  MoreHorizontal,
+  CheckCircle,
+  XCircle,
+  Clock,
+  AlertTriangle,
 } from 'lucide-react'
+import { format } from 'date-fns'
+import { ru } from 'date-fns/locale'
 
 export default function AdminSubscriptionsPage() {
   const [search, setSearch] = useState('')
-  const { data: subscriptions, isLoading } = useAdminSubscriptions()
+  const [page, setPage] = useState(1)
+  const { data, isLoading } = useAdminUsers(page, 100)
 
-  // Mock data for demo
-  const mockSubscriptions = subscriptions || [
-    { id: '1', user_id: '1', user_email: 'seller1@mail.kz', plan: 'Комбо 500', status: 'active', current_period_end: '2024-02-25', created_at: '2024-01-25' },
-    { id: '2', user_id: '2', user_email: 'shop2@gmail.com', plan: 'Бот 1000', status: 'active', current_period_end: '2024-02-20', created_at: '2024-01-20' },
-    { id: '3', user_id: '4', user_email: 'store3@inbox.kz', plan: 'Бот 500', status: 'canceled', current_period_end: '2024-01-30', created_at: '2024-01-10' },
-    { id: '4', user_id: '6', user_email: 'trial@test.kz', plan: 'Комбо 1000', status: 'trialing', current_period_end: '2024-02-01', created_at: '2024-01-25' },
-    { id: '5', user_id: '7', user_email: 'expired@mail.kz', plan: 'Бот 500', status: 'past_due', current_period_end: '2024-01-15', created_at: '2024-01-01' },
-  ]
-
-  const filteredSubscriptions = mockSubscriptions.filter((sub) =>
-    sub.user_email.toLowerCase().includes(search.toLowerCase())
+  // Filter users with subscriptions
+  const usersWithSubs = (data?.users ?? []).filter(
+    (u) => u.subscription_plan || u.subscription_status
   )
 
-  const getStatusBadge = (status: string) => {
+  const filteredSubscriptions = usersWithSubs.filter((user) =>
+    user.email.toLowerCase().includes(search.toLowerCase())
+  )
+
+  const getStatusBadge = (status: string | null) => {
     switch (status) {
       case 'active':
-        return <Badge className="bg-success/10 text-success border-0">Активна</Badge>
+        return (
+          <Badge className="bg-green-500/10 text-green-500 border-0">
+            <CheckCircle className="h-3 w-3 mr-1" />
+            Активна
+          </Badge>
+        )
       case 'canceled':
-        return <Badge variant="secondary">Отменена</Badge>
+        return (
+          <Badge variant="secondary">
+            <XCircle className="h-3 w-3 mr-1" />
+            Отменена
+          </Badge>
+        )
       case 'trialing':
-        return <Badge className="bg-warning/10 text-warning border-0">Пробный</Badge>
+        return (
+          <Badge className="bg-yellow-500/10 text-yellow-600 border-0">
+            <Clock className="h-3 w-3 mr-1" />
+            Пробный
+          </Badge>
+        )
       case 'past_due':
-        return <Badge variant="destructive">Просрочена</Badge>
+        return (
+          <Badge variant="destructive">
+            <AlertTriangle className="h-3 w-3 mr-1" />
+            Просрочена
+          </Badge>
+        )
       default:
-        return <Badge variant="secondary">{status}</Badge>
+        return <Badge variant="secondary">{status || '—'}</Badge>
     }
   }
 
-  const activeCount = mockSubscriptions.filter((s) => s.status === 'active').length
+  const activeCount = usersWithSubs.filter((u) => u.subscription_status === 'active').length
+  const total = data?.total ?? 0
 
   return (
     <div className="space-y-6">
@@ -62,11 +79,13 @@ export default function AdminSubscriptionsPage() {
             <Repeat className="h-6 w-6" />
             Подписки
           </h1>
-          <p className="text-muted-foreground">Управление подписками пользователей</p>
+          <p className="text-muted-foreground">
+            Пользователей с подписками: {usersWithSubs.length}
+          </p>
         </div>
         <div className="text-right">
           <p className="text-sm text-muted-foreground">Активных подписок</p>
-          <p className="text-2xl font-bold">{activeCount}</p>
+          <p className="text-2xl font-bold text-green-600">{activeCount}</p>
         </div>
       </div>
 
@@ -88,6 +107,11 @@ export default function AdminSubscriptionsPage() {
             <div className="flex items-center justify-center h-64">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
+          ) : filteredSubscriptions.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-64">
+              <Repeat className="h-12 w-12 text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">Подписки не найдены</p>
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -106,53 +130,56 @@ export default function AdminSubscriptionsPage() {
                       Действует до
                     </th>
                     <th className="text-left p-4 text-sm font-medium text-muted-foreground">
-                      Создана
+                      Магазины / Товары
                     </th>
-                    <th className="text-right p-4 text-sm font-medium text-muted-foreground">
-                      Действия
+                    <th className="text-left p-4 text-sm font-medium text-muted-foreground">
+                      Регистрация
                     </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredSubscriptions.map((sub) => (
+                  {filteredSubscriptions.map((user) => (
                     <tr
-                      key={sub.id}
+                      key={user.id}
                       className="border-b border-border last:border-0 hover:bg-muted/50"
                     >
                       <td className="p-4">
-                        <span className="text-sm">{sub.user_email}</span>
+                        <div>
+                          <p className="text-sm font-medium">
+                            {user.full_name || 'Без имени'}
+                          </p>
+                          <p className="text-xs text-muted-foreground">{user.email}</p>
+                        </div>
                       </td>
                       <td className="p-4">
-                        <span className="text-sm font-medium">{sub.plan}</span>
+                        <span className="text-sm font-medium">
+                          {user.subscription_plan || '—'}
+                        </span>
                       </td>
-                      <td className="p-4">{getStatusBadge(sub.status)}</td>
+                      <td className="p-4">{getStatusBadge(user.subscription_status)}</td>
                       <td className="p-4">
-                        <span className="text-sm text-muted-foreground flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          {new Date(sub.current_period_end).toLocaleDateString('ru-RU')}
+                        {user.subscription_end_date ? (
+                          <span className="text-sm text-muted-foreground flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            {format(new Date(user.subscription_end_date), 'd MMM yyyy', {
+                              locale: ru,
+                            })}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="p-4">
+                        <span className="text-sm text-muted-foreground">
+                          {user.stores_count} / {user.products_count}
                         </span>
                       </td>
                       <td className="p-4">
                         <span className="text-sm text-muted-foreground">
-                          {new Date(sub.created_at).toLocaleDateString('ru-RU')}
+                          {user.created_at
+                            ? format(new Date(user.created_at), 'd MMM yyyy', { locale: ru })
+                            : '-'}
                         </span>
-                      </td>
-                      <td className="p-4 text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem>Продлить</DropdownMenuItem>
-                            <DropdownMenuItem>Изменить план</DropdownMenuItem>
-                            <DropdownMenuItem>Активировать</DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive">
-                              Отменить
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
                       </td>
                     </tr>
                   ))}
@@ -162,6 +189,31 @@ export default function AdminSubscriptionsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Pagination */}
+      {total > 100 && (
+        <div className="flex items-center justify-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page === 1}
+            onClick={() => setPage(page - 1)}
+          >
+            Назад
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            Страница {page} из {Math.ceil(total / 100)}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= Math.ceil(total / 100)}
+            onClick={() => setPage(page + 1)}
+          >
+            Вперёд
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

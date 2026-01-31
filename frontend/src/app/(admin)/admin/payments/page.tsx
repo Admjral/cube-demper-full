@@ -16,22 +16,18 @@ import {
   Clock,
   RefreshCw,
 } from 'lucide-react'
+import { format } from 'date-fns'
+import { ru } from 'date-fns/locale'
 
 export default function AdminPaymentsPage() {
   const [search, setSearch] = useState('')
-  const { data: payments, isLoading } = useAdminPayments()
+  const [page, setPage] = useState(1)
+  const { data, isLoading } = useAdminPayments(page, 50)
 
-  // Mock data for demo
-  const mockPayments = payments || [
-    { id: '1', user_id: '1', user_email: 'seller1@mail.kz', amount: 25000, status: 'completed', plan: 'Комбо 500', created_at: '2024-01-25T10:30:00' },
-    { id: '2', user_id: '2', user_email: 'shop2@gmail.com', amount: 20000, status: 'completed', plan: 'Бот 1000', created_at: '2024-01-25T09:15:00' },
-    { id: '3', user_id: '4', user_email: 'store3@inbox.kz', amount: 5000, status: 'completed', plan: 'Бот 500', created_at: '2024-01-24T18:45:00' },
-    { id: '4', user_id: '5', user_email: 'newuser@test.kz', amount: 25000, status: 'pending', plan: 'Комбо 500', created_at: '2024-01-25T11:00:00' },
-    { id: '5', user_id: '6', user_email: 'failed@mail.kz', amount: 30000, status: 'failed', plan: 'Комбо 1000', created_at: '2024-01-25T08:00:00' },
-    { id: '6', user_id: '7', user_email: 'refund@test.kz', amount: 20000, status: 'refunded', plan: 'Бот 1000', created_at: '2024-01-23T14:30:00' },
-  ]
+  const payments = data?.payments ?? []
+  const total = data?.total ?? 0
 
-  const filteredPayments = mockPayments.filter((payment) =>
+  const filteredPayments = payments.filter((payment) =>
     payment.user_email.toLowerCase().includes(search.toLowerCase())
   )
 
@@ -39,7 +35,7 @@ export default function AdminPaymentsPage() {
     switch (status) {
       case 'completed':
         return (
-          <Badge className="bg-success/10 text-success border-0">
+          <Badge className="bg-green-500/10 text-green-500 border-0">
             <CheckCircle className="h-3 w-3 mr-1" />
             Оплачено
           </Badge>
@@ -70,9 +66,9 @@ export default function AdminPaymentsPage() {
     }
   }
 
-  const totalRevenue = mockPayments
+  const totalRevenue = payments
     .filter((p) => p.status === 'completed')
-    .reduce((sum, p) => sum + p.amount, 0)
+    .reduce((sum, p) => sum + (p.amount ?? 0), 0)
 
   return (
     <div className="space-y-6">
@@ -82,12 +78,14 @@ export default function AdminPaymentsPage() {
             <CreditCard className="h-6 w-6" />
             Платежи
           </h1>
-          <p className="text-muted-foreground">История всех транзакций</p>
+          <p className="text-muted-foreground">
+            Всего: {total} платежей
+          </p>
         </div>
         <div className="text-right">
-          <p className="text-sm text-muted-foreground">Общая выручка</p>
-          <p className="text-2xl font-bold text-success">
-            {totalRevenue.toLocaleString()}₸
+          <p className="text-sm text-muted-foreground">Выручка на странице</p>
+          <p className="text-2xl font-bold text-green-600">
+            {(totalRevenue / 100).toLocaleString()} ₸
           </p>
         </div>
       </div>
@@ -109,6 +107,11 @@ export default function AdminPaymentsPage() {
           {isLoading ? (
             <div className="flex items-center justify-center h-64">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : filteredPayments.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-64">
+              <CreditCard className="h-12 w-12 text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">Платежи не найдены</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -143,30 +146,31 @@ export default function AdminPaymentsPage() {
                     >
                       <td className="p-4">
                         <span className="text-sm font-mono text-muted-foreground">
-                          #{payment.id}
+                          #{payment.id.slice(0, 8)}
                         </span>
                       </td>
                       <td className="p-4">
                         <span className="text-sm">{payment.user_email}</span>
                       </td>
                       <td className="p-4">
-                        <span className="text-sm font-medium">{payment.plan}</span>
+                        <span className="text-sm font-medium">
+                          {payment.plan || '—'}
+                        </span>
                       </td>
                       <td className="p-4">
                         <span className="text-sm font-semibold">
-                          {payment.amount.toLocaleString()}₸
+                          {((payment.amount ?? 0) / 100).toLocaleString()} ₸
                         </span>
                       </td>
                       <td className="p-4">{getStatusBadge(payment.status)}</td>
                       <td className="p-4">
                         <span className="text-sm text-muted-foreground flex items-center gap-1">
                           <Calendar className="h-3 w-3" />
-                          {new Date(payment.created_at).toLocaleString('ru-RU', {
-                            day: 'numeric',
-                            month: 'short',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
+                          {payment.created_at
+                            ? format(new Date(payment.created_at), 'd MMM yyyy, HH:mm', {
+                                locale: ru,
+                              })
+                            : '-'}
                         </span>
                       </td>
                     </tr>
@@ -177,6 +181,31 @@ export default function AdminPaymentsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Pagination */}
+      {total > 50 && (
+        <div className="flex items-center justify-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page === 1}
+            onClick={() => setPage(page - 1)}
+          >
+            Назад
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            Страница {page} из {Math.ceil(total / 50)}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= Math.ceil(total / 50)}
+            onClick={() => setPage(page + 1)}
+          >
+            Вперёд
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
