@@ -420,3 +420,65 @@ export interface MultiCityDempingResult {
   total_cities: number
   successful_updates: number
 }
+
+// =============================================
+// Niche Search (Поиск ниш)
+// =============================================
+
+export interface NicheSearchParams {
+  category_id?: string
+  min_price?: number
+  max_price?: number
+  min_sales?: number
+  max_sales?: number
+  min_revenue?: number
+  max_revenue?: number
+  min_reviews?: number
+  max_reviews?: number
+  competition?: 'low' | 'medium' | 'high'
+  sort_by?: 'sales' | 'revenue' | 'reviews' | 'margin'
+  sort_order?: 'asc' | 'desc'
+  page?: number
+  limit?: number
+}
+
+export interface NicheProduct {
+  id: string
+  kaspi_product_id: string
+  name: string
+  category_id: string
+  category_name: string
+  price: number
+  review_count: number
+  rating: number
+  merchant_count: number
+  estimated_sales: number
+  estimated_revenue: number
+  image_url?: string
+  kaspi_url?: string
+}
+
+export interface NicheSearchResponse {
+  products: NicheProduct[]
+  total: number
+  page: number
+  limit: number
+  has_more: boolean
+  categories: NicheCategory[]
+}
+
+export interface NicheCategory {
+  id: string
+  name: string
+  products_count: number
+  avg_sales: number
+  avg_revenue: number
+}
+
+export interface NicheStats {
+  total_products: number
+  total_categories: number
+  avg_sales: number
+  avg_revenue: number
+  last_updated: string
+}

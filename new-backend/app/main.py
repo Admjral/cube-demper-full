@@ -77,6 +77,13 @@ async def lifespan(app: FastAPI):
         logger.info("[STARTUP] Starting Playwright verification in background...")
         asyncio.create_task(verify_playwright_background())
 
+        # Load legal documents into RAG system in background
+        logger.info("[STARTUP] Starting legal docs loader in background...")
+        from .services.legal_docs_loader import load_legal_docs_background
+        from .core.database import get_db_pool
+        pool = await get_db_pool()
+        asyncio.create_task(load_legal_docs_background(pool))
+
         total_elapsed = time.time() - total_start
         logger.info(f"[STARTUP] ✅ Application ready in {total_elapsed:.2f}s")
 
@@ -182,7 +189,7 @@ async def root():
 
 
 # Include all routers
-from .routers import auth, kaspi, preorders, whatsapp, ai, billing, admin, invoices, partner_auth, lawyer, health, support, unit_economics, referral, notifications
+from .routers import auth, kaspi, preorders, whatsapp, ai, billing, admin, invoices, partner_auth, lawyer, health, support, unit_economics, referral, notifications, niches
 
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 app.include_router(kaspi.router, prefix="/kaspi", tags=["Kaspi"])
@@ -199,6 +206,7 @@ app.include_router(health.router, prefix="/health", tags=["Health & Monitoring"]
 app.include_router(unit_economics.router, prefix="/unit-economics", tags=["Unit Economics"])
 app.include_router(referral.router, prefix="/referral", tags=["Referral Program"])
 app.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
+app.include_router(niches.router, prefix="/niches", tags=["Niche Search"])
 
 
 if __name__ == "__main__":

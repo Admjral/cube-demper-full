@@ -1,4 +1,4 @@
-"""Niche analysis API endpoints - поиск ниш как у Algatop"""
+"""Niche analysis API endpoints - поиск прибыльных ниш на Kaspi.kz"""
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from typing import Annotated, Optional, List

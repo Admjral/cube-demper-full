@@ -21,6 +21,7 @@ import {
   X,
   FileStack,
   Shield,
+  Sparkles,
 } from "lucide-react"
 
 const navigation = [
@@ -29,6 +30,12 @@ const navigation = [
     nameRu: "Главная",
     href: "/dashboard",
     icon: LayoutDashboard,
+  },
+  {
+    name: "Niche Search",
+    nameRu: "Поиск ниш",
+    href: "/dashboard/niche-search",
+    icon: Sparkles,
   },
   {
     name: "Price Bot",

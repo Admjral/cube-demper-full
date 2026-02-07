@@ -16,6 +16,7 @@ import {
 } from '@/hooks/api/use-lawyer'
 import { useAuth } from '@/hooks/use-auth'
 import { Send, Loader2, User, Scale, Trash2, ThumbsUp, ThumbsDown, ExternalLink } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
 import { cn } from '@/lib/utils'
 import {
   Tooltip,
@@ -59,7 +60,10 @@ export function LawyerChat({ language }: LawyerChatProps) {
   // Scroll to bottom on new message
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+      const viewport = scrollRef.current.querySelector('[data-radix-scroll-area-viewport]')
+      if (viewport) {
+        viewport.scrollTop = viewport.scrollHeight
+      }
     }
   }, [localMessages])
 
@@ -115,7 +119,7 @@ export function LawyerChat({ language }: LawyerChatProps) {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full min-h-0 overflow-hidden">
       {/* Header */}
       <div className="p-4 border-b border-border flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -142,7 +146,7 @@ export function LawyerChat({ language }: LawyerChatProps) {
       </div>
 
       {/* Messages */}
-      <ScrollArea ref={scrollRef} className="flex-1 p-4">
+      <ScrollArea ref={scrollRef} className="flex-1 min-h-0 p-4">
         {historyLoading ? (
           <div className="flex items-center justify-center h-32">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -188,7 +192,13 @@ export function LawyerChat({ language }: LawyerChatProps) {
                       ? 'bg-primary text-primary-foreground'
                       : 'bg-muted text-foreground'
                   )}>
-                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                    {message.role === 'user' ? (
+                      <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                    ) : (
+                      <div className="text-sm prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-hr:my-2 prose-strong:text-foreground">
+                        <ReactMarkdown>{message.content}</ReactMarkdown>
+                      </div>
+                    )}
                   </div>
                 </div>
                 

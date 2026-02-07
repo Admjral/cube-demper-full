@@ -133,9 +133,15 @@ alembic history
 - `app/main.py` - FastAPI app entry point
 - `app/config.py` - Configuration and env vars
 - `app/routers/` - API endpoints
+- `app/routers/ai.py` - AI chat + AI Salesman endpoints
+- `app/routers/lawyer.py` - AI Lawyer (чат, документы, калькуляторы)
+- `app/services/ai_lawyer_service.py` - Сервис юриста (RAG, анализ договоров)
+- `app/services/ai_salesman_service.py` - Сервис продажника (upsell, отзывы)
+- `app/services/legal_docs_loader.py` - Автозагрузка PDF в RAG при старте
 - `app/services/api_parser.py` - Kaspi API integration
 - `app/workers/demper_instance.py` - Worker for price demping
 - `migrations/versions/` - Alembic migrations
+- `legal_docs/` - PDF документы для RAG (загружаются автоматически при старте)
 
 ### Frontend
 - `src/app/(dashboard)/` - Dashboard pages (App Router)
@@ -253,3 +259,23 @@ SELECT * FROM price_history ORDER BY created_at DESC LIMIT 20;
 
 ### Authentication
 - Login endpoint должен проверять `is_blocked` перед выдачей токена
+
+### Google Gemini API (2026-02-07)
+- **API ключ**: Из Google Cloud Console, не из AI Studio
+- **Настройка ключа**: В Google Cloud → Credentials → API Key → API Restrictions → выбрать "Generative Language API"
+- **Ошибка "API key expired"**: Ключ может быть невалидным даже если только что создан. Проверять через curl:
+  ```bash
+  curl -s "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=KEY" \
+    -H 'Content-Type: application/json' -d '{"contents":[{"parts":[{"text":"Say OK"}]}]}'
+  ```
+- **Модели**: `gemini-2.5-flash` (основная), `text-embedding-004` (эмбеддинги для RAG)
+- **Конфиг**: Ключ в `config.py:gemini_api_key`, может быть переопределён через env `GEMINI_API_KEY`
+- **Singleton pattern**: `genai.configure()` вызывается один раз, проверяется флагом `_configured`
+
+### Legal Docs RAG Loader (2026-02-07)
+- **Автозагрузка**: PDF из `legal_docs/` загружаются в RAG при старте бэкенда как background task
+- **Идемпотентность**: Пропускает уже загруженные документы (проверка по `title` в `legal_documents`)
+- **pgvector опционален**: Если нет — работает text search fallback, без эмбеддингов
+- **Баг (исправлен)**: Скрипт `load_legal_docs.py` использовал колонку `category` вместо `document_type` и несуществующую `keywords`
+- **Объёмы**: 4 PDF = 728 чанков, крупнейший документ 303K слов = 676 чанков
+- **Railway**: pgvector не установлен на Railway Postgres, работает text-only mode

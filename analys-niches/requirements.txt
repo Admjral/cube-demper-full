@@ -12,3 +12,7 @@ seaborn==0.13.2
 
 # Jupyter (for research)
 jupyter==1.0.0
+
+# Scraping
+playwright==1.48.0
+python-dotenv==1.0.1

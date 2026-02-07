@@ -1,0 +1,22 @@
+# Large data files (exceed GitHub 100MB limit)
+analys-niches/data/*.json
+analys-niches/data/*.csv
+analys-niches/data/kaspi/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Node
+node_modules/
+.next/
+dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store

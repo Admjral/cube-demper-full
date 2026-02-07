@@ -1,11 +1,11 @@
 """
-Скрипт для анализа данных Algatop и вычисления их формулы расчёта продаж.
+Скрипт для анализа данных ниш и вычисления формулы расчёта продаж.
 
 Использование:
-    python analyze_algatop.py ../data/algatop_export.csv
+    python analyze_niche_data.py ../data/niche_products.csv
 
 Что делает:
-1. Загружает CSV/Excel с данными Algatop
+1. Загружает CSV/Excel с данными аналитики ниш
 2. Анализирует корреляции между полями
 3. Пытается вычислить формулу: sales = f(reviews, rating, sellers, ...)
 4. Выводит найденные коэффициенты
