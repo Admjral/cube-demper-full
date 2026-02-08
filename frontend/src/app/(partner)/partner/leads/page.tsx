@@ -62,7 +62,39 @@ export default function PartnerLeadsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
+            {/* Mobile view - Cards */}
+            <div className="sm:hidden space-y-3">
+              {data?.leads.map((lead) => (
+                <div key={lead.id} className="p-3 rounded-lg border space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium truncate">{lead.email}</p>
+                    <Badge
+                      variant={lead.status === 'paid' ? 'default' : 'secondary'}
+                      className="shrink-0"
+                    >
+                      {lead.status === 'paid' ? 'Оплатил' : 'Зарег.'}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">
+                      {lead.full_name || '-'} &middot; {lead.registered_at
+                        ? format(new Date(lead.registered_at), 'd MMM yyyy', { locale: ru })
+                        : '-'}
+                    </span>
+                    {lead.partner_earned > 0 ? (
+                      <span className="font-medium text-green-600">
+                        +{(lead.partner_earned / 100).toLocaleString()} ₸
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop view - Table */}
+            <div className="hidden sm:block overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b">

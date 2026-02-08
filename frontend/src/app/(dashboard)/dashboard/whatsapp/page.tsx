@@ -351,7 +351,7 @@ export default function WhatsAppPage() {
 
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="w-full grid grid-cols-4 lg:w-auto lg:inline-grid">
+        <TabsList className="w-full grid grid-cols-2 sm:grid-cols-4 lg:w-auto lg:inline-grid">
           <TabsTrigger value="sessions" className="gap-2">
             <MessageSquare className="h-4 w-4 hidden sm:block" />
             {locale === "ru" ? "Сессии" : "Sessions"}
@@ -420,18 +420,18 @@ export default function WhatsAppPage() {
               ) : sessions && sessions.length > 0 ? (
                 <div className="space-y-3">
                   {sessions.map((session) => (
-                    <div key={session.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+                    <div key={session.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-lg bg-muted/30">
                       <div className="flex items-center gap-3">
-                        <div className={`w-3 h-3 rounded-full ${
+                        <div className={`w-3 h-3 rounded-full shrink-0 ${
                           session.status === "connected" ? "bg-green-500" :
                           session.status === "qr_pending" ? "bg-yellow-500 animate-pulse" : "bg-red-500"
                         }`} />
-                        <div>
-                          <p className="font-medium">{session.session_name}</p>
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{session.session_name}</p>
                           <p className="text-sm text-muted-foreground">{session.phone_number || session.status}</p>
                         </div>
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 self-end sm:self-auto">
                         {session.status === "qr_pending" && (
                           <Button variant="outline" size="sm" onClick={() => { setSelectedSessionId(session.id); setShowQRDialog(true) }}>
                             <QrCode className="h-4 w-4 mr-2" />QR

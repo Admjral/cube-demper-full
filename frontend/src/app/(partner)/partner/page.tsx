@@ -93,7 +93,7 @@ export default function PartnerDashboardPage() {
         </CardHeader>
         <CardContent>
           <div className="flex gap-2">
-            <code className="flex-1 px-3 py-2 bg-muted rounded-lg text-sm overflow-x-auto">
+            <code className="flex-1 px-3 py-2 bg-muted rounded-lg text-sm overflow-x-auto break-all">
               {linkData?.referral_link || 'Загрузка...'}
             </code>
             <Button
@@ -114,7 +114,7 @@ export default function PartnerDashboardPage() {
       </Card>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {statCards.map((stat) => (
           <Card key={stat.title} className="glass-card">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -136,7 +136,7 @@ export default function PartnerDashboardPage() {
           <CardTitle className="text-lg">Заработок</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div className="p-4 bg-muted/50 rounded-lg">
               <p className="text-sm text-muted-foreground">Всего заработано</p>
               <p className="text-xl font-semibold mt-1">
@@ -165,7 +165,7 @@ export default function PartnerDashboardPage() {
           <CardTitle className="text-lg">Как это работает?</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="p-4 border rounded-lg">
               <div className="text-2xl font-bold text-primary mb-2">1</div>
               <p className="font-medium">Поделитесь ссылкой</p>

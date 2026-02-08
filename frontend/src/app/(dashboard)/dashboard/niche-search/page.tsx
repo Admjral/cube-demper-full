@@ -365,91 +365,151 @@ export default function NicheSearchPage() {
               </Button>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="w-[300px]">{locale === 'ru' ? 'Товар' : 'Product'}</TableHead>
-                    <TableHead>{locale === 'ru' ? 'Цена' : 'Price'}</TableHead>
-                    <TableHead>{locale === 'ru' ? 'Продажи/мес' : 'Sales/mo'}</TableHead>
-                    <TableHead>{locale === 'ru' ? 'Выручка/мес' : 'Revenue/mo'}</TableHead>
-                    <TableHead>{locale === 'ru' ? 'Отзывы' : 'Reviews'}</TableHead>
-                    <TableHead>{locale === 'ru' ? 'Конкуренция' : 'Competition'}</TableHead>
-                    <TableHead className="w-[100px]"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {products.map((product) => (
-                    <TableRow
-                      key={product.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => setSelectedProduct(product)}
-                    >
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center overflow-hidden">
-                            {product.image_url ? (
-                              <img
-                                src={product.image_url}
-                                alt={product.name}
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              <Package className="h-6 w-6 text-muted-foreground" />
-                            )}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="font-medium truncate max-w-[200px]">{product.name}</p>
-                            <p className="text-sm text-muted-foreground">{product.category_name}</p>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {formatPrice(product.price)}
-                      </TableCell>
-                      <TableCell>
+            <>
+              {/* Mobile view - Cards */}
+              <div className="lg:hidden space-y-3">
+                {products.map((product) => (
+                  <div
+                    key={product.id}
+                    className="p-4 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => setSelectedProduct(product)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center overflow-hidden shrink-0">
+                        {product.image_url ? (
+                          <img
+                            src={product.image_url}
+                            alt={product.name}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <Package className="h-6 w-6 text-muted-foreground" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium truncate">{product.name}</p>
+                        <p className="text-sm text-muted-foreground">{product.category_name}</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-xs text-muted-foreground">{locale === 'ru' ? 'Цена' : 'Price'}</p>
+                        <p className="font-semibold">{formatPrice(product.price)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">{locale === 'ru' ? 'Продажи/мес' : 'Sales/mo'}</p>
+                        <p className="font-semibold">{product.estimated_sales}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">{locale === 'ru' ? 'Выручка/мес' : 'Revenue/mo'}</p>
+                        <p className="font-semibold text-green-500">{formatPrice(product.estimated_revenue)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">{locale === 'ru' ? 'Отзывы' : 'Reviews'}</p>
                         <div className="flex items-center gap-1">
-                          <TrendingUp className="h-4 w-4 text-green-500" />
-                          <span className="font-medium">{product.estimated_sales}</span>
+                          <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
+                          <span className="font-medium">{product.rating}</span>
+                          <span className="text-xs text-muted-foreground">({product.review_count})</span>
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-medium text-green-500">
-                          {formatPrice(product.estimated_revenue)}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                          <span>{product.rating}</span>
-                          <span className="text-muted-foreground">({product.review_count})</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          {getCompetitionBadge(product.merchant_count)}
-                          <span className="text-sm text-muted-foreground">
-                            {product.merchant_count}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            window.open(product.kaspi_url, '_blank')
-                          }}
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between">
+                      {getCompetitionBadge(product.merchant_count)}
+                      <span className="text-sm text-muted-foreground">
+                        {product.merchant_count} {locale === 'ru' ? 'продавцов' : 'sellers'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop view - Table */}
+              <div className="hidden lg:block overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="w-[300px]">{locale === 'ru' ? 'Товар' : 'Product'}</TableHead>
+                      <TableHead>{locale === 'ru' ? 'Цена' : 'Price'}</TableHead>
+                      <TableHead>{locale === 'ru' ? 'Продажи/мес' : 'Sales/mo'}</TableHead>
+                      <TableHead>{locale === 'ru' ? 'Выручка/мес' : 'Revenue/mo'}</TableHead>
+                      <TableHead>{locale === 'ru' ? 'Отзывы' : 'Reviews'}</TableHead>
+                      <TableHead>{locale === 'ru' ? 'Конкуренция' : 'Competition'}</TableHead>
+                      <TableHead className="w-[100px]"></TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {products.map((product) => (
+                      <TableRow
+                        key={product.id}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => setSelectedProduct(product)}
+                      >
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center overflow-hidden">
+                              {product.image_url ? (
+                                <img
+                                  src={product.image_url}
+                                  alt={product.name}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <Package className="h-6 w-6 text-muted-foreground" />
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-medium truncate max-w-[200px]">{product.name}</p>
+                              <p className="text-sm text-muted-foreground">{product.category_name}</p>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {formatPrice(product.price)}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <TrendingUp className="h-4 w-4 text-green-500" />
+                            <span className="font-medium">{product.estimated_sales}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="font-medium text-green-500">
+                            {formatPrice(product.estimated_revenue)}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
+                            <span>{product.rating}</span>
+                            <span className="text-muted-foreground">({product.review_count})</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            {getCompetitionBadge(product.merchant_count)}
+                            <span className="text-sm text-muted-foreground">
+                              {product.merchant_count}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              window.open(product.kaspi_url, '_blank')
+                            }}
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

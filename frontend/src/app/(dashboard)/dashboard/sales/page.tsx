@@ -257,7 +257,7 @@ export default function SalesPage() {
             value={period}
             onValueChange={(v) => setPeriod(v as "7d" | "30d" | "90d")}
           >
-            <SelectTrigger className="w-[140px]">
+            <SelectTrigger className="w-full sm:w-[140px]">
               <Calendar className="h-4 w-4 mr-2" />
               <SelectValue />
             </SelectTrigger>
