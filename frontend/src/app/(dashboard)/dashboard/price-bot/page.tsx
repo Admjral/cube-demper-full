@@ -516,15 +516,17 @@ export default function PriceBotPage() {
                   >
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1 min-w-0">
+                        <div className="flex-1 min-w-0" >
                           <h3 className="font-medium truncate">{product.name}</h3>
                           <p className="text-sm text-muted-foreground">{product.kaspi_sku}</p>
                         </div>
-                        <Switch
-                          checked={product.bot_active}
-                          onCheckedChange={() => toggleDemping(product)}
-                          disabled={updateProduct.isPending}
-                        />
+                        <div className="p-2 -m-2" onClick={(e) => e.stopPropagation()}>
+                          <Switch
+                            checked={product.bot_active}
+                            onCheckedChange={() => toggleDemping(product)}
+                            disabled={updateProduct.isPending}
+                          />
+                        </div>
                       </div>
                       <div className="mt-4 grid grid-cols-2 gap-4">
                         <div>
