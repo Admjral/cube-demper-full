@@ -279,3 +279,32 @@ SELECT * FROM price_history ORDER BY created_at DESC LIMIT 20;
 - **Баг (исправлен)**: Скрипт `load_legal_docs.py` использовал колонку `category` вместо `document_type` и несуществующую `keywords`
 - **Объёмы**: 4 PDF = 728 чанков, крупнейший документ 303K слов = 676 чанков
 - **Railway**: pgvector не установлен на Railway Postgres, работает text-only mode
+
+### Kaspi API Rate Limits (2026-02-08)
+- **Тестирование**: Результаты в `rate-limits-test-results.md`
+- **Offers API** (`/yml/offer-view/offers/{id}`): 10 RPS safe, ~15 ban. Бан = 403, ~10 сек, **по IP**. Прокси помогают.
+- **Pricefeed API** (`/pricefeed/upload/merchant/process`): 2 RPS safe, ~3 ban. Бан = 429, **30 мин**, **по аккаунту**! Прокси НЕ помогают.
+- **Catalog API** (`/bff/offer-view/list`): Лимит не найден при 1 RPS, очень лояльный.
+- **Лимит по количеству**: Нет — ограничение только по RPS (скорости).
+- **Реализация**: Per-endpoint rate limiters в `rate_limiter.py`:
+  - `get_offers_rate_limiter()` — 8 RPS per IP (singleton)
+  - `get_pricefeed_rate_limiter(merchant_uid)` — 1.5 RPS per merchant (dict of buckets)
+  - `mark_pricefeed_cooldown()` / `is_merchant_cooled_down()` — 30-мин кулдаун после 429
+  - `offers_ban_pause()` / `wait_for_offers_ban()` — 15с пауза после 403
+- **Конфиг**: `offers_rps`, `pricefeed_rps`, `pricefeed_cooldown_seconds`, `offers_ban_pause_seconds` в `config.py`
+- **Тайминги**: 100 товаров ≈ 15-20 сек (укладывается в 15-мин цикл с запасом)
+
+### Demper Worker Bugs (2026-02-08, исправлены)
+- **TypeError на каждом вызове**: `parse_product_by_sku()` и `sync_product()` не принимали `user_id`, `use_proxy`, `module` kwargs → воркер фактически не работал. Исправлено добавлением optional params.
+- **global_rps=60 для всех**: Один rate limiter на все endpoint'ы — слишком агрессивно для offers (safe 10) и нет per-merchant лимита для pricefeed. Заменён на per-endpoint лимитеры.
+
+### AI Salesman Bugs (2026-02-08, исправлены)
+- **`products.category` не заполнялось**: Колонка добавлена миграцией, но product upsert в `kaspi.py` не включал `category`. Kaspi API возвращает `masterCategory` → теперь сохраняется.
+- **`products.sales_count` не обновлялось**: Всегда 0. Исправлено — инкрементится в `sync_orders_to_db()` при вставке `order_items`.
+- **`ai_max_messages_per_day` игнорировался**: `process_order_for_upsell()` не проверял лимит. Добавлен COUNT за сегодня перед отправкой.
+- **`sent_at` был NULL**: INSERT в `ai_salesman_messages` не устанавливал `sent_at`. Добавлен `NOW()`.
+- **Нет валидации телефона**: Перед отправкой в WhatsApp теперь проверяется >= 10 цифр.
+
+### Парсинг телефонов (2026-02-08, исправлено)
+- **Dead code в `format_chat_id()`**: `filter(str.isdigit)` убирает `+`, поэтому `startswith("+")` невозможен. Убран.
+- **Двойной +7 в MC**: Kaspi MC `phoneNumber` обычно 10 цифр, но может прийти 11 с ведущей 7. Добавлена проверка длины в `kaspi_mc_service.py`.
