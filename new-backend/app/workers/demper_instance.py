@@ -39,7 +39,7 @@ from uuid import UUID
 from ..config import settings
 from ..core.database import get_db_pool, close_pool
 from ..core.browser_farm import get_browser_farm, close_browser_farm
-from ..core.rate_limiter import get_global_rate_limiter
+from ..core.rate_limiter import get_global_rate_limiter, is_merchant_cooled_down
 from ..core.circuit_breaker import get_kaspi_circuit_breaker, CircuitState
 from ..services.api_parser import parse_product_by_sku, sync_product, get_merchant_session
 from ..services.kaspi_auth_service import get_active_session_with_refresh
@@ -185,7 +185,10 @@ class DemperWorker:
 
         # Initialize rate limiter
         get_global_rate_limiter()
-        logger.info(f"Rate limiter initialized: {settings.global_rps} RPS")
+        logger.info(
+            f"Rate limiters initialized: offers={settings.offers_rps} RPS (per IP), "
+            f"pricefeed={settings.pricefeed_rps} RPS (per merchant)"
+        )
 
     async def _shutdown(self):
         """Clean shutdown of resources"""
@@ -432,6 +435,11 @@ class DemperWorker:
             external_id = product["external_kaspi_id"]
             current_price = Decimal(str(product["price"]))
             merchant_id = product["merchant_id"]
+
+            # Skip if merchant is in pricefeed cooldown (30-min ban after 429)
+            if is_merchant_cooled_down(merchant_id):
+                logger.debug(f"[{sku}] Merchant {merchant_id} is in pricefeed cooldown, skipping")
+                return False
 
             # Get price constraints from product-level or store-level settings
             min_price = Decimal(str(product.get("min_price") or product.get("min_profit") or 0))

@@ -74,7 +74,13 @@ class Settings(BaseSettings):
     max_concurrency_per_proxy: int = 8
     request_timeout_ms: int = 15000
     idle_context_ttl: int = 300
-    global_rps: int = 60  # ✅ Reduced from 120 to be more conservative (anti-ban)
+    global_rps: int = 60  # Used by browser_farm (legacy)
+
+    # Per-endpoint rate limits (based on rate limit testing 2026-02-08)
+    offers_rps: float = 8.0                  # Offers API (public, per IP) - safe 10, ban ~15
+    pricefeed_rps: float = 1.5               # Pricefeed API (per merchant account!) - safe 2, ban ~3, 30-min ban!
+    pricefeed_cooldown_seconds: int = 1800    # 30-min cooldown after pricefeed 429
+    offers_ban_pause_seconds: int = 15        # Pause after 403 from offers API
 
     # Kaspi API
     kaspi_api_base_url: str = "https://kaspi.kz/shop/api"

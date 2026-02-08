@@ -27,7 +27,15 @@ from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from ..config import settings
 from ..core.browser_farm import get_browser_farm
-from ..core.rate_limiter import get_global_rate_limiter
+from ..core.rate_limiter import (
+    get_global_rate_limiter,
+    get_offers_rate_limiter,
+    get_pricefeed_rate_limiter,
+    offers_ban_pause,
+    wait_for_offers_ban,
+    is_merchant_cooled_down,
+    mark_pricefeed_cooldown,
+)
 from ..core.database import get_db_pool
 from ..core.http_client import get_http_client
 from ..core.circuit_breaker import get_kaspi_circuit_breaker, CircuitOpenError
@@ -368,16 +376,27 @@ async def get_products(
     return all_offers
 
 
-async def parse_product_by_sku(product_id: str, session: dict = None, city_id: Optional[str] = None) -> dict:
+async def parse_product_by_sku(
+    product_id: str,
+    session: dict = None,
+    city_id: Optional[str] = None,
+    user_id: Optional[UUID] = None,
+    use_proxy: bool = False,
+    module: Optional[str] = None,
+) -> dict:
     """
     Parse product details by product ID using Kaspi public offers API.
 
     This uses the public yml/offer-view API which doesn't require authentication.
+    Rate limited at 8 RPS per IP. On 403 (IP ban), pauses 15s globally.
 
     Args:
         product_id: Kaspi product ID (external_kaspi_id)
         session: Optional session data (not required for public API)
         city_id: City ID for getting city-specific prices (defaults to Almaty)
+        user_id: User UUID (reserved for future proxy support)
+        use_proxy: Whether to use proxy (reserved for future)
+        module: Proxy module name (reserved for future)
 
     Returns:
         Product data with offers and prices
@@ -388,10 +407,12 @@ async def parse_product_by_sku(product_id: str, session: dict = None, city_id: O
     effective_city_id = city_id or DEFAULT_CITY_ID
     logger.info(f"Fetching offers for product ID: {product_id}, city: {effective_city_id}")
 
-    rate_limiter = get_global_rate_limiter()
+    # Wait if we're in a 403 ban period
+    await wait_for_offers_ban()
 
-    # Acquire rate limit token
-    await rate_limiter.acquire()
+    # Acquire offers-specific rate limit token (8 RPS per IP)
+    offers_limiter = get_offers_rate_limiter()
+    await offers_limiter.acquire()
 
     # Use public offers API (no auth required)
     url = f"https://kaspi.kz/yml/offer-view/offers/{product_id}"
@@ -437,6 +458,20 @@ async def parse_product_by_sku(product_id: str, session: dict = None, city_id: O
                 await asyncio.sleep(wait_time)
                 continue
 
+            if response.status_code == 403:
+                # IP banned - pause globally and retry
+                await offers_ban_pause()
+                if attempt < max_retries - 1:
+                    logger.warning(
+                        f"Offers API 403 for product {product_id}, "
+                        f"pausing 15s then retry (attempt {attempt + 1}/{max_retries})"
+                    )
+                    await wait_for_offers_ban()
+                    continue
+                else:
+                    logger.error(f"Offers API 403 for product {product_id}, max retries exhausted")
+                    return None
+
             if response.status_code == 400:
                 logger.warning(f"Bad request for product {product_id}: {response.text}")
                 return None
@@ -464,15 +499,24 @@ async def parse_product_by_sku(product_id: str, session: dict = None, city_id: O
 async def sync_product(
     product_id: Union[str, uuid_module.UUID],
     new_price: int,
-    session: dict
+    session: dict,
+    user_id: Optional[UUID] = None,
+    use_proxy: bool = False,
+    module: Optional[str] = None,
 ) -> dict:
     """
     Sync product price to Kaspi.
+
+    Rate limited at 1.5 RPS per merchant account. On 429 (30-min ban),
+    marks the merchant for cooldown and returns failure immediately.
 
     Args:
         product_id: Internal product UUID (can be string or UUID)
         new_price: New price to set
         session: Session data with cookies
+        user_id: User UUID (reserved for future proxy support)
+        use_proxy: Whether to use proxy (reserved, proxies don't help for pricefeed)
+        module: Proxy module name (reserved for future)
 
     Returns:
         Success response
@@ -527,8 +571,14 @@ async def sync_product(
         "price": new_price
     }
 
-    rate_limiter = get_global_rate_limiter()
-    await rate_limiter.acquire()
+    # Check if this merchant is in pricefeed cooldown (30-min ban)
+    if is_merchant_cooled_down(merchant_uid):
+        logger.warning(f"Merchant {merchant_uid} is in pricefeed cooldown, skipping price sync")
+        return {"success": False, "error": "pricefeed_cooldown", "product_id": str(product_uuid)}
+
+    # Per-merchant rate limiting for pricefeed (1.5 RPS per account)
+    pricefeed_limiter = get_pricefeed_rate_limiter(merchant_uid)
+    await pricefeed_limiter.acquire()
 
     client = await get_http_client()
     breaker = get_kaspi_circuit_breaker()
@@ -545,6 +595,20 @@ async def sync_product(
 
         if response.status_code == 401:
             raise KaspiAuthError("Authentication failed - session expired")
+
+        if response.status_code == 429:
+            # Pricefeed 429 = 30-minute ban per merchant account!
+            mark_pricefeed_cooldown(merchant_uid)
+            logger.error(
+                f"Pricefeed 429 for merchant {merchant_uid}: "
+                f"30-minute cooldown activated"
+            )
+            return {
+                "success": False,
+                "error": "pricefeed_rate_limited",
+                "product_id": str(product_uuid),
+                "cooldown_seconds": 1800,
+            }
 
         response.raise_for_status()
         response_data = response.json()
