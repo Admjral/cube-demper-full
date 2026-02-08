@@ -136,6 +136,8 @@ export default function PriceBotPage() {
   const [formPriceStep, setFormPriceStep] = useState(1)
   const [formMinMargin, setFormMinMargin] = useState(5)
   const [formCheckInterval, setFormCheckInterval] = useState(15)
+  const [formWorkHoursStart, setFormWorkHoursStart] = useState("00:00")
+  const [formWorkHoursEnd, setFormWorkHoursEnd] = useState("23:59")
 
   const {
     data: products,
@@ -208,6 +210,8 @@ export default function PriceBotPage() {
           price_step: formPriceStep,
           min_margin_percent: formMinMargin,
           check_interval_minutes: formCheckInterval,
+          work_hours_start: formWorkHoursStart,
+          work_hours_end: formWorkHoursEnd,
           excluded_merchant_ids: excludedIds,
         },
       })
@@ -225,12 +229,16 @@ export default function PriceBotPage() {
       setFormPriceStep(dempingSettings.price_step ?? 1)
       setFormMinMargin(dempingSettings.min_margin_percent ?? 5)
       setFormCheckInterval(dempingSettings.check_interval_minutes ?? 15)
+      setFormWorkHoursStart(dempingSettings.work_hours_start || "00:00")
+      setFormWorkHoursEnd(dempingSettings.work_hours_end || "23:59")
       setExcludedMerchantsInput(dempingSettings.excluded_merchant_ids?.join(", ") || "")
     } else {
       setFormIsEnabled(true)
       setFormPriceStep(1)
       setFormMinMargin(5)
       setFormCheckInterval(15)
+      setFormWorkHoursStart("00:00")
+      setFormWorkHoursEnd("23:59")
       setExcludedMerchantsInput("")
     }
     setShowSettingsDialog(true)
@@ -708,27 +716,25 @@ export default function PriceBotPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="work-start" className="text-muted-foreground">
+                  <Label htmlFor="work-start">
                     {locale === "ru" ? "Начало работы" : "Work start"}
                   </Label>
                   <Input
                     id="work-start"
                     type="time"
-                    value={dempingSettings.work_hours_start || "00:00"}
-                    disabled
-                    className="bg-muted"
+                    value={formWorkHoursStart}
+                    onChange={(e) => setFormWorkHoursStart(e.target.value)}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="work-end" className="text-muted-foreground">
+                  <Label htmlFor="work-end">
                     {locale === "ru" ? "Конец работы" : "Work end"}
                   </Label>
                   <Input
                     id="work-end"
                     type="time"
-                    value={dempingSettings.work_hours_end || "23:59"}
-                    disabled
-                    className="bg-muted"
+                    value={formWorkHoursEnd}
+                    onChange={(e) => setFormWorkHoursEnd(e.target.value)}
                   />
                 </div>
               </div>
