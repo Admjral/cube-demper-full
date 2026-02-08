@@ -77,7 +77,7 @@ export default function PartnerLeadsPage() {
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">
-                      {lead.full_name || '-'} &middot; {lead.registered_at
+                      {lead.full_name || '-'} {'\u00B7'} {lead.registered_at
                         ? format(new Date(lead.registered_at), 'd MMM yyyy', { locale: ru })
                         : '-'}
                     </span>
