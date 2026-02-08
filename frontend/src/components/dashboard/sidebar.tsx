@@ -22,6 +22,7 @@ import {
   FileStack,
   Shield,
   Sparkles,
+  CreditCard,
 } from "lucide-react"
 
 const navigation = [
@@ -88,6 +89,12 @@ const navigation = [
 ]
 
 const bottomNavigation = [
+  {
+    name: "Billing",
+    nameRu: "Тарифы",
+    href: "/dashboard/billing",
+    icon: CreditCard,
+  },
   {
     name: "Profile",
     nameRu: "Профиль",

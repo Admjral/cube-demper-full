@@ -172,11 +172,11 @@ export default function BillingPage() {
                 </div>
 
                 {/* Features */}
-                {features.features.length > 0 && (
+                {(features.features || []).length > 0 && (
                   <div className="mt-6 pt-4 border-t">
                     <p className="text-sm text-muted-foreground mb-3">Доступные функции:</p>
                     <div className="flex flex-wrap gap-2">
-                      {features.features.map((feature) => (
+                      {(features.features || []).map((feature) => (
                         <Badge key={feature} variant="secondary">
                           {featureLabels[feature] || feature}
                         </Badge>
@@ -266,7 +266,7 @@ export default function BillingPage() {
                       </div>
 
                       <ul className="space-y-2 mb-6">
-                        {plan.features.map((feature) => (
+                        {(plan.features || []).map((feature) => (
                           <li key={feature} className="flex items-start gap-2 text-sm">
                             <Check className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
                             <span className="text-muted-foreground">
@@ -309,8 +309,8 @@ export default function BillingPage() {
             <h2 className="text-lg font-semibold mb-4">Дополнительные услуги</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {addons?.map((addon) => {
-                const hasAddon = features?.features.some(f =>
-                  addon.features.includes(f)
+                const hasAddon = (features?.features || []).some(f =>
+                  (addon.features || []).includes(f)
                 )
 
                 return (
