@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useStore } from "@/store/use-store"
 import { useAuth } from "@/hooks/use-auth"
+import { useFeatures } from "@/hooks/api/use-features"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
 import {
@@ -23,7 +24,17 @@ import {
   Shield,
   Sparkles,
   CreditCard,
+  Lock,
 } from "lucide-react"
+
+// Pages accessible on free plan
+const FREE_PLAN_ALLOWED = [
+  '/dashboard',
+  '/dashboard/billing',
+  '/dashboard/profile',
+  '/dashboard/settings',
+  '/dashboard/integrations',
+]
 
 const navigation = [
   {
@@ -113,7 +124,9 @@ export function Sidebar() {
   const pathname = usePathname()
   const { sidebarOpen, setSidebarOpen, locale } = useStore()
   const { user } = useAuth()
+  const { data: features } = useFeatures()
   const isAdmin = user?.role === 'admin'
+  const isFreePlan = features && (features.plan_code === 'free' || (!features.plan_code && features.features?.length === 0))
 
   return (
     <>
@@ -156,6 +169,7 @@ export function Sidebar() {
             <nav className="space-y-1 px-3">
               {navigation.map((item) => {
                 const isActive = pathname === item.href
+                const isLocked = isFreePlan && !FREE_PLAN_ALLOWED.includes(item.href)
                 return (
                   <Link
                     key={item.href}
@@ -165,11 +179,14 @@ export function Sidebar() {
                       "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors touch-target",
                       isActive
                         ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                        : isLocked
+                          ? "text-sidebar-foreground/40"
+                          : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
                     )}
                   >
                     <item.icon className="h-5 w-5 shrink-0" />
-                    <span>{locale === 'ru' ? item.nameRu : item.name}</span>
+                    <span className="flex-1">{locale === 'ru' ? item.nameRu : item.name}</span>
+                    {isLocked && <Lock className="h-3.5 w-3.5 shrink-0" />}
                   </Link>
                 )
               })}

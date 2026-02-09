@@ -18,6 +18,19 @@ import base64
 from uuid import UUID
 from datetime import datetime
 
+import json as json_module
+
+def _parse_jsonb(val):
+    """Parse asyncpg JSONB value (returned as raw string)"""
+    if val is None:
+        return None
+    if isinstance(val, str):
+        try:
+            return json_module.loads(val)
+        except (json_module.JSONDecodeError, ValueError):
+            return val
+    return val
+
 from ..schemas.whatsapp import (
     WhatsAppSessionResponse,
     SendMessageRequest,
@@ -618,8 +631,9 @@ async def list_templates(
                 id=str(t['id']),
                 user_id=str(t['user_id']),
                 name=t['name'],
+                name_en=t.get('name_en'),
                 message=t['message'],
-                variables=t['variables'],
+                variables=_parse_jsonb(t['variables']),
                 trigger_event=t['trigger_event'],
                 is_active=t['is_active'],
                 created_at=t['created_at'],
@@ -636,19 +650,25 @@ async def create_template(
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Создать шаблон сообщения"""
+    # asyncpg requires JSON string for JSONB columns
+    variables_json = None
+    if template_data.variables is not None:
+        variables_json = json_module.dumps(template_data.variables, ensure_ascii=False, default=str)
+
     async with pool.acquire() as conn:
         template = await conn.fetchrow(
             """
             INSERT INTO whatsapp_templates (
-                user_id, name, message, variables, trigger_event, is_active
+                user_id, name, name_en, message, variables, trigger_event, is_active
             )
-            VALUES ($1, $2, $3, $4, $5, $6)
+            VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)
             RETURNING *
             """,
             current_user['id'],
             template_data.name,
+            template_data.name_en,
             template_data.message,
-            template_data.variables,
+            variables_json,
             template_data.trigger_event,
             template_data.is_active
         )
@@ -657,8 +677,9 @@ async def create_template(
             id=str(template['id']),
             user_id=str(template['user_id']),
             name=template['name'],
+            name_en=template.get('name_en'),
             message=template['message'],
-            variables=template['variables'],
+            variables=_parse_jsonb(template['variables']),
             trigger_event=template['trigger_event'],
             is_active=template['is_active'],
             created_at=template['created_at'],
@@ -666,7 +687,7 @@ async def create_template(
         )
 
 
-@router.put("/templates/{template_id}", response_model=WhatsAppTemplateResponse)
+@router.patch("/templates/{template_id}", response_model=WhatsAppTemplateResponse)
 async def update_template(
     template_id: str,
     template_data: WhatsAppTemplateUpdate,
@@ -692,18 +713,22 @@ async def update_template(
         updates = []
         values = []
         idx = 1
-        
+
         if template_data.name is not None:
             updates.append(f"name = ${idx}")
             values.append(template_data.name)
+            idx += 1
+        if template_data.name_en is not None:
+            updates.append(f"name_en = ${idx}")
+            values.append(template_data.name_en)
             idx += 1
         if template_data.message is not None:
             updates.append(f"message = ${idx}")
             values.append(template_data.message)
             idx += 1
         if template_data.variables is not None:
-            updates.append(f"variables = ${idx}")
-            values.append(template_data.variables)
+            updates.append(f"variables = ${idx}::jsonb")
+            values.append(json_module.dumps(template_data.variables, ensure_ascii=False, default=str))
             idx += 1
         if template_data.trigger_event is not None:
             updates.append(f"trigger_event = ${idx}")
@@ -736,8 +761,9 @@ async def update_template(
             id=str(template['id']),
             user_id=str(template['user_id']),
             name=template['name'],
+            name_en=template.get('name_en'),
             message=template['message'],
-            variables=template['variables'],
+            variables=_parse_jsonb(template['variables']),
             trigger_event=template['trigger_event'],
             is_active=template['is_active'],
             created_at=template['created_at'],
@@ -1133,7 +1159,12 @@ async def create_session_new(
 
     if waha_plus:
         # WAHA Plus: unique session per user
-        session_name = request.name or f"user_{str(current_user['id'])[:8]}"
+        # Sanitize name: WAHA only accepts a-z, A-Z, 0-9, -, _
+        import re
+        raw_name = request.name or f"user_{str(current_user['id'])[:8]}"
+        session_name = re.sub(r'[^a-zA-Z0-9_-]', '', raw_name)
+        if not session_name:
+            session_name = f"user_{str(current_user['id'])[:8]}"
     else:
         # WAHA Core: only 'default' session supported
         session_name = "default"
@@ -1166,12 +1197,18 @@ async def create_session_new(
         try:
             result = await waha.create_session(session_name)
             logger.info(f"WAHA session created: {result}")
+        except WahaConnectionError as e:
+            logger.error(f"WAHA connection error: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"WAHA service unavailable: {e.message}"
+            )
         except WahaError as e:
             # If session already exists in WAHA, that's OK - continue
             if "already exists" not in str(e).lower():
                 logger.error(f"WAHA session creation failed: {e}")
                 raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    status_code=e.status_code or status.HTTP_400_BAD_REQUEST,
                     detail=f"Failed to create WAHA session: {e.message}"
                 )
 

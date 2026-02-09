@@ -2,9 +2,15 @@
 
 import { useStore } from "@/store/use-store"
 import { useStoreStats } from "@/hooks/api/use-dashboard"
+import { useFeatures, useActivateTrial } from "@/hooks/api/use-features"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import { planConfig, getDaysRemaining, getDaysColor, getDaysText } from "@/lib/features"
+import { cn } from "@/lib/utils"
+import { format } from "date-fns"
+import { ru } from "date-fns/locale"
 import {
   TrendingUp,
   TrendingDown,
@@ -16,6 +22,12 @@ import {
   AlertCircle,
   Store,
   Users,
+  BarChart3,
+  Zap,
+  CreditCard,
+  Sparkles,
+  Clock,
+  Loader2,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -123,6 +135,8 @@ function NoStoreSelected({ locale }: { locale: string }) {
 export default function DashboardPage() {
   const { locale, selectedStore } = useStore()
   const { data: stats, isLoading, error } = useStoreStats(selectedStore?.id)
+  const { data: features } = useFeatures()
+  const activateTrial = useActivateTrial()
 
   // Calculate stats with trends (comparing today vs week average)
   const statsCards = stats ? [
@@ -235,6 +249,145 @@ export default function DashboardPage() {
             </Card>
           ))}
         </div>
+      )}
+
+      {/* Subscription card */}
+      {features && (
+        features.plan_code && features.plan_code !== 'free' ? (
+          // Has a paid plan — show subscription info with days counter
+          <Card className="glass-card border-primary/20 bg-primary/5">
+            <CardContent className="p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                <div className="flex items-center gap-3">
+                  {(() => {
+                    const config = planConfig[features.plan_code || ''] || { icon: Zap, color: 'text-primary' }
+                    const Icon = config.icon
+                    return (
+                      <div className="p-2 rounded-xl bg-muted">
+                        <Icon className={cn("h-5 w-5", config.color)} />
+                      </div>
+                    )
+                  })()}
+                  <div>
+                    <p className="font-semibold text-foreground">
+                      {features.plan_name || 'Тариф'}
+                    </p>
+                    {features.subscription_ends_at && (() => {
+                      const days = getDaysRemaining(features.subscription_ends_at)
+                      return (
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs text-muted-foreground">
+                            до {format(new Date(features.subscription_ends_at), 'd MMM yyyy', { locale: ru })}
+                          </p>
+                          {days !== null && (
+                            <span className={cn("text-xs font-medium flex items-center gap-0.5", getDaysColor(days))}>
+                              <Clock className="h-3 w-3" />
+                              {getDaysText(days)}
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })()}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {features.is_trial && (
+                    <Badge variant="outline" className="text-xs">Пробный</Badge>
+                  )}
+                  <Badge variant="default" className="text-xs">Активна</Badge>
+                </div>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground flex items-center gap-1.5">
+                      <BarChart3 className="h-3.5 w-3.5" />
+                      Аналитика
+                    </span>
+                    <span className="font-medium">
+                      {stats?.products_count ?? 0} / {features.analytics_limit === -1 ? '∞' : features.analytics_limit}
+                    </span>
+                  </div>
+                  {features.analytics_limit !== -1 && (
+                    <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-primary rounded-full transition-all"
+                        style={{ width: `${Math.min(((stats?.products_count ?? 0) / features.analytics_limit) * 100, 100)}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground flex items-center gap-1.5">
+                      <TrendingUp className="h-3.5 w-3.5" />
+                      Демпинг
+                    </span>
+                    <span className="font-medium">
+                      {stats?.demping_enabled_count ?? 0} / {features.demping_limit}
+                    </span>
+                  </div>
+                  <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className={cn(
+                        "h-full rounded-full transition-all",
+                        features.demping_limit > 0 && ((stats?.demping_enabled_count ?? 0) / features.demping_limit) >= 0.8
+                          ? "bg-yellow-500"
+                          : "bg-primary"
+                      )}
+                      style={{ width: `${features.demping_limit > 0 ? Math.min(((stats?.demping_enabled_count ?? 0) / features.demping_limit) * 100, 100) : 0}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-3 text-right">
+                <Link href="/dashboard/billing">
+                  <Button variant="ghost" size="sm" className="text-xs">
+                    Подробнее <ArrowRight className="h-3 w-3 ml-1" />
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          // No real plan — show trial CTA
+          <Card className="glass-card border-green-500/30 bg-green-500/5">
+            <CardContent className="p-6">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-green-500/20">
+                    <Sparkles className="h-5 w-5 text-green-500" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-foreground">Попробуйте бесплатно 3 дня</p>
+                    <p className="text-sm text-muted-foreground">
+                      Получите доступ ко всем функциям тарифа Базовый
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  className="bg-green-600 hover:bg-green-700 text-white shrink-0"
+                  onClick={() => activateTrial.mutate()}
+                  disabled={activateTrial.isPending}
+                >
+                  {activateTrial.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-4 w-4 mr-2" />
+                  )}
+                  Активировать
+                </Button>
+              </div>
+              {activateTrial.isError && (
+                <p className="text-sm text-red-500 mt-2">
+                  {(activateTrial.error as any)?.message || 'Не удалось активировать пробный период'}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )
       )}
 
       {/* Monthly summary */}

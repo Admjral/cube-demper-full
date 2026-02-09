@@ -138,7 +138,9 @@ alembic history
 - `app/services/ai_lawyer_service.py` - Сервис юриста (RAG, анализ договоров)
 - `app/services/ai_salesman_service.py` - Сервис продажника (upsell, отзывы)
 - `app/services/legal_docs_loader.py` - Автозагрузка PDF в RAG при старте
-- `app/services/api_parser.py` - Kaspi API integration
+- `app/services/api_parser.py` - Kaspi API integration (sync_orders_to_db, parse_order_details)
+- `app/services/kaspi_mc_service.py` - MC GraphQL: заказы, телефоны покупателей
+- `app/services/orders_sync_service.py` - Периодический sync заказов (background, каждые 60 мин)
 - `app/workers/demper_instance.py` - Worker for price demping
 - `migrations/versions/` - Alembic migrations
 - `legal_docs/` - PDF документы для RAG (загружаются автоматически при старте)
@@ -261,50 +263,86 @@ SELECT * FROM price_history ORDER BY created_at DESC LIMIT 20;
 - Login endpoint должен проверять `is_blocked` перед выдачей токена
 
 ### Google Gemini API (2026-02-07)
-- **API ключ**: Из Google Cloud Console, не из AI Studio
-- **Настройка ключа**: В Google Cloud → Credentials → API Key → API Restrictions → выбрать "Generative Language API"
-- **Ошибка "API key expired"**: Ключ может быть невалидным даже если только что создан. Проверять через curl:
-  ```bash
-  curl -s "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=KEY" \
-    -H 'Content-Type: application/json' -d '{"contents":[{"parts":[{"text":"Say OK"}]}]}'
-  ```
+- **API ключ**: Google Cloud Console (не AI Studio), включить "Generative Language API" в restrictions
 - **Модели**: `gemini-2.5-flash` (основная), `text-embedding-004` (эмбеддинги для RAG)
-- **Конфиг**: Ключ в `config.py:gemini_api_key`, может быть переопределён через env `GEMINI_API_KEY`
-- **Singleton pattern**: `genai.configure()` вызывается один раз, проверяется флагом `_configured`
+- **Ошибка "API key expired"**: Ключ невалиден, проверять через curl перед деплоем
 
 ### Legal Docs RAG Loader (2026-02-07)
-- **Автозагрузка**: PDF из `legal_docs/` загружаются в RAG при старте бэкенда как background task
-- **Идемпотентность**: Пропускает уже загруженные документы (проверка по `title` в `legal_documents`)
-- **pgvector опционален**: Если нет — работает text search fallback, без эмбеддингов
-- **Баг (исправлен)**: Скрипт `load_legal_docs.py` использовал колонку `category` вместо `document_type` и несуществующую `keywords`
-- **Объёмы**: 4 PDF = 728 чанков, крупнейший документ 303K слов = 676 чанков
-- **Railway**: pgvector не установлен на Railway Postgres, работает text-only mode
+- **Автозагрузка**: PDF из `legal_docs/` загружаются при старте как background task, идемпотентно (по `title`)
+- **pgvector опционален**: На Railway нет pgvector → text search fallback
+- **Таблицы**: `legal_documents` (`document_type`, NOT `category`), `legal_articles` (NO `keywords` column)
 
 ### Kaspi API Rate Limits (2026-02-08)
-- **Тестирование**: Результаты в `rate-limits-test-results.md`
-- **Offers API** (`/yml/offer-view/offers/{id}`): 10 RPS safe, ~15 ban. Бан = 403, ~10 сек, **по IP**. Прокси помогают.
-- **Pricefeed API** (`/pricefeed/upload/merchant/process`): 2 RPS safe, ~3 ban. Бан = 429, **30 мин**, **по аккаунту**! Прокси НЕ помогают.
-- **Catalog API** (`/bff/offer-view/list`): Лимит не найден при 1 RPS, очень лояльный.
-- **Лимит по количеству**: Нет — ограничение только по RPS (скорости).
-- **Реализация**: Per-endpoint rate limiters в `rate_limiter.py`:
-  - `get_offers_rate_limiter()` — 8 RPS per IP (singleton)
-  - `get_pricefeed_rate_limiter(merchant_uid)` — 1.5 RPS per merchant (dict of buckets)
-  - `mark_pricefeed_cooldown()` / `is_merchant_cooled_down()` — 30-мин кулдаун после 429
-  - `offers_ban_pause()` / `wait_for_offers_ban()` — 15с пауза после 403
-- **Конфиг**: `offers_rps`, `pricefeed_rps`, `pricefeed_cooldown_seconds`, `offers_ban_pause_seconds` в `config.py`
-- **Тайминги**: 100 товаров ≈ 15-20 сек (укладывается в 15-мин цикл с запасом)
+- **Offers**: 8 RPS safe (бан 403, 10с, per IP). **Pricefeed**: 1.5 RPS safe (бан 429, **30 мин**, per account!). **Catalog**: без ограничений.
+- **Реализация**: Per-endpoint limiters в `rate_limiter.py`, per-merchant для pricefeed, cooldown/pause механизмы
+- **Конфиг**: `offers_rps`, `pricefeed_rps`, `pricefeed_cooldown_seconds`, `offers_ban_pause_seconds`
 
-### Demper Worker Bugs (2026-02-08, исправлены)
-- **TypeError на каждом вызове**: `parse_product_by_sku()` и `sync_product()` не принимали `user_id`, `use_proxy`, `module` kwargs → воркер фактически не работал. Исправлено добавлением optional params.
-- **global_rps=60 для всех**: Один rate limiter на все endpoint'ы — слишком агрессивно для offers (safe 10) и нет per-merchant лимита для pricefeed. Заменён на per-endpoint лимитеры.
+### Bugs Fixed (2026-02-08, consolidated)
+- **Demper worker**: TypeError из-за несовпадения сигнатур + единый rate limiter → per-endpoint лимитеры
+- **AI Salesman**: category/sales_count не заполнялись, лимит сообщений игнорировался, sent_at=NULL, нет валидации телефона
+- **Парсинг телефонов**: dead code в `format_chat_id()`, двойной +7 в MC (10 vs 11 цифр)
+- **Deploy repo contamination**: rsync не удаляет лишние файлы → всегда `git status` после rsync
+- **Alembic idempotency**: `inspector.get_table_names()` перед `CREATE TABLE` при нескольких таблицах в одной миграции
+- **AI Lawyer docs**: KeyError в шаблонах (setdefault), asyncpg JSONB = `json.dumps()`, отсутствующие шаблоны
+- **Playwright race condition**: Per-merchant `asyncio.Lock` — параллельные логины в один аккаунт = гарантированный сбой
+- **Secret scanning**: НИКОГДА не хардкодить API ключи в публичных репо. Использовать env vars + `None` дефолт
 
-### AI Salesman Bugs (2026-02-08, исправлены)
-- **`products.category` не заполнялось**: Колонка добавлена миграцией, но product upsert в `kaspi.py` не включал `category`. Kaspi API возвращает `masterCategory` → теперь сохраняется.
-- **`products.sales_count` не обновлялось**: Всегда 0. Исправлено — инкрементится в `sync_orders_to_db()` при вставке `order_items`.
-- **`ai_max_messages_per_day` игнорировался**: `process_order_for_upsell()` не проверял лимит. Добавлен COUNT за сегодня перед отправкой.
-- **`sent_at` был NULL**: INSERT в `ai_salesman_messages` не устанавливал `sent_at`. Добавлен `NOW()`.
-- **Нет валидации телефона**: Перед отправкой в WhatsApp теперь проверяется >= 10 цифр.
+### Frontend Patterns (2026-02-09)
+- **Hydration #418**: Использовать `'\u00B7'` вместо `&middot;` в Next.js
+- **Mobile-first**: `grid-cols-1 sm:grid-cols-2 lg:grid-cols-4`, таблицы → `sm:hidden` карточки + `hidden sm:block` таблица
+- **Фиксированные ширины**: `w-full sm:w-[140px]`, `h-[250px] sm:h-[400px]`
 
-### Парсинг телефонов (2026-02-08, исправлено)
-- **Dead code в `format_chat_id()`**: `filter(str.isdigit)` убирает `+`, поэтому `startswith("+")` невозможен. Убран.
-- **Двойной +7 в MC**: Kaspi MC `phoneNumber` обычно 10 цифр, но может прийти 11 с ведущей 7. Добавлена проверка длины в `kaspi_mc_service.py`.
+### Kaspi MC GraphQL (2026-02-09)
+- **URL**: `mc.shop.kaspi.kz/mc/facade/graphql`
+- **Auth**: cookies как httpx dict (НЕ Cookie header строкой) + `x-auth-version: 3` + `Origin: https://kaspi.kz`
+- **НЕ Relay-схема**: нет `edges/node`, нет `first`/`states`/`totalCount`
+- **Список заказов**: `merchant.orders.orders(input: { presetFilter: TAB })` → `{total, orders: [...]}`
+- **Табы**: `NEW`, `DELIVERY`, `PICKUP`, `SIGN_REQUIRED` — только активные, **нет COMPLETED/ARCHIVE**
+- **Поля Order**: `code`, `totalPrice`, `status` (НЕ `state`!), `customer` (объект), `entries` (объект)
+- **`creationDate` НЕ существует** в типе Order (есть только в orderDetail)
+- **`orderDetail(code: "xxx")`**: работает для получения деталей (customer.phoneNumber, entries, deliveryAddress)
+- **`get_active_session(merchant_id)`**: принимает 1 аргумент! Не (user_id, store_id, pool)
+
+### Orders Sync Architecture (2026-02-09)
+- MC GraphQL показывает только **активные** заказы → БД накапливает историю со временем
+- **Отдельная фоновая задача в бэкенде** (`orders_sync_service.py`), НЕ в воркерах (они уже нагружены offers+pricefeed)
+- Цикл каждые 60 мин, `asyncio.create_task()` в `main.py`
+- Последовательная обработка магазинов с паузами (2с между магазинами)
+- 400 магазинов × 24 запроса = 9,600 req/cycle → ~53 мин при 3 RPS
+- `fetch_orders_for_sync()`: шаг 1 = коды из 4 табов, шаг 2 = `orderDetail` для каждого
+- Формат конвертируется в Open API совместимый → `sync_orders_to_db()` без изменений
+
+### AI Lawyer Chat (2026-02-09, исправлено)
+- **Gemini role mapping**: `"assistant"` → `"model"` (Gemini API не принимает "assistant")
+- **Duplicate message**: User message нужно сохранять в history **ПОСЛЕ** `chat()`, не до (иначе Gemini видит его дважды → краш на втором сообщении)
+
+### WAHA Plus на Railway (2026-02-09)
+- **Темплейт**: Приватный Docker образ (`devlikeapro/waha-plus`) не деплоится через `railway add --image` — Railway не поддерживает Docker Hub credentials через CLI/GraphQL API (`serviceInstanceUpdate` с `registryCredentials` возвращает `true`, но не применяется). **Решение**: использовать официальный WAHA темплейт на Railway marketplace.
+- **Движок NOWEB**: Легче WEBJS (не нужен Chromium), подходит для Railway. Env var: `WHATSAPP_DEFAULT_ENGINE=NOWEB`
+- **API Key**: WAHA Plus генерирует `WAHA_API_KEY` при первом старте — нужно добавить в backend env vars (`WAHA_API_KEY`)
+- **Internal URL**: `http://waha-plus.railway.internal:3000` (для backend → WAHA коммуникации)
+- **Dashboard**: Доступен по public URL с логином `WAHA_DASHBOARD_USERNAME`/`WAHA_DASHBOARD_PASSWORD`
+- **Сервис на Railway**: `waha-plus` (имя из темплейта)
+- **OCR ловушка**: `dckr_pat_FI...` vs `dckr_pat_Fl...` (заглавная I vs строчная l) — всегда копировать токены текстом, не со скриншотов
+
+### WhatsApp Templates (2026-02-09)
+- **JSONB response parsing**: asyncpg возвращает JSONB как raw string. Всегда `json.loads()` при чтении, `json.dumps()` + `::jsonb` при записи
+- **Правило**: При изменении Create/Update схемы — **всегда** проверять Response схему и все SQL запросы на согласованность
+
+### Subscription & Billing (2026-02-09)
+- **Цены API**: `/billing/plans-v2` уже возвращает тенге (`price_tiyns / 100`). Фронтенд НЕ должен делить повторно — `plan.price.toLocaleString()`, не `(plan.price / 100)`
+- **Free plan при регистрации**: `auth.py` создаёт subscription с `plan='free'`, `plan_id=NULL`. Значит `features.plan_code === null` но `has_active_subscription === true`
+- **Trial flow**: `POST /billing/activate-trial` — проверяет 3 условия: 1) нет plan_id, 2) merchant_id не использован другим аккаунтом для триала, 3) plan с trial_days > 0
+- **Anti-abuse**: Проверка по `kaspi_stores.merchant_id` через JOIN между аккаунтами — один магазин = один триал, вне зависимости от аккаунта
+- **SubscriptionGate vs FeatureGate**: `SubscriptionGate` проверяет `has_active_subscription` (есть ли вообще подписка), `FeatureGate` проверяет конкретную фичу в `features[]`
+- **Админ endpoints**: `POST /admin/users/{id}/subscription/cancel`, `ends_at` param в AssignSubscriptionRequest (ISO datetime, приоритет над `days`)
+
+### WhatsApp OTP верификация телефона (2026-02-09)
+- **Флоу**: Регистрация (email+пароль+телефон) → бэкенд создаёт юзера + отправляет 6-значный OTP в WhatsApp → фронтенд перенаправляет на `/verify-phone` → юзер вводит код → доступ к дашборду
+- **Регистрация теперь возвращает JWT**: Раньше возвращала `UserResponse`, теперь `Token` — автологин сразу после регистрации (чтобы можно было вызвать `/auth/send-otp` и `/auth/verify-otp` с токеном)
+- **signUp() тоже возвращает AuthResponse**: Фронтенд `auth.ts:signUp()` теперь делает `register` → получает токен → `GET /me` → возвращает `AuthResponse` (как `signIn`), а не просто `User`
+- **OTP rate limit**: Максимум 1 код в 60 секунд на юзера (проверка по `created_at` в `phone_verifications`). 5 попыток на код, истекает через 5 минут
+- **Обратная совместимость для старых юзеров**: Гард в dashboard layout: `user.phone && !user.phone_verified` → редирект. Юзеры с `phone=NULL` (легаси) проходят свободно
+- **Middleware**: `/verify-phone` требует auth_token но НЕ редиректит на дашборд (в отличие от `/login`/`/register` которые редиректят залогиненных)
+- **dependencies.py**: `get_current_user()` SQL запрос **должен** включать `phone, phone_verified` — иначе `current_user.get('phone')` всегда `None` и OTP endpoints не работают
+- **WAHA отправка**: `get_waha_service().send_text(phone, "Cube Demper: Ваш код подтверждения: XXXXXX")` — используется существующий singleton из `waha_service.py`

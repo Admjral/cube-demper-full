@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useStore } from "@/store/use-store"
+import { SubscriptionGate } from "@/components/shared/subscription-gate"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -69,6 +70,9 @@ import {
 } from "@/hooks/api/use-whatsapp"
 import { useStores } from "@/hooks/api/use-stores"
 import { FeatureGate } from "@/components/shared/feature-gate"
+import { TemplatePicker } from "@/components/whatsapp/template-picker"
+import { TemplateEditor } from "@/components/whatsapp/template-editor"
+import { PRESET_TEMPLATES, type PresetTemplate } from "@/components/whatsapp/template-constants"
 
 // Orders Polling Toggle Component
 function OrdersPollingToggle({
@@ -125,7 +129,7 @@ export default function WhatsAppPage() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
 
   // Template state
-  const [showTemplateDialog, setShowTemplateDialog] = useState(false)
+  const [templateFlowStep, setTemplateFlowStep] = useState<"closed" | "picker" | "editor">("closed")
   const [editingTemplate, setEditingTemplate] = useState<WhatsAppTemplate | null>(null)
   const [templateForm, setTemplateForm] = useState({
     name: "",
@@ -240,7 +244,7 @@ export default function WhatsAppPage() {
         })
         toast.success(locale === "ru" ? "Шаблон создан" : "Template created")
       }
-      setShowTemplateDialog(false)
+      setTemplateFlowStep("closed")
       setEditingTemplate(null)
       setTemplateForm({ name: "", name_en: "", message: "", variables: [], trigger_event: "" })
     } catch {
@@ -278,7 +282,20 @@ export default function WhatsAppPage() {
       variables: template.variables,
       trigger_event: template.trigger_event || "",
     })
-    setShowTemplateDialog(true)
+    setTemplateFlowStep("editor")
+  }
+
+  // Handle preset selection from picker
+  const handlePresetSelect = (preset: PresetTemplate) => {
+    setEditingTemplate(null)
+    setTemplateForm({
+      name: locale === "ru" ? preset.nameRu : preset.nameEn,
+      name_en: preset.nameEn,
+      message: locale === "ru" ? preset.messageRu : preset.messageEn,
+      variables: [],
+      trigger_event: preset.triggerEvent,
+    })
+    setTemplateFlowStep("editor")
   }
 
   // Get trigger event label by value
@@ -328,6 +345,7 @@ export default function WhatsAppPage() {
   }
 
   return (
+    <SubscriptionGate>
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -553,7 +571,7 @@ export default function WhatsAppPage() {
                   <FileText className="h-5 w-5" />
                   {locale === "ru" ? "Шаблоны сообщений" : "Message Templates"}
                 </span>
-                <Button size="sm" onClick={() => { setEditingTemplate(null); setTemplateForm({ name: "", name_en: "", message: "", variables: [], trigger_event: "" }); setShowTemplateDialog(true) }}>
+                <Button size="sm" onClick={() => { setEditingTemplate(null); setTemplateForm({ name: "", name_en: "", message: "", variables: [], trigger_event: "" }); setTemplateFlowStep("picker") }}>
                   <Plus className="h-4 w-4 mr-2" />
                   {locale === "ru" ? "Добавить" : "Add"}
                 </Button>
@@ -1141,78 +1159,27 @@ export default function WhatsAppPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Template Dialog */}
-      <Dialog open={showTemplateDialog} onOpenChange={setShowTemplateDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {editingTemplate
-                ? locale === "ru" ? "Редактировать шаблон" : "Edit Template"
-                : locale === "ru" ? "Новый шаблон" : "New Template"}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-4">
-            <div className="space-y-2">
-              <Label>{locale === "ru" ? "Название" : "Name"}</Label>
-              <Input
-                value={templateForm.name}
-                onChange={(e) => setTemplateForm({ ...templateForm, name: e.target.value })}
-                placeholder={locale === "ru" ? "Заказ принят" : "Order received"}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>{locale === "ru" ? "Название (EN)" : "Name (EN)"}</Label>
-              <Input
-                value={templateForm.name_en}
-                onChange={(e) => setTemplateForm({ ...templateForm, name_en: e.target.value })}
-                placeholder="Order received"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>{locale === "ru" ? "Текст сообщения" : "Message text"}</Label>
-              <Textarea
-                value={templateForm.message}
-                onChange={(e) => setTemplateForm({ ...templateForm, message: e.target.value })}
-                placeholder={locale === "ru" ? "Здравствуйте, {customer_name}! Ваш заказ #{order_code} принят." : "Hello, {customer_name}! Your order #{order_code} is received."}
-                rows={4}
-              />
-              <div className="text-xs text-muted-foreground space-y-1">
-                <p className="font-medium">{locale === "ru" ? "Доступные переменные:" : "Available variables:"}</p>
-                <p>{locale === "ru" ? "Клиент:" : "Customer:"} {"{customer_name}"}, {"{customer_first_name}"}</p>
-                <p>{locale === "ru" ? "Заказ:" : "Order:"} {"{order_code}"}, {"{order_total}"}, {"{items_list}"}, {"{items_count}"}, {"{first_item}"}</p>
-                <p>{locale === "ru" ? "Доставка:" : "Delivery:"} {"{delivery_address}"}, {"{delivery_city}"}</p>
-                <p>{locale === "ru" ? "Магазин:" : "Store:"} {"{store_name}"}, {"{promo_code}"}</p>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>{locale === "ru" ? "Автоматический триггер" : "Auto trigger"}</Label>
-              <Select
-                value={templateForm.trigger_event || "none"}
-                onValueChange={(v) => setTemplateForm({ ...templateForm, trigger_event: v === "none" ? "" : v })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={locale === "ru" ? "Выберите событие" : "Select event"} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">{locale === "ru" ? "Без триггера (вручную)" : "No trigger (manual)"}</SelectItem>
-                  {orderEventTypes.map((event) => (
-                    <SelectItem key={event.value} value={event.value}>{event.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                {locale === "ru"
-                  ? "Сообщение отправится автоматически при наступлении события"
-                  : "Message will be sent automatically when event occurs"}
-              </p>
-            </div>
-            <Button onClick={handleSaveTemplate} disabled={createTemplate.isPending || updateTemplate.isPending} className="w-full">
-              {(createTemplate.isPending || updateTemplate.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {locale === "ru" ? "Сохранить" : "Save"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Template Picker (bottom sheet) */}
+      <TemplatePicker
+        open={templateFlowStep === "picker"}
+        onOpenChange={(open) => { if (!open) setTemplateFlowStep("closed") }}
+        onSelect={handlePresetSelect}
+        locale={locale}
+      />
+
+      {/* Template Editor (right sheet, fullscreen on mobile) */}
+      <TemplateEditor
+        open={templateFlowStep === "editor"}
+        onOpenChange={(open) => { if (!open) setTemplateFlowStep("closed") }}
+        form={templateForm}
+        setForm={setTemplateForm}
+        onSave={handleSaveTemplate}
+        isSaving={createTemplate.isPending || updateTemplate.isPending}
+        isEditing={!!editingTemplate}
+        triggerLabel={templateForm.trigger_event ? getTriggerEventLabel(templateForm.trigger_event) : ""}
+        locale={locale}
+      />
     </div>
+    </SubscriptionGate>
   )
 }

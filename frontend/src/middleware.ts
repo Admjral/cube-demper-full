@@ -43,6 +43,16 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // Verify phone - requires auth but don't redirect to dashboard
+  if (pathname.startsWith('/verify-phone')) {
+    if (!token) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/login'
+      return NextResponse.redirect(url)
+    }
+    return NextResponse.next()
+  }
+
   // Auth routes - redirect to dashboard if already authenticated
   if (
     pathname.startsWith('/login') ||
@@ -68,5 +78,6 @@ export const config = {
     '/register',
     '/forgot-password',
     '/reset-password',
+    '/verify-phone',
   ],
 }

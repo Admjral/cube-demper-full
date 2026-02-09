@@ -3,13 +3,18 @@
 import { useState } from "react"
 import { useStore } from "@/store/use-store"
 import { useAuth } from "@/hooks/use-auth"
+import { useFeatures } from "@/hooks/api/use-features"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Avatar } from "@/components/ui/avatar"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
+import { featureLabels } from "@/lib/features"
+import { format } from "date-fns"
+import { ru } from "date-fns/locale"
 import {
   User,
   Mail,
@@ -18,11 +23,16 @@ import {
   Camera,
   Shield,
   LogOut,
+  CreditCard,
+  Sparkles,
+  ArrowRight,
 } from "lucide-react"
+import Link from "next/link"
 
 export default function ProfilePage() {
   const { locale } = useStore()
   const { user, loading, signOut } = useAuth()
+  const { data: features } = useFeatures()
   const [isSaving, setIsSaving] = useState(false)
 
   // Extract user info
@@ -87,6 +97,98 @@ export default function ProfilePage() {
               <p className="text-muted-foreground">{userEmail}</p>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Subscription info */}
+      <Card className="glass-card">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <CreditCard className="h-5 w-5" />
+            {locale === "ru" ? "Подписка" : "Subscription"}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {features?.has_active_subscription ? (
+            <>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium text-foreground">{features.plan_name || 'Тариф'}</p>
+                  {features.subscription_ends_at && (
+                    <p className="text-sm text-muted-foreground">
+                      Действует до {format(new Date(features.subscription_ends_at), 'd MMMM yyyy', { locale: ru })}
+                    </p>
+                  )}
+                  {features.is_trial && features.trial_ends_at && (
+                    <p className="text-sm text-muted-foreground">
+                      Пробный период до {format(new Date(features.trial_ends_at), 'd MMMM yyyy', { locale: ru })}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {features.is_trial && (
+                    <Badge variant="outline">
+                      <Sparkles className="h-3 w-3 mr-1" />
+                      Пробный
+                    </Badge>
+                  )}
+                  <Badge variant="default">Активна</Badge>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div>
+                <p className="text-sm text-muted-foreground mb-2">Лимиты:</p>
+                <div className="grid sm:grid-cols-2 gap-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Аналитика</span>
+                    <span className="font-medium">
+                      {features.analytics_limit === -1 ? 'Безлимит' : `${features.analytics_limit} товаров`}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Демпинг</span>
+                    <span className="font-medium">{features.demping_limit} товаров</span>
+                  </div>
+                </div>
+              </div>
+
+              {(features.features || []).length > 0 && (
+                <>
+                  <Separator />
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-2">Доступные функции:</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(features.features || []).map((feature) => (
+                        <Badge key={feature} variant="secondary" className="text-xs">
+                          {featureLabels[feature] || feature}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <div className="pt-2">
+                <Link href="/dashboard/billing">
+                  <Button variant="outline" size="sm" className="w-full">
+                    Управление тарифом <ArrowRight className="h-4 w-4 ml-2" />
+                  </Button>
+                </Link>
+              </div>
+            </>
+          ) : (
+            <div className="text-center py-4">
+              <p className="text-muted-foreground mb-3">Нет активной подписки</p>
+              <Link href="/dashboard/billing">
+                <Button size="sm">
+                  <CreditCard className="h-4 w-4 mr-2" />
+                  Подключить тариф
+                </Button>
+              </Link>
+            </div>
+          )}
         </CardContent>
       </Card>
 

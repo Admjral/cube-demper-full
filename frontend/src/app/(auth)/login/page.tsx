@@ -24,13 +24,19 @@ export default function LoginPage() {
     setError(null)
     setLoading(true)
 
-    const { error } = await signIn(email, password)
+    const { data, error } = await signIn(email, password)
 
     if (error) {
       setError(error.message === 'Invalid login credentials'
         ? 'Неверный email или пароль'
         : error.message)
       setLoading(false)
+      return
+    }
+
+    // Redirect unverified phone users to verification page
+    if (data?.user?.phone && !data.user.phone_verified) {
+      router.push('/verify-phone')
       return
     }
 

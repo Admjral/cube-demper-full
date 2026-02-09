@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react"
 import { useStore } from "@/store/use-store"
+import { SubscriptionGate } from "@/components/shared/subscription-gate"
 import { useProcessInvoices, LayoutType } from "@/hooks/api/use-invoices"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -172,6 +173,7 @@ export default function InvoiceMergerPage() {
   const selectedLayoutOption = LAYOUT_OPTIONS.find((l) => l.value === layout)
 
   return (
+    <SubscriptionGate>
     <div className="space-y-6">
       {/* Header */}
       <div>
@@ -425,5 +427,6 @@ export default function InvoiceMergerPage() {
         </CardContent>
       </Card>
     </div>
+    </SubscriptionGate>
   )
 }

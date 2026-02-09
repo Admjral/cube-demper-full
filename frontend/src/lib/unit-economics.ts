@@ -4,7 +4,7 @@
 
 import { authClient } from './auth'
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://cube-demper-backend-production.up.railway.app'
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || ''
 
 // Types
 export interface CategoryCommission {

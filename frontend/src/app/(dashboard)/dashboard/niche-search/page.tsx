@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useStore } from "@/store/use-store"
+import { SubscriptionGate } from "@/components/shared/subscription-gate"
 import { useNicheSearch, useNicheCategories } from "@/hooks/api/use-niche-search"
 import type { NicheSearchParams, NicheProduct } from "@/types/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -124,6 +125,7 @@ export default function NicheSearchPage() {
   }
 
   return (
+    <SubscriptionGate>
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -636,5 +638,6 @@ export default function NicheSearchPage() {
         </DialogContent>
       </Dialog>
     </div>
+    </SubscriptionGate>
   )
 }
