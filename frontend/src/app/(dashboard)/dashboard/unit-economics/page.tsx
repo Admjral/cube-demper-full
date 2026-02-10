@@ -160,6 +160,7 @@ export default function UnitEconomicsPage() {
           sellingPrice: response.price || prev.sellingPrice,
           category: response.category || prev.category,
           subcategory: response.subcategory || "",
+          weightKg: response.weight_kg || prev.weightKg,
         }))
         // Set product name for saving
         if (response.product_name) {
@@ -451,7 +452,10 @@ export default function UnitEconomicsPage() {
                   {result && (
                     <p className="text-xs text-muted-foreground">
                       {t("unit.kaspiCommission")}{" "}
-                      <span className="font-medium">{formatPercent(result.commission_rate)}</span>
+                      <span className="font-medium">
+                        {formatPercent(result.commission_rate)}
+                        {!values.useVat && ` + НДС = ${formatPercent(result.commission_effective_rate)}`}
+                      </span>
                       {values.useVat ? ` ${t("unit.withVAT")}` : ` ${t("unit.withoutVAT")}`}
                     </p>
                   )}
@@ -695,9 +699,15 @@ export default function UnitEconomicsPage() {
                     <div className="flex justify-between items-center">
                       <span className="text-muted-foreground">
                         {t("unit.kaspiCommission")} (
-                        {formatPercent(result.commission_rate)})
+                        {formatPercent(result.commission_effective_rate)})
                       </span>
                       <span className="text-red-500">-{formatPrice(result.commission_amount)}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">
+                        Kaspi Pay ({formatPercent(result.kaspi_pay_rate)})
+                      </span>
+                      <span className="text-red-500">-{formatPrice(result.kaspi_pay_amount)}</span>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-muted-foreground">
