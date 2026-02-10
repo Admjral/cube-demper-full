@@ -1,10 +1,22 @@
+'use client'
+
+import Image from "next/image"
+import { useTheme } from "next-themes"
 import { ThemeToggle } from "@/components/shared/theme-toggle"
+import { useEffect, useState } from "react"
 
 export default function AuthLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const { resolvedTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4 relative">
       {/* Background gradient */}
@@ -16,9 +28,20 @@ export default function AuthLayout({
       </div>
 
       {/* Logo */}
-      <div className="mb-8 text-center">
-        <h1 className="text-3xl font-bold text-foreground">Demper</h1>
-        <p className="text-muted-foreground mt-1">Kaspi Seller Panel</p>
+      <div className="mb-8 flex flex-col items-center">
+        {mounted ? (
+          <Image
+            src={resolvedTheme === 'dark' ? '/logowhite.svg' : '/logodark.svg'}
+            alt="Demper"
+            width={180}
+            height={62}
+            className="h-12 w-auto"
+            priority
+          />
+        ) : (
+          <div className="h-12 w-[180px]" />
+        )}
+        <p className="text-muted-foreground mt-2">Kaspi Seller Panel</p>
       </div>
 
       {/* Auth card */}
@@ -28,7 +51,7 @@ export default function AuthLayout({
 
       {/* Footer */}
       <p className="mt-8 text-sm text-muted-foreground">
-        &copy; {new Date().getFullYear()} Demper. Все права защищены.
+        {'\u00A9'} {new Date().getFullYear()} Demper. Все права защищены.
       </p>
     </div>
   )
