@@ -114,7 +114,7 @@ class AuthClient {
   async signUp(
     email: string,
     password: string,
-    metadata?: { full_name?: string; phone?: string }
+    metadata?: { full_name?: string; phone?: string; ref_code?: string }
   ): Promise<{ data: AuthResponse | null, error: Error | null }> {
     try {
       const response = await fetch(`${API_URL}/auth/register`, {
@@ -125,6 +125,7 @@ class AuthClient {
           password,
           full_name: metadata?.full_name,
           phone: metadata?.phone,
+          ref_code: metadata?.ref_code || undefined,
         })
       })
 

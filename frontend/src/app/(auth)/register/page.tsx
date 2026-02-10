@@ -2,17 +2,18 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useAuth } from '@/hooks/use-auth'
 import { useT } from '@/lib/i18n'
-import { Loader2, Mail, Lock, User, Eye, EyeOff, Phone } from 'lucide-react'
+import { Loader2, Mail, Lock, User, Eye, EyeOff, Phone, Tag } from 'lucide-react'
 
 export default function RegisterPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { signUp } = useAuth()
   const t = useT()
 
@@ -21,6 +22,7 @@ export default function RegisterPage() {
   const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [refCode, setRefCode] = useState(searchParams.get('ref') || '')
   const [showPassword, setShowPassword] = useState(false)
   const [acceptTerms, setAcceptTerms] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -69,7 +71,11 @@ export default function RegisterPage() {
 
     setLoading(true)
 
-    const { error } = await signUp(email, password, { full_name: name, phone: phoneDigits })
+    const { error } = await signUp(email, password, {
+      full_name: name,
+      phone: phoneDigits,
+      ref_code: refCode.trim() || undefined,
+    })
 
     if (error) {
       setError(error.message === 'User already registered'
@@ -188,6 +194,22 @@ export default function RegisterPage() {
               onChange={(e) => setConfirmPassword(e.target.value)}
               className="pl-10"
               required
+              disabled={loading}
+            />
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="refCode">Промокод (необязательно)</Label>
+          <div className="relative">
+            <Tag className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              id="refCode"
+              type="text"
+              placeholder="Введите промокод"
+              value={refCode}
+              onChange={(e) => setRefCode(e.target.value)}
+              className="pl-10"
               disabled={loading}
             />
           </div>
