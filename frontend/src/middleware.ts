@@ -1,6 +1,14 @@
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
+  // Force HTTPS in production
+  const proto = request.headers.get('x-forwarded-proto')
+  if (proto === 'http') {
+    const url = request.nextUrl.clone()
+    url.protocol = 'https'
+    return NextResponse.redirect(url, 301)
+  }
+
   const token = request.cookies.get('auth_token')?.value
   const partnerToken = request.cookies.get('partner_token')?.value
   const { pathname } = request.nextUrl
@@ -71,13 +79,13 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/dashboard/:path*',
-    '/admin/:path*',
-    '/partner/:path*',
-    '/login',
-    '/register',
-    '/forgot-password',
-    '/reset-password',
-    '/verify-phone',
+    /*
+     * Match all request paths except:
+     * - _next/static (static files)
+     * - _next/image (image optimization)
+     * - favicon.ico, icon.svg (browser icons)
+     * - public files (svg, png, jpg, etc.)
+     */
+    '/((?!_next/static|_next/image|favicon\\.ico|icon\\.svg|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }
