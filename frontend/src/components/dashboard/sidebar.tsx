@@ -25,6 +25,7 @@ import {
   Sparkles,
   CreditCard,
   Lock,
+  Headphones,
 } from "lucide-react"
 
 // Pages accessible on free plan
@@ -34,6 +35,7 @@ const FREE_PLAN_ALLOWED = [
   '/dashboard/profile',
   '/dashboard/settings',
   '/dashboard/integrations',
+  '/dashboard/support',
 ]
 
 const navigation = [
@@ -110,6 +112,13 @@ const navigation = [
 ]
 
 const bottomNavigation = [
+  {
+    name: "Support",
+    nameRu: "Поддержка",
+    nameKz: "Қолдау",
+    href: "/dashboard/support",
+    icon: Headphones,
+  },
   {
     name: "Billing",
     nameRu: "Тарифы",

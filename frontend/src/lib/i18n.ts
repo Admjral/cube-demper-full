@@ -1,4 +1,6 @@
 import { useStore } from '@/store/use-store'
+import { ru } from 'date-fns/locale/ru'
+import { kk } from 'date-fns/locale/kk'
 
 type Locale = 'ru' | 'kz'
 
@@ -27,6 +29,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "nav.bot": "Бот",
     "nav.chat": "Чат",
     "nav.more": "Ещё",
+    "nav.support": "Поддержка",
 
     // === Общие ===
     "common.save": "Сохранить",
@@ -571,6 +574,55 @@ const translations: Record<Locale, Record<string, string>> = {
     "billing.features": "Доступные функции:",
     "billing.freePlan": "Бесплатный план",
     "billing.tryFree": "Попробуйте все функции бесплатно в течение 3 дней",
+
+    // === Селектор магазина ===
+    "storeSelector.select": "Выберите магазин",
+    "storeSelector.yourStores": "Ваши магазины",
+    "storeSelector.noStores": "Нет подключённых магазинов",
+    "storeSelector.addStore": "Добавить магазин",
+
+    // === Уведомления ===
+    "notifications.title": "Уведомления",
+    "notifications.readAll": "Прочитать все",
+    "notifications.empty": "Нет уведомлений",
+
+    // === Баннер подписки ===
+    "sub.trialExpired": "Пробный период истёк.",
+    "sub.subscriptionExpired": "Подписка истекла.",
+    "sub.accessLimited": "Доступ ограничен.",
+    "sub.renew": "Продлить",
+    "sub.trial": "Пробный период",
+    "sub.subscription": "Подписка",
+    "sub.expiresIn": "заканчивается через",
+    "sub.day1": "1 день",
+    "sub.days": "дня",
+
+    // === Бесплатный план ===
+    "freePlan.locked": "Раздел недоступен",
+    "freePlan.needPlan": "Для доступа к этому разделу необходим активный тарифный план",
+    "freePlan.tryFree": "Попробовать бесплатно 3 дня",
+    "freePlan.choosePlan": "Выбрать тариф",
+    "freePlan.trialError": "Не удалось активировать пробный период",
+
+    // === Лимит магазинов ===
+    "integrations.storeLimit": "Лимит: 1 магазин на аккаунт",
+    "integrations.storeLimitDesc": "Для подключения нового магазина обратитесь в поддержку",
+
+    // === Страница поддержки ===
+    "support.pageTitle": "Техподдержка",
+    "support.pageSubtitle": "Обычно отвечаем в течение часа",
+    "support.emptyChat": "Напишите нам, если у вас есть вопросы",
+    "support.inputPlaceholder": "Введите сообщение...",
+
+    // === WhatsApp phone pairing ===
+    "wa.pairByPhone": "По номеру",
+    "wa.qrTab": "QR-код",
+    "wa.phoneTab": "По номеру",
+    "wa.enterPhone": "Введите номер телефона WhatsApp",
+    "wa.getCode": "Получить код",
+    "wa.pairingCode": "Код подключения",
+    "wa.pairingInstruction": "Откройте WhatsApp → Связанные устройства → Привязка по номеру телефона → Введите код",
+    "wa.pairingError": "Ошибка получения кода",
   },
 
   // ═══════════════════════════════════════════
@@ -597,6 +649,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "nav.bot": "Бот",
     "nav.chat": "Чат",
     "nav.more": "Тағы",
+    "nav.support": "Қолдау",
 
     // === Жалпы ===
     "common.save": "Сақтау",
@@ -1141,6 +1194,55 @@ const translations: Record<Locale, Record<string, string>> = {
     "billing.features": "Қолжетімді мүмкіндіктер:",
     "billing.freePlan": "Тегін жоспар",
     "billing.tryFree": "Барлық мүмкіндіктерді 3 күн тегін пайдаланып көріңіз",
+
+    // === Дүкен таңдағыш ===
+    "storeSelector.select": "Дүкенді таңдаңыз",
+    "storeSelector.yourStores": "Сіздің дүкендеріңіз",
+    "storeSelector.noStores": "Қосылған дүкендер жоқ",
+    "storeSelector.addStore": "Дүкен қосу",
+
+    // === Хабарламалар ===
+    "notifications.title": "Хабарламалар",
+    "notifications.readAll": "Барлығын оқу",
+    "notifications.empty": "Хабарламалар жоқ",
+
+    // === Жазылым баннері ===
+    "sub.trialExpired": "Сынақ мерзімі аяқталды.",
+    "sub.subscriptionExpired": "Жазылым мерзімі аяқталды.",
+    "sub.accessLimited": "Қолжетімділік шектелген.",
+    "sub.renew": "Ұзарту",
+    "sub.trial": "Сынақ мерзімі",
+    "sub.subscription": "Жазылым",
+    "sub.expiresIn": "аяқталуына",
+    "sub.day1": "1 күн",
+    "sub.days": "күн",
+
+    // === Тегін жоспар ===
+    "freePlan.locked": "Бөлім қолжетімсіз",
+    "freePlan.needPlan": "Бұл бөлімге қол жеткізу үшін белсенді тариф жоспары қажет",
+    "freePlan.tryFree": "3 күн тегін пайдаланып көру",
+    "freePlan.choosePlan": "Тарифті таңдау",
+    "freePlan.trialError": "Сынақ мерзімін белсендіру сәтсіз аяқталды",
+
+    // === Дүкен лимиті ===
+    "integrations.storeLimit": "Лимит: аккаунтқа 1 дүкен",
+    "integrations.storeLimitDesc": "Жаңа дүкен қосу үшін қолдау қызметіне хабарласыңыз",
+
+    // === Қолдау беті ===
+    "support.pageTitle": "Қолдау қызметі",
+    "support.pageSubtitle": "Әдетте бір сағат ішінде жауап береміз",
+    "support.emptyChat": "Сұрақтарыңыз болса, бізге жазыңыз",
+    "support.inputPlaceholder": "Хабарлама енгізіңіз...",
+
+    // === WhatsApp телефон бойынша қосу ===
+    "wa.pairByPhone": "Нөмір бойынша",
+    "wa.qrTab": "QR-код",
+    "wa.phoneTab": "Нөмір бойынша",
+    "wa.enterPhone": "WhatsApp телефон нөмірін енгізіңіз",
+    "wa.getCode": "Код алу",
+    "wa.pairingCode": "Қосылу коды",
+    "wa.pairingInstruction": "WhatsApp ашыңыз → Байланысқан құрылғылар → Телефон нөмірі бойынша байланыстыру → Кодты енгізіңіз",
+    "wa.pairingError": "Код алу қатесі",
   },
 }
 
@@ -1151,4 +1253,20 @@ const translations: Record<Locale, Record<string, string>> = {
 export function useT() {
   const locale = useStore((s) => s.locale)
   return (key: string): string => translations[locale]?.[key] ?? key
+}
+
+export function useTranslation() {
+  const locale = useStore((s) => s.locale)
+  const t = (key: string): string => translations[locale]?.[key] ?? key
+  return { t, locale }
+}
+
+export function getDateLocale(locale: string) {
+  switch (locale) {
+    case 'kz':
+      return kk
+    case 'ru':
+    default:
+      return ru
+  }
 }

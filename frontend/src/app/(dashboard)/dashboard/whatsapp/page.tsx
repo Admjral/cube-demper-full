@@ -43,6 +43,7 @@ import {
   AlertCircle,
   TrendingUp,
   ShoppingBag,
+  Phone,
 } from "lucide-react"
 import { toast } from "sonner"
 import {
@@ -52,6 +53,7 @@ import {
   useCreateSession,
   useDeleteSession,
   useSessionQRCode,
+  usePairByPhone,
   useCreateTemplate,
   useUpdateTemplate,
   useDeleteTemplate,
@@ -130,6 +132,11 @@ export default function WhatsAppPage() {
   const [showQRDialog, setShowQRDialog] = useState(false)
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
 
+  // Phone pairing state
+  const [pairingTab, setPairingTab] = useState<"qr" | "phone">("qr")
+  const [pairingPhone, setPairingPhone] = useState("")
+  const [pairingCode, setPairingCode] = useState<string | null>(null)
+
   // Template state
   const [templateFlowStep, setTemplateFlowStep] = useState<"closed" | "picker" | "editor">("closed")
   const [editingTemplate, setEditingTemplate] = useState<WhatsAppTemplate | null>(null)
@@ -177,6 +184,7 @@ export default function WhatsAppPage() {
 
   const createSession = useCreateSession()
   const deleteSession = useDeleteSession()
+  const pairByPhone = usePairByPhone()
   const createTemplate = useCreateTemplate()
   const updateTemplate = useUpdateTemplate()
   const deleteTemplateM = useDeleteTemplate()
@@ -1130,8 +1138,15 @@ export default function WhatsAppPage() {
         </TabsContent>
       </Tabs>
 
-      {/* QR Dialog */}
-      <Dialog open={showQRDialog} onOpenChange={setShowQRDialog}>
+      {/* QR / Phone Pairing Dialog */}
+      <Dialog open={showQRDialog} onOpenChange={(open) => {
+        setShowQRDialog(open)
+        if (!open) {
+          setPairingCode(null)
+          setPairingPhone("")
+          setPairingTab("qr")
+        }
+      }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t("wa.scanQR")}</DialogTitle>
@@ -1139,20 +1154,89 @@ export default function WhatsAppPage() {
               {t("wa.scanQRDesc")}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col items-center py-4">
-            {qrLoading ? (
-              <Loader2 className="h-8 w-8 animate-spin" />
-            ) : qrData?.qr_code ? (
-              <img src={`data:image/png;base64,${qrData.qr_code}`} alt="QR Code" className="w-64 h-64" />
-            ) : qrData?.status === "connected" ? (
-              <div className="text-center">
-                <Wifi className="h-16 w-16 text-green-500 mx-auto mb-4" />
-                <p className="text-green-500 font-medium">{t("wa.connectedBang")}</p>
-              </div>
-            ) : (
-              <p className="text-muted-foreground">{t("wa.qrLoading")}</p>
-            )}
+
+          {/* Tabs: QR / Phone */}
+          <div className="flex gap-2 border-b pb-2">
+            <Button
+              variant={pairingTab === "qr" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setPairingTab("qr")}
+            >
+              <QrCode className="h-4 w-4 mr-2" />
+              {t("wa.qrTab")}
+            </Button>
+            <Button
+              variant={pairingTab === "phone" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setPairingTab("phone")}
+            >
+              <Phone className="h-4 w-4 mr-2" />
+              {t("wa.phoneTab")}
+            </Button>
           </div>
+
+          {pairingTab === "qr" ? (
+            <div className="flex flex-col items-center py-4">
+              {qrLoading ? (
+                <Loader2 className="h-8 w-8 animate-spin" />
+              ) : qrData?.qr_code ? (
+                <img src={`data:image/png;base64,${qrData.qr_code}`} alt="QR Code" className="w-64 h-64" />
+              ) : qrData?.status === "connected" ? (
+                <div className="text-center">
+                  <Wifi className="h-16 w-16 text-green-500 mx-auto mb-4" />
+                  <p className="text-green-500 font-medium">{t("wa.connectedBang")}</p>
+                </div>
+              ) : (
+                <p className="text-muted-foreground">{t("wa.qrLoading")}</p>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>{t("wa.enterPhone")}</Label>
+                <Input
+                  placeholder="+7 700 123 4567"
+                  value={pairingPhone}
+                  onChange={(e) => setPairingPhone(e.target.value)}
+                  disabled={pairByPhone.isPending}
+                />
+              </div>
+
+              {!pairingCode ? (
+                <Button
+                  className="w-full"
+                  onClick={async () => {
+                    if (!selectedSessionId || !pairingPhone.trim()) return
+                    try {
+                      const result = await pairByPhone.mutateAsync({
+                        sessionId: selectedSessionId,
+                        phoneNumber: pairingPhone,
+                      })
+                      setPairingCode(result.code)
+                    } catch {
+                      toast.error(t("wa.pairingError"))
+                    }
+                  }}
+                  disabled={pairByPhone.isPending || !pairingPhone.trim()}
+                >
+                  {pairByPhone.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Phone className="h-4 w-4 mr-2" />
+                  )}
+                  {t("wa.getCode")}
+                </Button>
+              ) : (
+                <div className="text-center space-y-3">
+                  <p className="text-sm text-muted-foreground">{t("wa.pairingCode")}</p>
+                  <p className="text-3xl font-mono font-bold tracking-widest">{pairingCode}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t("wa.pairingInstruction")}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

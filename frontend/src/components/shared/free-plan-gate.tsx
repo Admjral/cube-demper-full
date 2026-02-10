@@ -5,12 +5,14 @@ import { Lock, Sparkles, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { useActivateTrial } from '@/hooks/api/use-features'
+import { useTranslation } from '@/lib/i18n'
 
 /**
  * FreePlanGate - shown when a free plan user tries to access a restricted page.
  * Prompts them to activate a 3-day trial or view available plans.
  */
 export function FreePlanGate() {
+  const { t } = useTranslation()
   const activateTrial = useActivateTrial()
 
   return (
@@ -21,9 +23,9 @@ export function FreePlanGate() {
             <Lock className="h-8 w-8 text-primary" />
           </div>
           <div>
-            <h3 className="text-xl font-semibold">Раздел недоступен</h3>
+            <h3 className="text-xl font-semibold">{t('freePlan.locked')}</h3>
             <p className="text-sm text-muted-foreground mt-2">
-              Для доступа к этому разделу необходим активный тарифный план
+              {t('freePlan.needPlan')}
             </p>
           </div>
 
@@ -38,18 +40,18 @@ export function FreePlanGate() {
               ) : (
                 <Sparkles className="h-4 w-4 mr-2" />
               )}
-              Попробовать бесплатно 3 дня
+              {t('freePlan.tryFree')}
             </Button>
             <Link href="/dashboard/billing" className="block">
               <Button variant="outline" className="w-full">
-                Выбрать тариф
+                {t('freePlan.choosePlan')}
               </Button>
             </Link>
           </div>
 
           {activateTrial.isError && (
             <p className="text-sm text-red-500">
-              {(activateTrial.error as any)?.message || 'Не удалось активировать пробный период'}
+              {(activateTrial.error as any)?.message || t('freePlan.trialError')}
             </p>
           )}
         </CardContent>

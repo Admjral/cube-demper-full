@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import { usePathname } from "next/navigation"
 import { formatDistanceToNow } from "date-fns"
 import { ru } from "date-fns/locale"
 import { MessageCircle, X, Send, Loader2, User, Headphones } from "lucide-react"
@@ -32,6 +33,8 @@ export function SupportChatWidget() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const t = useT()
+
+  const pathname = usePathname()
 
   // Don't show widget if not authenticated
   const isAuthenticated = authClient.isAuthenticated()
@@ -119,6 +122,9 @@ export function SupportChatWidget() {
   }
 
   if (!isAuthenticated) return null
+
+  // Hide floating widget on dedicated support page
+  if (pathname === '/dashboard/support') return null
 
   return (
     <>

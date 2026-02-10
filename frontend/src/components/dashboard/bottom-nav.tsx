@@ -9,7 +9,7 @@ import {
   Bot,
   BarChart3,
   MessageSquare,
-  Settings,
+  Headphones,
 } from "lucide-react"
 
 const mobileNavigation = [
@@ -42,11 +42,11 @@ const mobileNavigation = [
     icon: MessageSquare,
   },
   {
-    name: "More",
-    nameRu: "Ещё",
-    nameKz: "Тағы",
-    href: "/dashboard/settings",
-    icon: Settings,
+    name: "Support",
+    nameRu: "Поддержка",
+    nameKz: "Қолдау",
+    href: "/dashboard/support",
+    icon: Headphones,
   },
 ]
 
