@@ -81,13 +81,13 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except:
-     * - _next/static (static files)
-     * - _next/image (image optimization)
-     * - favicon.ico, icon.svg (browser icons)
-     * - public files (svg, png, jpg, etc.)
-     */
-    '/((?!_next/static|_next/image|favicon\\.ico|icon\\.svg|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/dashboard/:path*',
+    '/admin/:path*',
+    '/partner/:path*',
+    '/login',
+    '/register',
+    '/forgot-password',
+    '/reset-password',
+    '/verify-phone',
   ],
 }
