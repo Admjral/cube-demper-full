@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Image from "next/image"
 import { useT } from "@/lib/i18n"
 import { SubscriptionGate } from "@/components/shared/subscription-gate"
 import { useNicheSearch, useNicheCategories } from "@/hooks/api/use-niche-search"
@@ -365,12 +366,14 @@ export default function NicheSearchPage() {
                     onClick={() => setSelectedProduct(product)}
                   >
                     <div className="flex items-center gap-3">
-                      <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center overflow-hidden shrink-0">
+                      <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center overflow-hidden shrink-0 relative">
                         {product.image_url ? (
-                          <img
+                          <Image
                             src={product.image_url}
                             alt={product.name}
-                            className="h-full w-full object-cover"
+                            fill
+                            className="object-cover"
+                            unoptimized
                           />
                         ) : (
                           <Package className="h-6 w-6 text-muted-foreground" />
@@ -436,12 +439,14 @@ export default function NicheSearchPage() {
                       >
                         <TableCell>
                           <div className="flex items-center gap-3">
-                            <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center overflow-hidden">
+                            <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center overflow-hidden relative">
                               {product.image_url ? (
-                                <img
+                                <Image
                                   src={product.image_url}
                                   alt={product.name}
-                                  className="h-full w-full object-cover"
+                                  fill
+                                  className="object-cover"
+                                  unoptimized
                                 />
                               ) : (
                                 <Package className="h-6 w-6 text-muted-foreground" />
@@ -535,11 +540,15 @@ export default function NicheSearchPage() {
           <DialogHeader>
             <DialogTitle className="flex items-start gap-4">
               {selectedProduct?.image_url && (
-                <img
-                  src={selectedProduct.image_url}
-                  alt={selectedProduct.name}
-                  className="h-20 w-20 rounded-lg object-cover"
-                />
+                <div className="h-20 w-20 rounded-lg overflow-hidden relative shrink-0">
+                  <Image
+                    src={selectedProduct.image_url}
+                    alt={selectedProduct.name}
+                    fill
+                    className="object-cover"
+                    unoptimized
+                  />
+                </div>
               )}
               <div className="min-w-0 flex-1">
                 <p className="text-lg font-semibold">{selectedProduct?.name}</p>
