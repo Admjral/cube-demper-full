@@ -2,8 +2,6 @@
 
 import { useState } from "react"
 import { useStore } from "@/store/use-store"
-import { useT } from "@/lib/i18n"
-import { SubscriptionGate } from "@/components/shared/subscription-gate"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -28,7 +26,6 @@ import {
   Construction,
 } from "lucide-react"
 import Link from "next/link"
-import { FeatureGate } from "@/components/shared/feature-gate"
 
 interface PreOrder {
   id: string
@@ -42,21 +39,22 @@ interface PreOrder {
   notes: string
 }
 
-function NoStoreSelected() {
-  const t = useT()
+function NoStoreSelected({ locale }: { locale: string }) {
   return (
     <Card className="glass-card">
       <CardContent className="p-8 text-center">
         <Store className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
         <h3 className="text-lg font-semibold mb-2">
-          {t("preOrders.selectStore")}
+          {locale === "ru" ? "Выберите магазин" : "Select a store"}
         </h3>
         <p className="text-muted-foreground mb-4">
-          {t("preOrders.selectStoreDesc")}
+          {locale === "ru"
+            ? "Для управления предзаказами выберите магазин или добавьте новый"
+            : "Select a store or add a new one to manage pre-orders"}
         </p>
         <Link href="/dashboard/integrations">
           <Button>
-            {t("preOrders.addStore")}
+            {locale === "ru" ? "Добавить магазин" : "Add store"}
           </Button>
         </Link>
       </CardContent>
@@ -64,17 +62,18 @@ function NoStoreSelected() {
   )
 }
 
-function ComingSoon() {
-  const t = useT()
+function ComingSoon({ locale }: { locale: string }) {
   return (
     <Card className="glass-card">
       <CardContent className="p-8 text-center">
         <Construction className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
         <h3 className="text-lg font-semibold mb-2">
-          {t("preOrders.comingSoon")}
+          {locale === "ru" ? "В разработке" : "Coming soon"}
         </h3>
         <p className="text-muted-foreground">
-          {t("preOrders.comingSoonDesc")}
+          {locale === "ru"
+            ? "Функционал предзаказов скоро будет доступен"
+            : "Pre-orders feature will be available soon"}
         </p>
       </CardContent>
     </Card>
@@ -83,7 +82,6 @@ function ComingSoon() {
 
 export default function PreOrdersPage() {
   const { locale, selectedStore } = useStore()
-  const t = useT()
   const [searchQuery, setSearchQuery] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
 
@@ -91,17 +89,17 @@ export default function PreOrdersPage() {
   const preorders: PreOrder[] = []
 
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, { key: string; variant: "default" | "secondary" | "outline" }> = {
-      pending: { key: "preOrders.pending", variant: "secondary" },
-      confirmed: { key: "preOrders.confirmed", variant: "default" },
-      ready: { key: "preOrders.ready", variant: "outline" },
-      completed: { key: "preOrders.completed", variant: "outline" },
-      cancelled: { key: "preOrders.cancelled", variant: "secondary" },
+    const variants: Record<string, { label: string; labelEn: string; variant: "default" | "secondary" | "outline" }> = {
+      pending: { label: "Ожидает", labelEn: "Pending", variant: "secondary" },
+      confirmed: { label: "Подтверждён", labelEn: "Confirmed", variant: "default" },
+      ready: { label: "Готов", labelEn: "Ready", variant: "outline" },
+      completed: { label: "Завершён", labelEn: "Completed", variant: "outline" },
+      cancelled: { label: "Отменён", labelEn: "Cancelled", variant: "secondary" },
     }
-    const { key, variant } = variants[status] || variants.pending
+    const { label, labelEn, variant } = variants[status] || variants.pending
     return (
       <Badge variant={variant}>
-        {t(key)}
+        {locale === "ru" ? label : labelEn}
       </Badge>
     )
   }
@@ -120,36 +118,32 @@ export default function PreOrdersPage() {
   const readyCount = preorders.filter((p) => p.status === "ready").length
 
   return (
-    <SubscriptionGate>
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">
-            {t("preOrders.title")}
+            {locale === "ru" ? "Предзаказы" : "Pre-orders"}
           </h1>
           <p className="text-muted-foreground">
-            {t("preOrders.subtitle")}
+            {locale === "ru"
+              ? "Управление предзаказами клиентов"
+              : "Manage customer pre-orders"}
           </p>
         </div>
         {selectedStore && (
           <Button className="touch-target" disabled>
             <Plus className="h-4 w-4 mr-2" />
-            {t("preOrders.newPreOrder")}
+            {locale === "ru" ? "Новый предзаказ" : "New pre-order"}
           </Button>
         )}
       </div>
 
       {/* No store selected */}
-      {!selectedStore && <NoStoreSelected />}
+      {!selectedStore && <NoStoreSelected locale={locale} />}
 
-      {/* Feature gate for preorder access */}
-      {selectedStore && (
-        <FeatureGate feature="preorder">
-          {/* Coming soon message when store is selected and has access */}
-          <ComingSoon />
-        </FeatureGate>
-      )}
+      {/* Coming soon message when store is selected */}
+      {selectedStore && <ComingSoon locale={locale} />}
 
       {/* Stats and list - will be shown when backend is ready and preorders exist */}
       {selectedStore && preorders.length > 0 && (
@@ -159,7 +153,7 @@ export default function PreOrdersPage() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <p className="text-sm text-muted-foreground">
-                    {t("preOrders.total")}
+                    {locale === "ru" ? "Всего предзаказов" : "Total pre-orders"}
                   </p>
                   <Package className="h-4 w-4 text-muted-foreground" />
                 </div>
@@ -170,7 +164,7 @@ export default function PreOrdersPage() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <p className="text-sm text-muted-foreground">
-                    {t("preOrders.pendingCount")}
+                    {locale === "ru" ? "Ожидают" : "Pending"}
                   </p>
                   <Clock className="h-4 w-4 text-yellow-500" />
                 </div>
@@ -181,7 +175,7 @@ export default function PreOrdersPage() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <p className="text-sm text-muted-foreground">
-                    {t("preOrders.readyCount")}
+                    {locale === "ru" ? "Готовы к выдаче" : "Ready"}
                   </p>
                   <Calendar className="h-4 w-4 text-green-500" />
                 </div>
@@ -195,7 +189,7 @@ export default function PreOrdersPage() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder={t("preOrders.searchPlaceholder")}
+                  placeholder={locale === "ru" ? "Поиск по товару или клиенту..." : "Search by product or customer..."}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-10"
@@ -219,22 +213,22 @@ export default function PreOrdersPage() {
                         </div>
                         {getStatusBadge(preorder.status)}
                       </div>
-                      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                      <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
                         <div>
                           <p className="text-xs text-muted-foreground">
-                            {t("preOrders.quantity")}
+                            {locale === "ru" ? "Количество" : "Quantity"}
                           </p>
                           <p className="font-medium">{preorder.quantity} шт</p>
                         </div>
                         <div>
                           <p className="text-xs text-muted-foreground">
-                            {t("preOrders.deposit")}
+                            {locale === "ru" ? "Предоплата" : "Deposit"}
                           </p>
                           <p className="font-medium">{formatPrice(preorder.deposit)}</p>
                         </div>
                         <div>
                           <p className="text-xs text-muted-foreground">
-                            {t("preOrders.expectedDate")}
+                            {locale === "ru" ? "Ожидаемая дата" : "Expected date"}
                           </p>
                           <p className="font-medium">
                             {new Date(preorder.expectedDate).toLocaleDateString(
@@ -244,7 +238,7 @@ export default function PreOrdersPage() {
                         </div>
                         <div>
                           <p className="text-xs text-muted-foreground">
-                            {t("preOrders.notes")}
+                            {locale === "ru" ? "Примечания" : "Notes"}
                           </p>
                           <p className="font-medium truncate">{preorder.notes}</p>
                         </div>
@@ -261,6 +255,5 @@ export default function PreOrdersPage() {
         </>
       )}
     </div>
-    </SubscriptionGate>
   )
 }
