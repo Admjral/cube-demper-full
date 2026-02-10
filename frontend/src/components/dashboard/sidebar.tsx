@@ -40,60 +40,70 @@ const navigation = [
   {
     name: "Dashboard",
     nameRu: "Главная",
+    nameKz: "Басты бет",
     href: "/dashboard",
     icon: LayoutDashboard,
   },
   {
     name: "Niche Search",
     nameRu: "Поиск ниш",
+    nameKz: "Тауша іздеу",
     href: "/dashboard/niche-search",
     icon: Sparkles,
   },
   {
     name: "Price Bot",
     nameRu: "Демпинг цен",
+    nameKz: "Баға боты",
     href: "/dashboard/price-bot",
     icon: Bot,
   },
   {
     name: "Sales",
     nameRu: "Продажи",
+    nameKz: "Сатылымдар",
     href: "/dashboard/sales",
     icon: BarChart3,
   },
   {
     name: "Invoice Merger",
     nameRu: "Склейка накладных",
+    nameKz: "Жүкқұжаттар",
     href: "/dashboard/invoice-merger",
     icon: FileStack,
   },
   {
     name: "Unit Economics",
     nameRu: "Юнит-экономика",
+    nameKz: "Бірлік экономикасы",
     href: "/dashboard/unit-economics",
     icon: Calculator,
   },
   {
     name: "Pre-orders",
     nameRu: "Предзаказы",
+    nameKz: "Алдын ала тапсырыс",
     href: "/dashboard/pre-orders",
     icon: Package,
   },
   {
     name: "WhatsApp",
     nameRu: "WhatsApp",
+    nameKz: "WhatsApp",
     href: "/dashboard/whatsapp",
     icon: MessageSquare,
   },
   {
     name: "Integrations",
     nameRu: "Интеграции",
+    nameKz: "Интеграциялар",
     href: "/dashboard/integrations",
     icon: Plug,
   },
   {
     name: "AI Lawyer",
     nameRu: "AI-Юрист",
+    nameKz: "AI Заңгер",
     href: "/dashboard/ai-lawyer",
     icon: Scale,
   },
@@ -103,18 +113,21 @@ const bottomNavigation = [
   {
     name: "Billing",
     nameRu: "Тарифы",
+    nameKz: "Тарифтер",
     href: "/dashboard/billing",
     icon: CreditCard,
   },
   {
     name: "Profile",
     nameRu: "Профиль",
+    nameKz: "Профиль",
     href: "/dashboard/profile",
     icon: User,
   },
   {
     name: "Settings",
     nameRu: "Настройки",
+    nameKz: "Баптаулар",
     href: "/dashboard/settings",
     icon: Settings,
   },
@@ -185,7 +198,7 @@ export function Sidebar() {
                     )}
                   >
                     <item.icon className="h-5 w-5 shrink-0" />
-                    <span className="flex-1">{locale === 'ru' ? item.nameRu : item.name}</span>
+                    <span className="flex-1">{locale === 'ru' ? item.nameRu : locale === 'kz' ? item.nameKz : item.name}</span>
                     {isLocked && <Lock className="h-3.5 w-3.5 shrink-0" />}
                   </Link>
                 )
@@ -208,7 +221,7 @@ export function Sidebar() {
                 )}
               >
                 <Shield className="h-5 w-5 shrink-0" />
-                <span>{locale === 'ru' ? 'Админ-панель' : 'Admin Panel'}</span>
+                <span>{locale === 'ru' ? 'Админ-панель' : locale === 'kz' ? 'Әкімші тақтасы' : 'Admin Panel'}</span>
               </Link>
             )}
             {bottomNavigation.map((item) => {
@@ -226,7 +239,7 @@ export function Sidebar() {
                   )}
                 >
                   <item.icon className="h-5 w-5 shrink-0" />
-                  <span>{locale === 'ru' ? item.nameRu : item.name}</span>
+                  <span>{locale === 'ru' ? item.nameRu : locale === 'kz' ? item.nameKz : item.name}</span>
                 </Link>
               )
             })}

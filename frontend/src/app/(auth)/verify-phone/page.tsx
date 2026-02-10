@@ -5,11 +5,13 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '@/hooks/use-auth'
+import { useT } from '@/lib/i18n'
 import { Loader2, Smartphone, RefreshCw } from 'lucide-react'
 
 export default function VerifyPhonePage() {
   const router = useRouter()
   const { user, loading: authLoading, verifyOtp, sendOtp } = useAuth()
+  const t = useT()
 
   const [digits, setDigits] = useState<string[]>(['', '', '', '', '', ''])
   const [loading, setLoading] = useState(false)
@@ -134,9 +136,9 @@ export default function VerifyPhonePage() {
         <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
           <Smartphone className="h-8 w-8 text-primary" />
         </div>
-        <h2 className="text-2xl font-semibold text-foreground">Подтверждение телефона</h2>
+        <h2 className="text-2xl font-semibold text-foreground">{t("auth.verifyPhone")}</h2>
         <p className="text-muted-foreground mt-2">
-          Мы отправили 6-значный код на
+          {t("auth.codeSentTo")}
         </p>
         {maskedPhone && (
           <p className="font-medium text-foreground mt-1">{maskedPhone}</p>
@@ -187,8 +189,8 @@ export default function VerifyPhonePage() {
             <RefreshCw className="h-4 w-4 mr-2" />
           )}
           {resendCooldown > 0
-            ? `Отправить повторно (${resendCooldown}с)`
-            : 'Отправить код повторно'
+            ? `${t("auth.resendCodeTimer")} (${resendCooldown}s)`
+            : t("auth.resendCode")
           }
         </Button>
       </div>

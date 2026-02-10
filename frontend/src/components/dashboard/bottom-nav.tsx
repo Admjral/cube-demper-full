@@ -16,30 +16,35 @@ const mobileNavigation = [
   {
     name: "Home",
     nameRu: "Главная",
+    nameKz: "Басты",
     href: "/dashboard",
     icon: LayoutDashboard,
   },
   {
     name: "Sales",
     nameRu: "Продажи",
+    nameKz: "Сату",
     href: "/dashboard/sales",
     icon: BarChart3,
   },
   {
     name: "Bot",
     nameRu: "Бот",
+    nameKz: "Бот",
     href: "/dashboard/price-bot",
     icon: Bot,
   },
   {
     name: "Chat",
     nameRu: "Чат",
+    nameKz: "Чат",
     href: "/dashboard/whatsapp",
     icon: MessageSquare,
   },
   {
     name: "More",
     nameRu: "Ещё",
+    nameKz: "Тағы",
     href: "/dashboard/settings",
     icon: Settings,
   },
@@ -72,7 +77,7 @@ export function BottomNav() {
                 isActive && "scale-110"
               )} />
               <span className="text-xs font-medium">
-                {locale === 'ru' ? item.nameRu : item.name}
+                {locale === 'ru' ? item.nameRu : locale === 'kz' ? item.nameKz : item.name}
               </span>
             </Link>
           )

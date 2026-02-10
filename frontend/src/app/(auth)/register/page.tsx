@@ -8,11 +8,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useAuth } from '@/hooks/use-auth'
+import { useT } from '@/lib/i18n'
 import { Loader2, Mail, Lock, User, Eye, EyeOff, Phone } from 'lucide-react'
 
 export default function RegisterPage() {
   const router = useRouter()
   const { signUp } = useAuth()
+  const t = useT()
 
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -31,37 +33,37 @@ export default function RegisterPage() {
     // Validate phone
     const phoneDigits = phone.replace(/\D/g, '')
     if (phoneDigits.length < 10 || phoneDigits.length > 15) {
-      setError('Введите корректный номер телефона')
+      setError(t("auth.invalidPhone"))
       return
     }
 
     if (password !== confirmPassword) {
-      setError('Пароли не совпадают')
+      setError(t("auth.passwordsMismatch"))
       return
     }
 
     if (password.length < 8) {
-      setError('Пароль должен быть не менее 8 символов')
+      setError(t("auth.passwordMin8"))
       return
     }
 
     if (!/\d/.test(password)) {
-      setError('Пароль должен содержать хотя бы одну цифру')
+      setError(t("auth.passwordDigit"))
       return
     }
 
     if (!/[A-Z]/.test(password)) {
-      setError('Пароль должен содержать хотя бы одну заглавную букву')
+      setError(t("auth.passwordUpper"))
       return
     }
 
     if (!/[a-z]/.test(password)) {
-      setError('Пароль должен содержать хотя бы одну строчную букву')
+      setError(t("auth.passwordLower"))
       return
     }
 
     if (!acceptTerms) {
-      setError('Необходимо принять условия использования')
+      setError(t("auth.mustAcceptTerms"))
       return
     }
 
@@ -71,7 +73,7 @@ export default function RegisterPage() {
 
     if (error) {
       setError(error.message === 'User already registered'
-        ? 'Пользователь с таким email уже существует'
+        ? t("auth.emailExists")
         : error.message)
       setLoading(false)
       return
@@ -85,21 +87,21 @@ export default function RegisterPage() {
   return (
     <div className="glass-card p-8">
       <div className="text-center mb-6">
-        <h2 className="text-2xl font-semibold text-foreground">Регистрация</h2>
+        <h2 className="text-2xl font-semibold text-foreground">{t("auth.registerTitle")}</h2>
         <p className="text-muted-foreground mt-1">
-          Создайте аккаунт для начала работы
+          {t("auth.registerSubtitle")}
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="name">Имя</Label>
+          <Label htmlFor="name">{t("auth.name")}</Label>
           <div className="relative">
             <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               id="name"
               type="text"
-              placeholder="Ваше имя"
+              placeholder={t("auth.yourName")}
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="pl-10"
@@ -110,7 +112,7 @@ export default function RegisterPage() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="email">Email</Label>
+          <Label htmlFor="email">{t("auth.email")}</Label>
           <div className="relative">
             <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -127,7 +129,7 @@ export default function RegisterPage() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="phone">Номер телефона (WhatsApp)</Label>
+          <Label htmlFor="phone">{t("auth.phoneWhatsApp")}</Label>
           <div className="relative">
             <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -142,18 +144,18 @@ export default function RegisterPage() {
             />
           </div>
           <p className="text-xs text-muted-foreground">
-            На этот номер придёт код подтверждения в WhatsApp
+            {t("auth.phoneWhatsAppDesc")}
           </p>
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="password">Пароль</Label>
+          <Label htmlFor="password">{t("auth.password")}</Label>
           <div className="relative">
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               id="password"
               type={showPassword ? 'text' : 'password'}
-              placeholder="Минимум 8 символов (цифры, A-z)"
+              placeholder={t("auth.passwordHint")}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="pl-10 pr-10"
@@ -175,13 +177,13 @@ export default function RegisterPage() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="confirmPassword">Подтвердите пароль</Label>
+          <Label htmlFor="confirmPassword">{t("auth.confirmPassword")}</Label>
           <div className="relative">
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               id="confirmPassword"
               type={showPassword ? 'text' : 'password'}
-              placeholder="Повторите пароль"
+              placeholder={t("auth.repeatPassword")}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               className="pl-10"
@@ -202,13 +204,13 @@ export default function RegisterPage() {
             htmlFor="terms"
             className="text-sm text-muted-foreground leading-tight cursor-pointer"
           >
-            Я принимаю{' '}
+            {t("auth.acceptTerms").split(t("auth.termsOfService"))[0]}
             <Link href="/terms" className="text-primary hover:underline">
-              условия использования
-            </Link>{' '}
-            и{' '}
+              {t("auth.termsOfService")}
+            </Link>
+            {t("auth.acceptTerms").split(t("auth.termsOfService"))[1].split(t("auth.privacyPolicy"))[0]}
             <Link href="/privacy" className="text-primary hover:underline">
-              политику конфиденциальности
+              {t("auth.privacyPolicy")}
             </Link>
           </label>
         </div>
@@ -223,18 +225,18 @@ export default function RegisterPage() {
           {loading ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Регистрация...
+              {t("auth.registering")}
             </>
           ) : (
-            'Создать аккаунт'
+            t("auth.createAccount")
           )}
         </Button>
       </form>
 
       <div className="mt-6 text-center text-sm text-muted-foreground">
-        Уже есть аккаунт?{' '}
+        {t("auth.haveAccount")}{' '}
         <Link href="/login" className="text-primary hover:underline font-medium">
-          Войти
+          {t("auth.signIn")}
         </Link>
       </div>
     </div>

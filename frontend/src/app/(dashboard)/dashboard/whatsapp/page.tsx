@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useStore } from "@/store/use-store"
+import { useT } from "@/lib/i18n"
 import { SubscriptionGate } from "@/components/shared/subscription-gate"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -79,13 +80,13 @@ function OrdersPollingToggle({
   storeId,
   storeName,
   onToggle,
-  locale,
 }: {
   storeId: string
   storeName: string
   onToggle: (enabled: boolean) => void
-  locale: string
 }) {
+  const t = useT()
+  const { locale } = useStore()
   const { data: pollingStatus, isLoading } = useOrdersPollingStatus(storeId)
 
   if (isLoading) {
@@ -106,8 +107,8 @@ function OrdersPollingToggle({
         <span className="text-sm font-medium">{storeName}</span>
         {lastSync && (
           <p className="text-xs text-muted-foreground">
-            {locale === "ru" ? "Последняя синхронизация: " : "Last sync: "}
-            {new Date(lastSync).toLocaleString(locale === "ru" ? "ru-RU" : "en-US")}
+            {t("wa.lastSync")}{" "}
+            {new Date(lastSync).toLocaleString(locale === "ru" ? "ru-RU" : "kk-KZ")}
           </p>
         )}
       </div>
@@ -121,6 +122,7 @@ function OrdersPollingToggle({
 
 export default function WhatsAppPage() {
   const { locale } = useStore()
+  const t = useT()
   const [activeTab, setActiveTab] = useState("sessions")
 
   // Session state
@@ -141,12 +143,12 @@ export default function WhatsAppPage() {
 
   // Order event types for templates
   const orderEventTypes = [
-    { value: "order_approved", label: locale === "ru" ? "Заказ оплачен" : "Order paid" },
-    { value: "order_accepted_by_merchant", label: locale === "ru" ? "Заказ принят" : "Order accepted" },
-    { value: "order_shipped", label: locale === "ru" ? "Заказ отправлен" : "Order shipped" },
-    { value: "order_delivered", label: locale === "ru" ? "Заказ доставлен" : "Order delivered" },
-    { value: "order_completed", label: locale === "ru" ? "Заказ завершён" : "Order completed" },
-    { value: "review_request", label: locale === "ru" ? "Запрос отзыва" : "Review request" },
+    { value: "order_approved", label: t("wa.orderPaid") },
+    { value: "order_accepted_by_merchant", label: t("wa.orderAccepted") },
+    { value: "order_shipped", label: t("wa.orderShipped") },
+    { value: "order_delivered", label: t("wa.orderDelivered") },
+    { value: "order_completed", label: t("wa.orderCompleted") },
+    { value: "review_request", label: t("wa.reviewRequest") },
   ]
 
   // Message filters
@@ -193,7 +195,7 @@ export default function WhatsAppPage() {
   // Session handlers
   const handleCreateSession = async () => {
     if (!newSessionName.trim()) {
-      toast.error(locale === "ru" ? "Введите имя сессии" : "Enter session name")
+      toast.error(t("wa.enterSessionName"))
       return
     }
     try {
@@ -203,24 +205,24 @@ export default function WhatsAppPage() {
       setNewSessionName("")
       toast.success(locale === "ru" ? "Сессия создана. Отсканируйте QR-код" : "Session created. Scan QR code")
     } catch {
-      toast.error(locale === "ru" ? "Ошибка создания сессии" : "Error creating session")
+      toast.error(t("wa.sessionCreateError"))
     }
   }
 
   const handleDeleteSession = async (sessionId: string) => {
-    if (!confirm(locale === "ru" ? "Удалить сессию?" : "Delete session?")) return
+    if (!confirm(t("wa.deleteSession"))) return
     try {
       await deleteSession.mutateAsync(sessionId)
-      toast.success(locale === "ru" ? "Сессия удалена" : "Session deleted")
+      toast.success(t("wa.sessionDeleted"))
     } catch {
-      toast.error(locale === "ru" ? "Ошибка удаления" : "Error deleting")
+      toast.error(t("wa.deleteError"))
     }
   }
 
   // Template handlers
   const handleSaveTemplate = async () => {
     if (!templateForm.name || !templateForm.message) {
-      toast.error(locale === "ru" ? "Заполните название и текст шаблона" : "Fill in name and message")
+      toast.error(t("wa.fillNameAndText"))
       return
     }
     try {
@@ -233,7 +235,7 @@ export default function WhatsAppPage() {
           variables: templateForm.variables,
           trigger_event: templateForm.trigger_event || undefined,
         })
-        toast.success(locale === "ru" ? "Шаблон обновлён" : "Template updated")
+        toast.success(t("wa.templateUpdated"))
       } else {
         await createTemplate.mutateAsync({
           name: templateForm.name,
@@ -242,23 +244,23 @@ export default function WhatsAppPage() {
           variables: templateForm.variables,
           trigger_event: templateForm.trigger_event || undefined,
         })
-        toast.success(locale === "ru" ? "Шаблон создан" : "Template created")
+        toast.success(t("wa.templateCreated"))
       }
       setTemplateFlowStep("closed")
       setEditingTemplate(null)
       setTemplateForm({ name: "", name_en: "", message: "", variables: [], trigger_event: "" })
     } catch {
-      toast.error(locale === "ru" ? "Ошибка сохранения" : "Error saving")
+      toast.error(t("wa.saveError"))
     }
   }
 
   const handleDeleteTemplate = async (templateId: string) => {
-    if (!confirm(locale === "ru" ? "Удалить шаблон?" : "Delete template?")) return
+    if (!confirm(t("wa.deleteTemplate"))) return
     try {
       await deleteTemplateM.mutateAsync(templateId)
-      toast.success(locale === "ru" ? "Шаблон удалён" : "Template deleted")
+      toast.success(t("wa.templateDeleted"))
     } catch {
-      toast.error(locale === "ru" ? "Ошибка удаления" : "Error deleting")
+      toast.error(t("wa.deleteError"))
     }
   }
 
@@ -269,7 +271,7 @@ export default function WhatsAppPage() {
         is_active: !template.is_active,
       })
     } catch {
-      toast.error(locale === "ru" ? "Ошибка обновления" : "Error updating")
+      toast.error(t("wa.updateError"))
     }
   }
 
@@ -332,13 +334,13 @@ export default function WhatsAppPage() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "sent":
-        return <Badge variant="secondary" className="gap-1"><CheckCircle className="h-3 w-3" />{locale === "ru" ? "Отправлено" : "Sent"}</Badge>
+        return <Badge variant="secondary" className="gap-1"><CheckCircle className="h-3 w-3" />{t("wa.sent")}</Badge>
       case "delivered":
-        return <Badge variant="default" className="gap-1"><CheckCircle className="h-3 w-3" />{locale === "ru" ? "Доставлено" : "Delivered"}</Badge>
+        return <Badge variant="default" className="gap-1"><CheckCircle className="h-3 w-3" />{t("wa.delivered")}</Badge>
       case "read":
-        return <Badge className="gap-1 bg-green-500"><Eye className="h-3 w-3" />{locale === "ru" ? "Прочитано" : "Read"}</Badge>
+        return <Badge className="gap-1 bg-green-500"><Eye className="h-3 w-3" />{t("wa.read")}</Badge>
       case "failed":
-        return <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" />{locale === "ru" ? "Ошибка" : "Failed"}</Badge>
+        return <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" />{t("wa.failed")}</Badge>
       default:
         return <Badge variant="outline" className="gap-1"><AlertCircle className="h-3 w-3" />{locale === "ru" ? "Ожидает" : "Pending"}</Badge>
     }
@@ -352,7 +354,7 @@ export default function WhatsAppPage() {
         <div>
           <h1 className="text-2xl font-semibold">WhatsApp</h1>
           <p className="text-muted-foreground">
-            {locale === "ru" ? "Автоматизация сообщений и AI продажник" : "Message automation and AI Salesman"}
+            {t("wa.subtitle")}
           </p>
         </div>
         <Badge
@@ -360,9 +362,9 @@ export default function WhatsAppPage() {
           className="flex items-center gap-2 px-3 py-1.5"
         >
           {isConnected ? (
-            <><Wifi className="h-4 w-4" />{locale === "ru" ? "Подключено" : "Connected"}</>
+            <><Wifi className="h-4 w-4" />{t("wa.connected")}</>
           ) : (
-            <><WifiOff className="h-4 w-4" />{locale === "ru" ? "Отключено" : "Disconnected"}</>
+            <><WifiOff className="h-4 w-4" />{t("wa.disconnected")}</>
           )}
         </Badge>
       </div>
@@ -372,19 +374,19 @@ export default function WhatsAppPage() {
         <TabsList className="w-full grid grid-cols-2 sm:grid-cols-4 lg:w-auto lg:inline-grid">
           <TabsTrigger value="sessions" className="gap-2">
             <MessageSquare className="h-4 w-4 hidden sm:block" />
-            {locale === "ru" ? "Сессии" : "Sessions"}
+            {t("wa.sessions")}
           </TabsTrigger>
           <TabsTrigger value="salesman" className="gap-2">
             <Bot className="h-4 w-4 hidden sm:block" />
-            {locale === "ru" ? "AI Продажник" : "AI Salesman"}
+            {t("wa.aiSalesman")}
           </TabsTrigger>
           <TabsTrigger value="messages" className="gap-2">
             <History className="h-4 w-4 hidden sm:block" />
-            {locale === "ru" ? "Сообщения" : "Messages"}
+            {t("wa.messages")}
           </TabsTrigger>
           <TabsTrigger value="stats" className="gap-2">
             <BarChart3 className="h-4 w-4 hidden sm:block" />
-            {locale === "ru" ? "Статистика" : "Stats"}
+            {t("wa.stats")}
           </TabsTrigger>
         </TabsList>
 
@@ -396,34 +398,34 @@ export default function WhatsAppPage() {
               <CardTitle className="flex items-center justify-between">
                 <span className="flex items-center gap-2">
                   <MessageSquare className="h-5 w-5" />
-                  {locale === "ru" ? "Сессии WhatsApp" : "WhatsApp Sessions"}
+                  {t("wa.whatsappSessions")}
                 </span>
                 <Dialog>
                   <DialogTrigger asChild>
                     <Button size="sm">
                       <Plus className="h-4 w-4 mr-2" />
-                      {locale === "ru" ? "Добавить" : "Add"}
+                      {t("common.add")}
                     </Button>
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
-                      <DialogTitle>{locale === "ru" ? "Новая сессия" : "New Session"}</DialogTitle>
+                      <DialogTitle>{t("wa.newSession")}</DialogTitle>
                       <DialogDescription>
-                        {locale === "ru" ? "Введите имя для новой WhatsApp сессии" : "Enter a name for the new WhatsApp session"}
+                        {t("wa.newSessionDesc")}
                       </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 pt-4">
                       <div className="space-y-2">
-                        <Label>{locale === "ru" ? "Имя сессии" : "Session name"}</Label>
+                        <Label>{t("wa.sessionName")}</Label>
                         <Input
-                          placeholder={locale === "ru" ? "Мой WhatsApp" : "My WhatsApp"}
+                          placeholder={t("wa.sessionDefault")}
                           value={newSessionName}
                           onChange={(e) => setNewSessionName(e.target.value)}
                         />
                       </div>
                       <Button onClick={handleCreateSession} disabled={createSession.isPending} className="w-full">
                         {createSession.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                        {locale === "ru" ? "Создать" : "Create"}
+                        {t("common.create")}
                       </Button>
                     </div>
                   </DialogContent>
@@ -464,7 +466,7 @@ export default function WhatsAppPage() {
                 </div>
               ) : (
                 <p className="text-center text-muted-foreground py-8">
-                  {locale === "ru" ? "Нет сессий. Создайте первую сессию WhatsApp." : "No sessions. Create your first WhatsApp session."}
+                  {t("wa.noSessions")}
                 </p>
               )}
             </CardContent>
@@ -475,13 +477,13 @@ export default function WhatsAppPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Send className="h-5 w-5" />
-                {locale === "ru" ? "Отправить сообщение" : "Send Message"}
+                {t("wa.sendMessage")}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>{locale === "ru" ? "Номер телефона" : "Phone number"}</Label>
+                  <Label>{t("wa.phoneNumber")}</Label>
                   <Input
                     placeholder="+7 777 123 4567"
                     value={manualSendPhone}
@@ -490,9 +492,9 @@ export default function WhatsAppPage() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>{locale === "ru" ? "Сообщение" : "Message"}</Label>
+                <Label>{t("wa.message")}</Label>
                 <Textarea
-                  placeholder={locale === "ru" ? "Введите текст сообщения..." : "Enter message text..."}
+                  placeholder={t("wa.messagePlaceholder")}
                   value={manualSendMessage}
                   onChange={(e) => setManualSendMessage(e.target.value)}
                   rows={3}
@@ -501,11 +503,11 @@ export default function WhatsAppPage() {
               <Button onClick={handleManualSend} disabled={sendMessage.isPending || !isConnected}>
                 {sendMessage.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 <Send className="h-4 w-4 mr-2" />
-                {locale === "ru" ? "Отправить" : "Send"}
+                {t("common.send")}
               </Button>
               {!isConnected && (
                 <p className="text-sm text-destructive">
-                  {locale === "ru" ? "Подключите WhatsApp для отправки сообщений" : "Connect WhatsApp to send messages"}
+                  {t("wa.connectToSend")}
                 </p>
               )}
             </CardContent>
@@ -517,14 +519,12 @@ export default function WhatsAppPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <ShoppingBag className="h-5 w-5" />
-                {locale === "ru" ? "Мониторинг заказов" : "Orders Monitoring"}
+                {t("wa.ordersMonitoring")}
               </CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground mb-4">
-                {locale === "ru"
-                  ? "Включите мониторинг для автоматической отправки WhatsApp при изменении статуса заказа"
-                  : "Enable monitoring to automatically send WhatsApp when order status changes"}
+                {t("wa.ordersMonitoringDesc")}
               </p>
               {kaspiStores && kaspiStores.length > 0 ? (
                 <div className="space-y-3">
@@ -539,24 +539,21 @@ export default function WhatsAppPage() {
                           {
                             onSuccess: () => {
                               toast.success(
-                                locale === "ru"
-                                  ? `Мониторинг ${enabled ? "включён" : "выключен"} для ${store.name}`
-                                  : `Monitoring ${enabled ? "enabled" : "disabled"} for ${store.name}`
+                                `${t(enabled ? "wa.monitoringEnabled" : "wa.monitoringDisabled")} ${t("wa.for")} ${store.name}`
                               )
                             },
                             onError: () => {
-                              toast.error(locale === "ru" ? "Ошибка" : "Error")
+                              toast.error(t("common.error"))
                             },
                           }
                         )
                       }}
-                      locale={locale}
                     />
                   ))}
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground text-center py-4">
-                  {locale === "ru" ? "Нет подключенных магазинов" : "No connected stores"}
+                  {t("wa.noConnectedStores")}
                 </p>
               )}
             </CardContent>
@@ -569,11 +566,11 @@ export default function WhatsAppPage() {
               <CardTitle className="flex items-center justify-between">
                 <span className="flex items-center gap-2">
                   <FileText className="h-5 w-5" />
-                  {locale === "ru" ? "Шаблоны сообщений" : "Message Templates"}
+                  {t("wa.messageTemplates")}
                 </span>
                 <Button size="sm" onClick={() => { setEditingTemplate(null); setTemplateForm({ name: "", name_en: "", message: "", variables: [], trigger_event: "" }); setTemplateFlowStep("picker") }}>
                   <Plus className="h-4 w-4 mr-2" />
-                  {locale === "ru" ? "Добавить" : "Add"}
+                  {t("common.add")}
                 </Button>
               </CardTitle>
             </CardHeader>
@@ -619,7 +616,7 @@ export default function WhatsAppPage() {
                 </div>
               ) : (
                 <p className="text-center text-muted-foreground py-8">
-                  {locale === "ru" ? "Нет шаблонов. Создайте первый шаблон." : "No templates. Create your first template."}
+                  {t("wa.noTemplates")}
                 </p>
               )}
             </CardContent>
@@ -631,13 +628,13 @@ export default function WhatsAppPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Settings2 className="h-5 w-5" />
-                  {locale === "ru" ? "Настройки" : "Settings"}
+                  {t("wa.settings")}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="space-y-2">
-                    <Label>{locale === "ru" ? "Лимит в день" : "Daily limit"}</Label>
+                    <Label>{t("wa.dailyLimit")}</Label>
                     <Input
                       type="number"
                       value={settings.daily_limit}
@@ -645,7 +642,7 @@ export default function WhatsAppPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>{locale === "ru" ? "Интервал (сек)" : "Interval (sec)"}</Label>
+                    <Label>{t("wa.interval")}</Label>
                     <Input
                       type="number"
                       value={settings.interval_seconds}
@@ -653,11 +650,11 @@ export default function WhatsAppPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>{locale === "ru" ? "Начало работы" : "Work start"}</Label>
+                    <Label>{t("wa.workStart")}</Label>
                     <Input type="time" value={settings.work_hours_start} onChange={(e) => updateSettings.mutate({ work_hours_start: e.target.value })} />
                   </div>
                   <div className="space-y-2">
-                    <Label>{locale === "ru" ? "Конец работы" : "Work end"}</Label>
+                    <Label>{t("wa.workEnd")}</Label>
                     <Input type="time" value={settings.work_hours_end} onChange={(e) => updateSettings.mutate({ work_hours_end: e.target.value })} />
                   </div>
                 </div>
@@ -674,7 +671,7 @@ export default function WhatsAppPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Bot className="h-5 w-5" />
-                {locale === "ru" ? "Настройки AI Продажника" : "AI Salesman Settings"}
+                {t("wa.aiSettings")}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -690,7 +687,7 @@ export default function WhatsAppPage() {
                         <h3 className="font-semibold">{store.store_name}</h3>
                         <div className="flex items-center gap-2">
                           <span className="text-sm text-muted-foreground">
-                            {locale === "ru" ? "AI включен" : "AI enabled"}
+                            {t("wa.aiEnabled")}
                           </span>
                           <Switch
                             checked={store.ai_enabled}
@@ -702,7 +699,7 @@ export default function WhatsAppPage() {
                       {store.ai_enabled && (
                         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                           <div className="space-y-2">
-                            <Label>{locale === "ru" ? "Тон общения" : "Tone"}</Label>
+                            <Label>{t("wa.tone")}</Label>
                             <Select
                               value={store.ai_tone || "friendly"}
                               onValueChange={(value) => updateSalesmanSettings.mutate({ storeId: store.store_id, ai_tone: value })}
@@ -711,14 +708,14 @@ export default function WhatsAppPage() {
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="friendly">{locale === "ru" ? "Дружелюбный" : "Friendly"}</SelectItem>
-                                <SelectItem value="professional">{locale === "ru" ? "Профессиональный" : "Professional"}</SelectItem>
-                                <SelectItem value="casual">{locale === "ru" ? "Неформальный" : "Casual"}</SelectItem>
+                                <SelectItem value="friendly">{t("wa.friendly")}</SelectItem>
+                                <SelectItem value="professional">{t("wa.professional")}</SelectItem>
+                                <SelectItem value="casual">{t("wa.casual")}</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
                           <div className="space-y-2">
-                            <Label>{locale === "ru" ? "Макс. скидка %" : "Max discount %"}</Label>
+                            <Label>{t("wa.maxDiscount")}</Label>
                             <Input
                               type="number"
                               value={store.ai_discount_percent || ""}
@@ -727,7 +724,7 @@ export default function WhatsAppPage() {
                             />
                           </div>
                           <div className="space-y-2">
-                            <Label>{locale === "ru" ? "Промокод" : "Promo code"}</Label>
+                            <Label>{t("wa.promoCode")}</Label>
                             <Input
                               value={store.ai_promo_code || ""}
                               placeholder="PROMO10"
@@ -735,15 +732,15 @@ export default function WhatsAppPage() {
                             />
                           </div>
                           <div className="space-y-2">
-                            <Label>{locale === "ru" ? "Бонус за отзыв" : "Review bonus"}</Label>
+                            <Label>{t("wa.reviewBonus")}</Label>
                             <Input
                               value={store.ai_review_bonus || ""}
-                              placeholder={locale === "ru" ? "Скидка 5% на след. заказ" : "5% off next order"}
+                              placeholder={t("wa.reviewBonusDefault")}
                               onChange={(e) => updateSalesmanSettings.mutate({ storeId: store.store_id, ai_review_bonus: e.target.value || null })}
                             />
                           </div>
                           <div className="space-y-2">
-                            <Label>{locale === "ru" ? "Задержка (мин)" : "Delay (min)"}</Label>
+                            <Label>{t("wa.delay")}</Label>
                             <Input
                               type="number"
                               value={store.ai_send_delay_minutes}
@@ -751,7 +748,7 @@ export default function WhatsAppPage() {
                             />
                           </div>
                           <div className="space-y-2">
-                            <Label>{locale === "ru" ? "Лимит сообщ./день" : "Messages/day limit"}</Label>
+                            <Label>{t("wa.messagesLimit")}</Label>
                             <Input
                               type="number"
                               value={store.ai_max_messages_per_day}
@@ -765,7 +762,7 @@ export default function WhatsAppPage() {
                 </div>
               ) : (
                 <p className="text-center text-muted-foreground py-8">
-                  {locale === "ru" ? "Нет магазинов. Добавьте магазин Kaspi для настройки AI." : "No stores. Add a Kaspi store to configure AI."}
+                  {t("wa.noStoresAI")}
                 </p>
               )}
             </CardContent>
@@ -781,7 +778,7 @@ export default function WhatsAppPage() {
                       <Send className="h-6 w-6 text-primary" />
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">{locale === "ru" ? "Всего сообщений" : "Total messages"}</p>
+                      <p className="text-sm text-muted-foreground">{t("wa.totalMessages")}</p>
                       <p className="text-2xl font-bold">{salesmanStats.total_messages}</p>
                     </div>
                   </div>
@@ -794,7 +791,7 @@ export default function WhatsAppPage() {
                       <TrendingUp className="h-6 w-6 text-green-500" />
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">{locale === "ru" ? "Новые заказы" : "New orders"}</p>
+                      <p className="text-sm text-muted-foreground">{t("wa.newOrders")}</p>
                       <p className="text-2xl font-bold">{salesmanStats.by_trigger?.new_order || 0}</p>
                     </div>
                   </div>
@@ -807,7 +804,7 @@ export default function WhatsAppPage() {
                       <History className="h-6 w-6 text-blue-500" />
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">{locale === "ru" ? "Повторные" : "Repeat customers"}</p>
+                      <p className="text-sm text-muted-foreground">{t("wa.repeatCustomers")}</p>
                       <p className="text-2xl font-bold">{salesmanStats.by_trigger?.repeat_customer || 0}</p>
                     </div>
                   </div>
@@ -820,7 +817,7 @@ export default function WhatsAppPage() {
                       <MessageSquare className="h-6 w-6 text-yellow-500" />
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">{locale === "ru" ? "Запросы отзывов" : "Review requests"}</p>
+                      <p className="text-sm text-muted-foreground">{t("wa.reviewRequests")}</p>
                       <p className="text-2xl font-bold">{salesmanStats.by_trigger?.review_request || 0}</p>
                     </div>
                   </div>
@@ -834,7 +831,7 @@ export default function WhatsAppPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <History className="h-5 w-5" />
-                {locale === "ru" ? "История AI сообщений" : "AI Message History"}
+                {t("wa.aiMessageHistory")}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -870,7 +867,7 @@ export default function WhatsAppPage() {
                 </div>
               ) : (
                 <p className="text-center text-muted-foreground py-8">
-                  {locale === "ru" ? "Нет сообщений AI" : "No AI messages yet"}
+                  {t("wa.noAIMessages")}
                 </p>
               )}
             </CardContent>
@@ -885,7 +882,7 @@ export default function WhatsAppPage() {
             <CardContent className="pt-6">
               <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4">
                 <div className="space-y-2">
-                  <Label>{locale === "ru" ? "Статус" : "Status"}</Label>
+                  <Label>{t("common.status")}</Label>
                   <Select
                     value={messageFilters.status_filter || "all"}
                     onValueChange={(v) => setMessageFilters({ ...messageFilters, status_filter: v === "all" ? undefined : v, page: 1 })}
@@ -894,16 +891,16 @@ export default function WhatsAppPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">{locale === "ru" ? "Все" : "All"}</SelectItem>
-                      <SelectItem value="sent">{locale === "ru" ? "Отправлено" : "Sent"}</SelectItem>
-                      <SelectItem value="delivered">{locale === "ru" ? "Доставлено" : "Delivered"}</SelectItem>
-                      <SelectItem value="read">{locale === "ru" ? "Прочитано" : "Read"}</SelectItem>
-                      <SelectItem value="failed">{locale === "ru" ? "Ошибка" : "Failed"}</SelectItem>
+                      <SelectItem value="all">{t("common.all")}</SelectItem>
+                      <SelectItem value="sent">{t("wa.sent")}</SelectItem>
+                      <SelectItem value="delivered">{t("wa.delivered")}</SelectItem>
+                      <SelectItem value="read">{t("wa.read")}</SelectItem>
+                      <SelectItem value="failed">{t("wa.failed")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>{locale === "ru" ? "Телефон" : "Phone"}</Label>
+                  <Label>{t("wa.phone")}</Label>
                   <Input
                     placeholder="+7 777..."
                     value={messageFilters.phone || ""}
@@ -911,7 +908,7 @@ export default function WhatsAppPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>{locale === "ru" ? "Дата от" : "Date from"}</Label>
+                  <Label>{t("wa.dateFrom")}</Label>
                   <Input
                     type="date"
                     value={messageFilters.date_from || ""}
@@ -919,7 +916,7 @@ export default function WhatsAppPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>{locale === "ru" ? "Дата до" : "Date to"}</Label>
+                  <Label>{t("wa.dateTo")}</Label>
                   <Input
                     type="date"
                     value={messageFilters.date_to || ""}
@@ -928,7 +925,7 @@ export default function WhatsAppPage() {
                 </div>
                 <div className="flex items-end">
                   <Button variant="outline" onClick={() => setMessageFilters({ page: 1, per_page: 20 })} className="w-full">
-                    {locale === "ru" ? "Сбросить" : "Reset"}
+                    {t("common.reset")}
                   </Button>
                 </div>
               </div>
@@ -941,11 +938,11 @@ export default function WhatsAppPage() {
               <CardTitle className="flex items-center justify-between">
                 <span className="flex items-center gap-2">
                   <History className="h-5 w-5" />
-                  {locale === "ru" ? "История сообщений" : "Message History"}
+                  {t("wa.messageHistory")}
                 </span>
                 {messagesData && (
                   <span className="text-sm font-normal text-muted-foreground">
-                    {locale === "ru" ? `Всего: ${messagesData.total}` : `Total: ${messagesData.total}`}
+                    {t("wa.total")} {messagesData.total}
                   </span>
                 )}
               </CardTitle>
@@ -987,7 +984,7 @@ export default function WhatsAppPage() {
                         disabled={messageFilters.page === 1}
                         onClick={() => setMessageFilters({ ...messageFilters, page: (messageFilters.page || 1) - 1 })}
                       >
-                        {locale === "ru" ? "Назад" : "Previous"}
+                        {t("wa.previous")}
                       </Button>
                       <span className="flex items-center px-4 text-sm text-muted-foreground">
                         {messageFilters.page} / {Math.ceil(messagesData.total / (messageFilters.per_page || 20))}
@@ -998,14 +995,14 @@ export default function WhatsAppPage() {
                         disabled={(messageFilters.page || 1) >= Math.ceil(messagesData.total / (messageFilters.per_page || 20))}
                         onClick={() => setMessageFilters({ ...messageFilters, page: (messageFilters.page || 1) + 1 })}
                       >
-                        {locale === "ru" ? "Далее" : "Next"}
+                        {t("common.next")}
                       </Button>
                     </div>
                   )}
                 </div>
               ) : (
                 <p className="text-center text-muted-foreground py-8">
-                  {locale === "ru" ? "Нет сообщений" : "No messages"}
+                  {t("wa.noMessages")}
                 </p>
               )}
             </CardContent>
@@ -1025,7 +1022,7 @@ export default function WhatsAppPage() {
                 <Card className="glass-card">
                   <CardContent className="pt-6">
                     <div className="text-center">
-                      <p className="text-sm text-muted-foreground">{locale === "ru" ? "Отправлено" : "Sent"}</p>
+                      <p className="text-sm text-muted-foreground">{t("wa.sent")}</p>
                       <p className="text-3xl font-bold text-primary">{waStats.total_sent}</p>
                     </div>
                   </CardContent>
@@ -1033,7 +1030,7 @@ export default function WhatsAppPage() {
                 <Card className="glass-card">
                   <CardContent className="pt-6">
                     <div className="text-center">
-                      <p className="text-sm text-muted-foreground">{locale === "ru" ? "Доставлено" : "Delivered"}</p>
+                      <p className="text-sm text-muted-foreground">{t("wa.delivered")}</p>
                       <p className="text-3xl font-bold text-green-500">{waStats.total_delivered}</p>
                       <p className="text-xs text-muted-foreground">{waStats.delivery_rate}%</p>
                     </div>
@@ -1042,7 +1039,7 @@ export default function WhatsAppPage() {
                 <Card className="glass-card">
                   <CardContent className="pt-6">
                     <div className="text-center">
-                      <p className="text-sm text-muted-foreground">{locale === "ru" ? "Прочитано" : "Read"}</p>
+                      <p className="text-sm text-muted-foreground">{t("wa.read")}</p>
                       <p className="text-3xl font-bold text-blue-500">{waStats.total_read}</p>
                       <p className="text-xs text-muted-foreground">{waStats.read_rate}%</p>
                     </div>
@@ -1051,7 +1048,7 @@ export default function WhatsAppPage() {
                 <Card className="glass-card">
                   <CardContent className="pt-6">
                     <div className="text-center">
-                      <p className="text-sm text-muted-foreground">{locale === "ru" ? "Ошибки" : "Failed"}</p>
+                      <p className="text-sm text-muted-foreground">{t("wa.errors")}</p>
                       <p className="text-3xl font-bold text-destructive">{waStats.total_failed}</p>
                     </div>
                   </CardContent>
@@ -1059,7 +1056,7 @@ export default function WhatsAppPage() {
                 <Card className="glass-card">
                   <CardContent className="pt-6">
                     <div className="text-center">
-                      <p className="text-sm text-muted-foreground">{locale === "ru" ? "Сегодня" : "Today"}</p>
+                      <p className="text-sm text-muted-foreground">{t("wa.today")}</p>
                       <p className="text-3xl font-bold">{waStats.today_sent}</p>
                       <p className="text-xs text-muted-foreground">/ {waStats.today_limit}</p>
                     </div>
@@ -1072,7 +1069,7 @@ export default function WhatsAppPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <BarChart3 className="h-5 w-5" />
-                    {locale === "ru" ? "Сообщения за неделю" : "Messages this week"}
+                    {t("wa.weekMessages")}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -1081,8 +1078,8 @@ export default function WhatsAppPage() {
                       {waStats.messages_by_day.map((day) => (
                         <div key={day.date} className="space-y-2">
                           <div className="flex items-center justify-between text-sm">
-                            <span>{new Date(day.date).toLocaleDateString(locale === "ru" ? "ru-RU" : "en-US", { weekday: "short", day: "numeric", month: "short" })}</span>
-                            <span className="text-muted-foreground">{day.sent} {locale === "ru" ? "сообщ." : "msgs"}</span>
+                            <span>{new Date(day.date).toLocaleDateString(locale === "ru" ? "ru-RU" : "kk-KZ", { weekday: "short", day: "numeric", month: "short" })}</span>
+                            <span className="text-muted-foreground">{day.sent} {t("wa.msgs")}</span>
                           </div>
                           <div className="flex h-4 rounded-full overflow-hidden bg-muted">
                             {day.sent > 0 && (
@@ -1090,23 +1087,23 @@ export default function WhatsAppPage() {
                                 <div
                                   className="bg-green-500"
                                   style={{ width: `${(day.read / day.sent) * 100}%` }}
-                                  title={`${locale === "ru" ? "Прочитано" : "Read"}: ${day.read}`}
+                                  title={`${t("wa.read")}: ${day.read}`}
                                 />
                                 <div
                                   className="bg-blue-500"
                                   style={{ width: `${((day.delivered - day.read) / day.sent) * 100}%` }}
-                                  title={`${locale === "ru" ? "Доставлено" : "Delivered"}: ${day.delivered - day.read}`}
+                                  title={`${t("wa.delivered")}: ${day.delivered - day.read}`}
                                 />
                                 <div
                                   className="bg-gray-400"
                                   style={{ width: `${((day.sent - day.delivered) / day.sent) * 100}%` }}
-                                  title={`${locale === "ru" ? "Отправлено" : "Sent"}: ${day.sent - day.delivered}`}
+                                  title={`${t("wa.sent")}: ${day.sent - day.delivered}`}
                                 />
                                 {day.failed > 0 && (
                                   <div
                                     className="bg-red-500"
                                     style={{ width: `${(day.failed / (day.sent + day.failed)) * 100}%` }}
-                                    title={`${locale === "ru" ? "Ошибки" : "Failed"}: ${day.failed}`}
+                                    title={`${t("wa.errors")}: ${day.failed}`}
                                   />
                                 )}
                               </>
@@ -1115,10 +1112,10 @@ export default function WhatsAppPage() {
                         </div>
                       ))}
                       <div className="flex items-center gap-4 text-xs text-muted-foreground pt-2">
-                        <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-green-500" />{locale === "ru" ? "Прочитано" : "Read"}</div>
-                        <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-blue-500" />{locale === "ru" ? "Доставлено" : "Delivered"}</div>
-                        <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-gray-400" />{locale === "ru" ? "Отправлено" : "Sent"}</div>
-                        <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-red-500" />{locale === "ru" ? "Ошибки" : "Failed"}</div>
+                        <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-green-500" />{t("wa.read")}</div>
+                        <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-blue-500" />{t("wa.delivered")}</div>
+                        <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-gray-400" />{t("wa.sent")}</div>
+                        <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-red-500" />{t("wa.errors")}</div>
                       </div>
                     </div>
                   ) : (
@@ -1137,9 +1134,9 @@ export default function WhatsAppPage() {
       <Dialog open={showQRDialog} onOpenChange={setShowQRDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{locale === "ru" ? "Отсканируйте QR-код" : "Scan QR Code"}</DialogTitle>
+            <DialogTitle>{t("wa.scanQR")}</DialogTitle>
             <DialogDescription>
-              {locale === "ru" ? "Откройте WhatsApp на телефоне и отсканируйте код" : "Open WhatsApp on your phone and scan this code"}
+              {t("wa.scanQRDesc")}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col items-center py-4">
@@ -1150,10 +1147,10 @@ export default function WhatsAppPage() {
             ) : qrData?.status === "connected" ? (
               <div className="text-center">
                 <Wifi className="h-16 w-16 text-green-500 mx-auto mb-4" />
-                <p className="text-green-500 font-medium">{locale === "ru" ? "Подключено!" : "Connected!"}</p>
+                <p className="text-green-500 font-medium">{t("wa.connectedBang")}</p>
               </div>
             ) : (
-              <p className="text-muted-foreground">{locale === "ru" ? "QR-код загружается..." : "Loading QR code..."}</p>
+              <p className="text-muted-foreground">{t("wa.qrLoading")}</p>
             )}
           </div>
         </DialogContent>
@@ -1164,7 +1161,6 @@ export default function WhatsAppPage() {
         open={templateFlowStep === "picker"}
         onOpenChange={(open) => { if (!open) setTemplateFlowStep("closed") }}
         onSelect={handlePresetSelect}
-        locale={locale}
       />
 
       {/* Template Editor (right sheet, fullscreen on mobile) */}
@@ -1177,7 +1173,6 @@ export default function WhatsAppPage() {
         isSaving={createTemplate.isPending || updateTemplate.isPending}
         isEditing={!!editingTemplate}
         triggerLabel={templateForm.trigger_event ? getTriggerEventLabel(templateForm.trigger_event) : ""}
-        locale={locale}
       />
     </div>
     </SubscriptionGate>

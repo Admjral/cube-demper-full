@@ -1,3 +1,5 @@
+import { useStore } from "@/store/use-store"
+import { useT } from "@/lib/i18n"
 import {
   Sheet,
   SheetContent,
@@ -11,21 +13,21 @@ interface TemplatePickerProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSelect: (preset: PresetTemplate) => void
-  locale: string
 }
 
-export function TemplatePicker({ open, onOpenChange, onSelect, locale }: TemplatePickerProps) {
+export function TemplatePicker({ open, onOpenChange, onSelect }: TemplatePickerProps) {
+  const t = useT()
+  const { locale } = useStore()
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className="max-h-[80vh] overflow-y-auto rounded-t-2xl">
         <SheetHeader className="pb-2">
           <SheetTitle>
-            {locale === "ru" ? "Выберите шаблон" : "Choose a template"}
+            {t("waTpl.chooseTemplate")}
           </SheetTitle>
           <SheetDescription>
-            {locale === "ru"
-              ? "Готовые шаблоны для событий заказа или создайте свой"
-              : "Pre-built templates for order events or create your own"}
+            {t("waTpl.chooseTemplateDesc")}
           </SheetDescription>
         </SheetHeader>
         <div className="grid grid-cols-2 gap-3 px-4 pb-6">

@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useFeatures, usePlansV2, useAddons, useActivateTrial } from '@/hooks/api/use-features'
+import { useT } from '@/lib/i18n'
 import {
   CreditCard,
   Check,
@@ -22,6 +23,7 @@ import { ru } from 'date-fns/locale'
 import { Zap } from 'lucide-react'
 
 export default function BillingPage() {
+  const t = useT()
   const { data: features, isLoading: featuresLoading } = useFeatures()
   const { data: plans, isLoading: plansLoading } = usePlansV2()
   const { data: addons, isLoading: addonsLoading } = useAddons()
@@ -43,10 +45,10 @@ export default function BillingPage() {
       <div>
         <h1 className="text-2xl font-semibold flex items-center gap-2">
           <CreditCard className="h-6 w-6" />
-          Тарифы и подписка
+          {t("billing.title")}
         </h1>
         <p className="text-muted-foreground">
-          Управление вашим тарифным планом
+          {t("billing.subtitle")}
         </p>
       </div>
 
@@ -62,21 +64,21 @@ export default function BillingPage() {
               <CardContent className="pt-6">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div>
-                    <p className="text-sm text-muted-foreground">Текущий план</p>
+                    <p className="text-sm text-muted-foreground">{t("billing.currentPlan")}</p>
                     <div className="flex items-center gap-2 mt-1">
                       <p className="text-xl font-semibold text-foreground">
-                        {features.plan_name || 'Тариф'}
+                        {features.plan_name || t("billing.plan")}
                       </p>
                       {features.is_trial && (
                         <Badge variant="outline" className="gap-1">
-                          Пробный период
+                          {t("billing.trial")}
                         </Badge>
                       )}
                     </div>
                     {features.subscription_ends_at && (
                       <div className="flex items-center gap-2 mt-1">
                         <p className="text-sm text-muted-foreground">
-                          Активен до {format(new Date(features.subscription_ends_at), 'd MMMM yyyy', { locale: ru })}
+                          {t("billing.activeUntil")} {format(new Date(features.subscription_ends_at), 'd MMMM yyyy', { locale: ru })}
                         </p>
                         {daysRemaining !== null && (
                           <span className={cn("text-sm font-medium flex items-center gap-1", getDaysColor(daysRemaining))}>
@@ -88,12 +90,12 @@ export default function BillingPage() {
                     )}
                     {features.is_trial && features.trial_ends_at && trialDaysRemaining !== null && (
                       <p className="text-sm text-muted-foreground">
-                        Пробный период: {getDaysText(trialDaysRemaining)} осталось
+                        {t("billing.trialPeriod")} {getDaysText(trialDaysRemaining)} осталось
                       </p>
                     )}
                   </div>
                   <Badge variant="default" className="self-start sm:self-center">
-                    Активна
+                    {t("billing.active")}
                   </Badge>
                 </div>
 
@@ -102,19 +104,19 @@ export default function BillingPage() {
                   <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                     <span className="text-sm text-muted-foreground flex items-center gap-2">
                       <BarChart3 className="h-4 w-4" />
-                      Аналитика
+                      {t("billing.analytics")}
                     </span>
                     <span className="font-medium text-sm">
-                      {features.analytics_limit === -1 ? 'Безлимит' : `до ${features.analytics_limit} товаров`}
+                      {features.analytics_limit === -1 ? t("billing.unlimited") : `до ${features.analytics_limit} ${t("common.products")}`}
                     </span>
                   </div>
                   <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                     <span className="text-sm text-muted-foreground flex items-center gap-2">
                       <TrendingUp className="h-4 w-4" />
-                      Демпинг
+                      {t("billing.demping")}
                     </span>
                     <span className="font-medium text-sm">
-                      до {features.demping_limit} товаров
+                      до {features.demping_limit} {t("common.products")}
                     </span>
                   </div>
                 </div>
@@ -122,7 +124,7 @@ export default function BillingPage() {
                 {/* Features */}
                 {(features.features || []).length > 0 && (
                   <div className="mt-4 pt-4 border-t">
-                    <p className="text-sm text-muted-foreground mb-2">Доступные функции:</p>
+                    <p className="text-sm text-muted-foreground mb-2">{t("billing.features")}</p>
                     <div className="flex flex-wrap gap-2">
                       {(features.features || []).map((feature) => (
                         <Badge key={feature} variant="secondary">
@@ -143,9 +145,9 @@ export default function BillingPage() {
                       <Sparkles className="h-5 w-5 text-green-500" />
                     </div>
                     <div>
-                      <p className="font-medium text-foreground">Бесплатный план</p>
+                      <p className="font-medium text-foreground">{t("billing.freePlan")}</p>
                       <p className="text-sm text-muted-foreground">
-                        Попробуйте все функции бесплатно в течение 3 дней
+                        {t("billing.tryFree")}
                       </p>
                     </div>
                   </div>
@@ -201,10 +203,10 @@ export default function BillingPage() {
                       <CardTitle className="text-lg">{plan.name}</CardTitle>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <BarChart3 className="h-4 w-4" />
-                        {plan.analytics_limit === -1 ? 'Безлимит' : plan.analytics_limit} товаров
+                        {plan.analytics_limit === -1 ? t("billing.unlimited") : plan.analytics_limit} {t("common.products")}
                         <span className="mx-1">•</span>
                         <TrendingUp className="h-4 w-4" />
-                        {plan.demping_limit} демпинг
+                        {plan.demping_limit} {t("billing.demping").toLowerCase()}
                       </div>
                     </CardHeader>
                     <CardContent>
@@ -239,7 +241,7 @@ export default function BillingPage() {
                         onClick={handleContactSupport}
                       >
                         {isCurrentPlan ? (
-                          'Текущий план'
+                          t("billing.currentPlan")
                         ) : (
                           <>
                             <MessageSquare className="h-4 w-4 mr-2" />

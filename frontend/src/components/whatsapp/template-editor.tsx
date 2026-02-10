@@ -1,6 +1,8 @@
 "use client"
 
 import { useRef } from "react"
+import { useStore } from "@/store/use-store"
+import { useT } from "@/lib/i18n"
 import {
   Sheet,
   SheetContent,
@@ -34,7 +36,6 @@ interface TemplateEditorProps {
   isSaving: boolean
   isEditing: boolean
   triggerLabel: string
-  locale: string
 }
 
 export function TemplateEditor({
@@ -46,8 +47,9 @@ export function TemplateEditor({
   isSaving,
   isEditing,
   triggerLabel,
-  locale,
 }: TemplateEditorProps) {
+  const t = useT()
+  const { locale } = useStore()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const insertVariable = (variable: string) => {
@@ -83,12 +85,10 @@ export function TemplateEditor({
           </Button>
           <div className="flex-1 min-w-0">
             <SheetTitle className="text-base truncate">
-              {isEditing
-                ? locale === "ru" ? "Редактировать шаблон" : "Edit Template"
-                : locale === "ru" ? "Новый шаблон" : "New Template"}
+              {isEditing ? t("waTpl.editTemplate") : t("waTpl.newTemplate")}
             </SheetTitle>
             <SheetDescription className="sr-only">
-              {locale === "ru" ? "Настройте текст шаблона" : "Configure template text"}
+              {t("waTpl.configureDesc")}
             </SheetDescription>
           </div>
           <Button
@@ -97,7 +97,7 @@ export function TemplateEditor({
             disabled={isSaving || !form.name || !form.message}
           >
             {isSaving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
-            {locale === "ru" ? "Сохранить" : "Save"}
+            {t("common.save")}
           </Button>
         </SheetHeader>
 
@@ -105,17 +105,17 @@ export function TemplateEditor({
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
           {/* Name */}
           <div className="space-y-1.5">
-            <Label className="text-xs">{locale === "ru" ? "Название" : "Name"}</Label>
+            <Label className="text-xs">{t("waTpl.name")}</Label>
             <Input
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              placeholder={locale === "ru" ? "Заказ принят" : "Order received"}
+              placeholder={t("waTpl.nameDefault")}
             />
           </div>
 
           {/* Name EN */}
           <div className="space-y-1.5">
-            <Label className="text-xs">{locale === "ru" ? "Название (EN)" : "Name (EN)"}</Label>
+            <Label className="text-xs">{t("waTpl.nameEn")}</Label>
             <Input
               value={form.name_en}
               onChange={(e) => setForm((f) => ({ ...f, name_en: e.target.value }))}
@@ -127,7 +127,7 @@ export function TemplateEditor({
           {form.trigger_event && (
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">
-                {locale === "ru" ? "Триггер:" : "Trigger:"}
+                {t("waTpl.trigger")}
               </span>
               <Badge variant="secondary" className="text-xs">
                 {triggerLabel}
@@ -137,12 +137,12 @@ export function TemplateEditor({
 
           {/* Message textarea */}
           <div className="space-y-1.5">
-            <Label className="text-xs">{locale === "ru" ? "Текст сообщения" : "Message"}</Label>
+            <Label className="text-xs">{t("waTpl.messageText")}</Label>
             <Textarea
               ref={textareaRef}
               value={form.message}
               onChange={(e) => setForm((f) => ({ ...f, message: e.target.value }))}
-              placeholder={locale === "ru" ? "Введите текст шаблона..." : "Enter template text..."}
+              placeholder={t("waTpl.messagePlaceholder")}
               rows={6}
               className="resize-none"
             />
@@ -151,7 +151,7 @@ export function TemplateEditor({
           {/* Variable chips */}
           <div className="space-y-1.5">
             <p className="text-xs text-muted-foreground font-medium">
-              {locale === "ru" ? "Вставить переменную:" : "Insert variable:"}
+              {t("waTpl.insertVariable")}
             </p>
             <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none">
               {VARIABLE_CHIPS.map((chip) => (
@@ -169,7 +169,7 @@ export function TemplateEditor({
 
           {/* Preview */}
           <div className="pt-2 border-t">
-            <TemplatePreview message={form.message} locale={locale} />
+            <TemplatePreview message={form.message} />
           </div>
         </div>
       </SheetContent>
