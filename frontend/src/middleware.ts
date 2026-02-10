@@ -1,9 +1,11 @@
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
-  // Force HTTPS in production
+  // Force HTTPS in production (skip for Railway internal healthchecks)
   const proto = request.headers.get('x-forwarded-proto')
-  if (proto === 'http') {
+  const host = request.headers.get('host') || ''
+  const isInternalRequest = host.includes('.railway.internal') || !host.includes('.')
+  if (proto === 'http' && !isInternalRequest) {
     const url = request.nextUrl.clone()
     url.protocol = 'https'
     return NextResponse.redirect(url, 301)
