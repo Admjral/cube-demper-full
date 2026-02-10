@@ -50,16 +50,6 @@ function formatPrice(price: number): string {
   return new Intl.NumberFormat('ru-KZ').format(price) + ' ₸'
 }
 
-function formatNumber(num: number): string {
-  if (num >= 1000000) {
-    return (num / 1000000).toFixed(1) + 'M'
-  }
-  if (num >= 1000) {
-    return (num / 1000).toFixed(1) + 'K'
-  }
-  return num.toString()
-}
-
 function getCompetitionBadge(merchantCount: number, t: (key: string) => string) {
   if (merchantCount <= 5) {
     return <Badge className="bg-green-500/20 text-green-500 hover:bg-green-500/30">{t("niche.competitionLow")}</Badge>
@@ -252,7 +242,7 @@ export default function NicheSearchPage() {
                     </SelectItem>
                     {categories.map(cat => (
                       <SelectItem key={cat.id} value={cat.id}>
-                        {cat.name} ({formatNumber(cat.products_count)})
+                        {cat.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
