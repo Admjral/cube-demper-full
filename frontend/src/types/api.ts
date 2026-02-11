@@ -292,6 +292,7 @@ export interface ProductDempingUpdate {
   price_step_override?: number | null
   demping_strategy?: 'standard' | 'always_first' | 'stay_top_n'
   strategy_params?: { top_position?: number } | null
+  pre_order_days?: number
 }
 
 // =============================================
