@@ -127,8 +127,12 @@ async def load_products(
             primary_image = p.get("primaryImage", {})
             image_url = primary_image.get("large") or primary_image.get("medium") or primary_image.get("small")
 
-        # Kaspi URL
-        kaspi_url = f"https://kaspi.kz/shop/p/-{kaspi_product_id}/"
+        # Kaspi URL — use shopLink from API if available, else construct from ID
+        shop_link = p.get("shopLink", "")
+        if shop_link:
+            kaspi_url = f"https://kaspi.kz{shop_link}" if shop_link.startswith("/") else shop_link
+        else:
+            kaspi_url = f"https://kaspi.kz/shop/p/-{kaspi_product_id}/"
 
         try:
             await conn.execute(

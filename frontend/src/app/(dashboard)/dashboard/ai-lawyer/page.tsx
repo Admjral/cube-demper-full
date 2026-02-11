@@ -96,12 +96,12 @@ export default function AILawyerPage() {
   if (activeTab) {
     return (
       <SubscriptionGate>
-      <div className="h-[calc(100vh-12rem)] lg:h-[calc(100vh-8rem)] flex flex-col">
+      <div className="h-[calc(100vh-5rem)] flex flex-col">
         {/* Header */}
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-2 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Button 
-              variant="ghost" 
+            <Button
+              variant="ghost"
               size="sm"
               onClick={() => setActiveTab(null)}
             >
@@ -115,7 +115,7 @@ export default function AILawyerPage() {
         </div>
 
         {/* Content */}
-        <Card className="glass-card flex-1 flex flex-col overflow-hidden">
+        <Card className="glass-card flex-1 flex flex-col overflow-hidden min-h-0">
           {activeTab === 'consultation' && <LawyerChat language={language} />}
           {activeTab === 'documents' && <DocumentGenerator language={language} />}
           {activeTab === 'analysis' && <ContractAnalyzer language={language} />}
@@ -123,12 +123,6 @@ export default function AILawyerPage() {
           {activeTab === 'taxes' && <TaxCalculator />}
           {activeTab === 'fees' && <FeeCalculator />}
         </Card>
-
-        {/* Disclaimer */}
-        <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1 justify-center">
-          <Sparkles className="h-3 w-3" />
-          Powered by Gemini AI. Не заменяет консультацию профессионального юриста.
-        </p>
       </div>
       </SubscriptionGate>
     )

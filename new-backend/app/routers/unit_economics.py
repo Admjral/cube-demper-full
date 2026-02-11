@@ -10,6 +10,7 @@ from typing import Optional, List, Annotated
 from decimal import Decimal
 from datetime import datetime
 import re
+import json
 import httpx
 import csv
 import io
@@ -28,21 +29,22 @@ router = APIRouter()
 # Based on Kaspi.kz tariffs 2026
 # =============================================================================
 
-# Categories with 6.4% commission (без НДС)
+# Commission rates — these are the TOTAL rates Kaspi deducts (already include VAT).
+# Source: Kaspi official tariffs 2026 + Algatop reference.
+
+# Categories with 6.4% commission
 LOW_COMMISSION_CATEGORIES = {
     "Аптека": {
         "subcategories": ["Лекарства"],  # Only Лекарства has 6.4%, other Аптека is 10.9%
-        "commission_no_vat": 6.4,
-        "commission_with_vat": 7.3
+        "commission_rate": 6.4,
     },
     "Продукты питания": {
         "subcategories": None,  # All subcategories
-        "commission_no_vat": 6.4,
-        "commission_with_vat": 7.3
+        "commission_rate": 6.4,
     }
 }
 
-# Categories with 13.5% commission (без НДС)
+# Categories with 13.5% commission
 HIGH_COMMISSION_CATEGORIES = {
     "Аксессуары": {
         "subcategories": [
@@ -50,28 +52,22 @@ HIGH_COMMISSION_CATEGORIES = {
             "Шапки, шарфы, перчатки",
             "Зонты, брелоки и портсигары",
             "Свадебные аксессуары",
-            "Сумки, чемоданы, кошельки"  # Some items like Рюкзаки, Кошельки, Сумки
+            "Сумки, чемоданы, кошельки"
         ],
-        "commission_no_vat": 13.5,
-        "commission_with_vat": 15.5
+        "commission_rate": 13.5,
     },
     "Телефоны и гаджеты": {
         "subcategories": ["Аксессуары для телефонов"],
-        "commission_no_vat": 13.5,
-        "commission_with_vat": 15.5
+        "commission_rate": 13.5,
     },
     "ТВ, Аудио, Видео": {
-        "subcategories": ["Чехлы для наушников"],  # Only some items
-        "commission_no_vat": 13.5,
-        "commission_with_vat": 15.5
+        "subcategories": ["Чехлы для наушников"],
+        "commission_rate": 13.5,
     }
 }
 
-# Default commission rate for most categories
-DEFAULT_COMMISSION = {
-    "commission_no_vat": 10.9,
-    "commission_with_vat": 12.5
-}
+# Default commission rate for most categories (10.9% including VAT)
+DEFAULT_COMMISSION_RATE = 10.9
 
 # List of all top-level categories
 ALL_CATEGORIES = [
@@ -249,8 +245,7 @@ TAX_REGIMES = {
 class CategoryCommission(BaseModel):
     category: str
     subcategory: Optional[str] = None
-    commission_no_vat: float
-    commission_with_vat: float
+    commission_rate: float  # Total rate including VAT
 
 
 class DeliveryCost(BaseModel):
@@ -271,7 +266,8 @@ class CalculationRequest(BaseModel):
     packaging_cost: float = Field(0, ge=0, description="Стоимость упаковки")
     other_costs: float = Field(0, ge=0, description="Прочие расходы")
     tax_regime: str = Field("ip_simplified", description="Налоговый режим")
-    use_vat: bool = Field(False, description="Использовать комиссию с НДС")
+    # use_vat kept for backward compatibility but no longer affects commission
+    use_vat: bool = Field(False, description="Плательщик НДС (информационное)")
 
 
 class CalculationResult(BaseModel):
@@ -280,9 +276,9 @@ class CalculationResult(BaseModel):
 
     # Commission
     category: str
-    commission_rate: float       # Base rate (e.g. 10.9%)
-    commission_effective_rate: float  # Effective rate after НДС (e.g. 12.2%)
-    commission_amount: float     # Actual amount deducted (with НДС)
+    commission_rate: float       # Total rate including VAT (e.g. 10.9%)
+    commission_effective_rate: float  # Same as commission_rate (kept for compat)
+    commission_amount: float     # Actual amount deducted
 
     # Kaspi Pay
     kaspi_pay_rate: float        # 0.95%
@@ -322,29 +318,26 @@ class ProductParseResult(BaseModel):
 # HELPER FUNCTIONS
 # =============================================================================
 
-def get_commission_rate(category: str, subcategory: Optional[str] = None, use_vat: bool = False) -> tuple:
-    """Get commission rate for a category/subcategory combination"""
-    rate_key = "commission_with_vat" if use_vat else "commission_no_vat"
-
+def get_commission_rate(category: str, subcategory: Optional[str] = None, **kwargs) -> float:
+    """Get commission rate for a category/subcategory. Returns single rate (includes VAT)."""
     # Check low commission categories (6.4%)
     if category in LOW_COMMISSION_CATEGORIES:
         cat_data = LOW_COMMISSION_CATEGORIES[category]
         if cat_data["subcategories"] is None:
-            # All subcategories have low rate
-            return cat_data[rate_key], cat_data["commission_no_vat"], cat_data["commission_with_vat"]
+            return cat_data["commission_rate"]
         elif subcategory and any(sub in subcategory for sub in cat_data["subcategories"]):
-            return cat_data[rate_key], cat_data["commission_no_vat"], cat_data["commission_with_vat"]
+            return cat_data["commission_rate"]
 
     # Check high commission categories (13.5%)
     if category in HIGH_COMMISSION_CATEGORIES:
         cat_data = HIGH_COMMISSION_CATEGORIES[category]
         if cat_data["subcategories"] is None:
-            return cat_data[rate_key], cat_data["commission_no_vat"], cat_data["commission_with_vat"]
+            return cat_data["commission_rate"]
         elif subcategory and any(sub in subcategory for sub in cat_data["subcategories"]):
-            return cat_data[rate_key], cat_data["commission_no_vat"], cat_data["commission_with_vat"]
+            return cat_data["commission_rate"]
 
     # Default rate (10.9%)
-    return DEFAULT_COMMISSION[rate_key], DEFAULT_COMMISSION["commission_no_vat"], DEFAULT_COMMISSION["commission_with_vat"]
+    return DEFAULT_COMMISSION_RATE
 
 
 def get_delivery_cost(delivery_type: str, price: float, weight_kg: float) -> float:
@@ -377,11 +370,10 @@ async def get_categories():
     """Get list of all categories with their commission rates"""
     result = []
     for cat in ALL_CATEGORIES:
-        rate, no_vat, with_vat = get_commission_rate(cat)
+        rate = get_commission_rate(cat)
         result.append({
             "category": cat,
-            "commission_no_vat": no_vat,
-            "commission_with_vat": with_vat,
+            "commission_rate": rate,
             "has_variable_rates": cat in HIGH_COMMISSION_CATEGORIES or cat in LOW_COMMISSION_CATEGORIES
         })
     return result
@@ -391,15 +383,13 @@ async def get_categories():
 async def get_commission(
     category: str = Query(..., description="Category name"),
     subcategory: Optional[str] = Query(None, description="Subcategory name"),
-    use_vat: bool = Query(False, description="Use VAT-included rate")
 ) -> CategoryCommission:
     """Get commission rate for a specific category"""
-    rate, no_vat, with_vat = get_commission_rate(category, subcategory, use_vat)
+    rate = get_commission_rate(category, subcategory)
     return CategoryCommission(
         category=category,
         subcategory=subcategory,
-        commission_no_vat=no_vat,
-        commission_with_vat=with_vat
+        commission_rate=rate,
     )
 
 
@@ -423,33 +413,17 @@ async def get_tax_regimes():
 
 
 KASPI_PAY_RATE = 0.95  # Kaspi Pay fee: 0.95% of selling price
-VAT_RATE = 12.0  # НДС rate in Kazakhstan: 12%
 
 
 @router.post("/calculate", response_model=CalculationResult)
 async def calculate_unit_economics(request: CalculationRequest):
     """
-    Calculate full unit economics with all delivery scenarios
+    Calculate full unit economics with all delivery scenarios.
+    Commission rates already include VAT — no extra multiplication needed.
     """
-    # Get base commission rate
-    base_commission_rate, no_vat_rate, with_vat_rate = get_commission_rate(
-        request.category,
-        request.subcategory,
-        request.use_vat
-    )
-
-    # Kaspi ALWAYS adds 12% НДС on top of the commission.
-    # - For non-VAT payers (use_vat=False): base rate + 12% НДС = effective rate
-    #   (seller cannot reclaim НДС, so it's a real cost)
-    # - For VAT payers (use_vat=True): commission_with_vat already includes НДС
-    if request.use_vat:
-        # VAT payer: rate already includes НДС
-        effective_commission_rate = base_commission_rate
-    else:
-        # Non-VAT payer: Kaspi adds 12% НДС on top
-        effective_commission_rate = round(base_commission_rate * (1 + VAT_RATE / 100), 2)
-
-    commission_amount = request.selling_price * (effective_commission_rate / 100)
+    # Commission rate already includes VAT (e.g. 10.9% for default)
+    commission_rate = get_commission_rate(request.category, request.subcategory)
+    commission_amount = request.selling_price * (commission_rate / 100)
 
     # Kaspi Pay fee (separate from marketplace commission)
     kaspi_pay_amount = request.selling_price * (KASPI_PAY_RATE / 100)
@@ -500,8 +474,8 @@ async def calculate_unit_economics(request: CalculationRequest):
         selling_price=request.selling_price,
         purchase_price=request.purchase_price,
         category=request.category,
-        commission_rate=base_commission_rate,
-        commission_effective_rate=effective_commission_rate,
+        commission_rate=commission_rate,
+        commission_effective_rate=commission_rate,  # Same — rate already includes VAT
         commission_amount=round(commission_amount, 2),
         kaspi_pay_rate=KASPI_PAY_RATE,
         kaspi_pay_amount=round(kaspi_pay_amount, 2),
@@ -586,22 +560,33 @@ async def parse_kaspi_url(
 
             html = response.text
 
-            # Extract product name from title
+            # ---- Parse BACKEND.components.item JSON (main data source) ----
+            item_data = None
+            item_match = re.search(
+                r'BACKEND\.components\.item\s*=\s*(\{.*?\})\s*</script>',
+                html, re.DOTALL
+            )
+            if item_match:
+                try:
+                    item_data = json.loads(item_match.group(1))
+                except (json.JSONDecodeError, ValueError):
+                    pass
+
+            # Extract product name
             product_name = None
-            title_match = re.search(r'<title>([^<]+)</title>', html)
-            if title_match:
-                title = title_match.group(1)
-                # Remove " — Kaspi.kz" suffix
-                product_name = re.sub(r'\s*[—-]\s*Kaspi\.kz.*$', '', title).strip()
+            if item_data and item_data.get("card", {}).get("title"):
+                product_name = item_data["card"]["title"]
+            else:
+                title_match = re.search(r'<title>([^<]+)</title>', html)
+                if title_match:
+                    title = title_match.group(1)
+                    product_name = re.sub(r'\s*[—-]\s*Kaspi\.kz.*$', '', title).strip()
 
             # Extract price
             price = None
-            # Try different price patterns
             price_patterns = [
                 r'"price":\s*(\d+)',
-                r'itemoffered-price["\s]*:\s*["\']?(\d+)',
                 r'data-product-price="(\d+)"',
-                r'"offers":\s*\{[^}]*"price":\s*(\d+)',
             ]
             for pattern in price_patterns:
                 price_match = re.search(pattern, html)
@@ -609,76 +594,121 @@ async def parse_kaspi_url(
                     price = float(price_match.group(1))
                     break
 
-            # Extract category
+            # Extract category from breadcrumbs in item_data
             category = None
             subcategory = None
-
-            # Method 1: Try to find category in structured data
-            cat_patterns = [
-                r'"category":\s*"([^"]+)"',
-                r'itemListElement[^}]*"name":\s*"([^"]+)"',
-            ]
-            for pattern in cat_patterns:
-                cat_matches = re.findall(pattern, html)
-                if cat_matches:
-                    for cat in cat_matches:
-                        if cat in ALL_CATEGORIES:
-                            category = cat
-                            break
-                    if category:
+            if item_data:
+                breadcrumbs = item_data.get("breadcrumbs", [])
+                # Breadcrumbs: [Kaspi Магазин, Top category, ..., Leaf category]
+                # Match against our known categories
+                for bc in breadcrumbs:
+                    bc_title = bc.get("title", "")
+                    if bc_title in ALL_CATEGORIES:
+                        category = bc_title
                         break
+                # Also check digitalData.product.category array in HTML
+                if not category:
+                    cat_array_match = re.search(
+                        r'digitalData\.product\s*=\s*\{[^}]*"category":\s*\[([^\]]+)\]',
+                        html
+                    )
+                    if cat_array_match:
+                        for cat_name in re.findall(r'"([^"]+)"', cat_array_match.group(1)):
+                            if cat_name in ALL_CATEGORIES:
+                                category = cat_name
+                                break
 
-            # Method 2: Detect from product name using keywords
+            # Fallback: structured data
+            if not category:
+                cat_match = re.search(r'"category":\s*"([^"]+)"', html)
+                if cat_match and cat_match.group(1) in ALL_CATEGORIES:
+                    category = cat_match.group(1)
+
+            # Fallback: detect from product name/URL
             if not category and product_name:
                 category, subcategory = detect_category_from_text(product_name)
-
-            # Method 3: Detect from URL slug
             if not category:
-                url_slug = url.lower()
-                category, subcategory = detect_category_from_text(url_slug)
-
-            # Method 4: Check breadcrumbs in HTML
-            if not category:
-                breadcrumb_match = re.search(r'breadcrumb[^>]*>([^<]+)', html, re.IGNORECASE)
-                if breadcrumb_match:
-                    category, subcategory = detect_category_from_text(breadcrumb_match.group(1))
+                category, subcategory = detect_category_from_text(url.lower())
 
             # Extract image
             image_url = None
-            img_match = re.search(r'"image":\s*"([^"]+)"', html)
-            if img_match:
-                image_url = img_match.group(1)
+            if item_data:
+                image_url = item_data.get("card", {}).get("image") or item_data.get("galleryImages", [{}])[0].get("large") if item_data.get("galleryImages") else None
+            if not image_url:
+                img_match = re.search(r'"image":\s*"(https?://[^"]+)"', html)
+                if img_match:
+                    image_url = img_match.group(1)
 
-            # Extract weight from characteristics table
+            # Extract weight from specifications in item_data
             weight_kg = None
-            weight_patterns = [
-                # "Вес" ... "0.23 кг" or "230 г" in specs table
-                r'[Вв]ес[^<]*?</[^>]+>\s*<[^>]+>\s*([0-9.,]+)\s*(кг|г|kg|g)',
-                # JSON-like: "weight": "0.23" or "Вес": "1.5 кг"
-                r'"[Вв]ес":\s*"?([0-9.,]+)\s*(кг|г|kg|g)"?',
-                # Spec row: Вес ... 1.5 кг
-                r'[Вв]ес\s*(?:товара|брутто|нетто|,\s*кг)?\s*[:<]?\s*([0-9.,]+)\s*(кг|г|kg|g)',
-                # "weight":"0.228" in JSON data
-                r'"weight":\s*"?([0-9.,]+)"?',
-            ]
-            for pattern in weight_patterns:
-                w_match = re.search(pattern, html)
-                if w_match:
-                    try:
-                        value = float(w_match.group(1).replace(',', '.'))
-                        # Check if there's a unit group
-                        unit = w_match.group(2).lower() if w_match.lastindex >= 2 else 'kg'
-                        if unit in ('г', 'g'):
-                            weight_kg = round(value / 1000, 3)
-                        else:
-                            weight_kg = round(value, 3)
-                        # Sanity check: weight should be 0.01 - 100 kg
-                        if weight_kg < 0.01 or weight_kg > 100:
-                            weight_kg = None
-                        else:
-                            break
-                    except (ValueError, IndexError):
-                        continue
+            if item_data:
+                specs = item_data.get("specifications", [])
+                for group in specs:
+                    for feat in group.get("features", []):
+                        feat_name = (feat.get("name") or "").lower()
+                        feat_code = (feat.get("code") or "").lower()
+                        # Match weight-related features
+                        if any(kw in feat_name for kw in ("вес", "масса")) or \
+                           any(kw in feat_code for kw in ("weight", "ves", "massa")):
+                            values = feat.get("featureValues", [])
+                            if values:
+                                raw_val = str(values[0].get("value", "")).replace(",", ".").strip()
+                                # Parse value like "0.228", "228 г", "1.5 кг"
+                                num_match = re.match(r'([0-9.]+)\s*(кг|г|kg|g)?', raw_val)
+                                if num_match:
+                                    try:
+                                        val = float(num_match.group(1))
+                                        unit_str = (num_match.group(2) or "").lower()
+                                        # Check featureUnit for unit info
+                                        feat_unit = feat.get("featureUnit")
+                                        if not unit_str and feat_unit:
+                                            unit_str = (feat_unit.get("name") or feat_unit.get("code") or "").lower()
+                                        # Also check feature name for unit hint
+                                        if not unit_str and "кг" in feat_name:
+                                            unit_str = "кг"
+                                        if not unit_str and "г" in feat_name and "кг" not in feat_name:
+                                            unit_str = "г"
+                                        # Convert grams to kg
+                                        if unit_str in ("г", "g"):
+                                            weight_kg = round(val / 1000, 3)
+                                        elif val > 100:
+                                            # Likely grams without unit
+                                            weight_kg = round(val / 1000, 3)
+                                        else:
+                                            weight_kg = round(val, 3)
+                                        # Sanity check
+                                        if 0.01 <= weight_kg <= 100:
+                                            break
+                                        else:
+                                            weight_kg = None
+                                    except ValueError:
+                                        pass
+                    if weight_kg:
+                        break
+
+            # Fallback: regex on raw HTML for weight
+            if not weight_kg:
+                weight_patterns = [
+                    r'"[Вв]ес":\s*"?([0-9.,]+)\s*(кг|г|kg|g)"?',
+                    r'"weight":\s*"?([0-9.,]+)"?',
+                    r'[Вв]ес\s*(?:товара|брутто|нетто|,\s*кг)?\s*[:<]?\s*([0-9.,]+)\s*(кг|г|kg|g)',
+                ]
+                for pattern in weight_patterns:
+                    w_match = re.search(pattern, html)
+                    if w_match:
+                        try:
+                            value = float(w_match.group(1).replace(',', '.'))
+                            unit = w_match.group(2).lower() if w_match.lastindex >= 2 else 'kg'
+                            if unit in ('г', 'g'):
+                                weight_kg = round(value / 1000, 3)
+                            else:
+                                weight_kg = round(value, 3)
+                            if 0.01 <= weight_kg <= 100:
+                                break
+                            else:
+                                weight_kg = None
+                        except (ValueError, IndexError):
+                            continue
 
             return ProductParseResult(
                 product_name=product_name,

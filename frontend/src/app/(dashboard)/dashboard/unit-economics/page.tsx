@@ -15,7 +15,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
@@ -51,6 +50,7 @@ import {
   FileText,
   BookMarked,
 } from "lucide-react"
+import { toast } from "sonner"
 import {
   calculateUnitEconomics,
   parseKaspiUrl,
@@ -126,6 +126,10 @@ export default function UnitEconomicsPage() {
   }
 
   const handleCalculate = async () => {
+    if (values.sellingPrice <= 0) {
+      setResult(null)
+      return
+    }
     try {
       const response = await calculateUnitEconomics({
         selling_price: values.sellingPrice,
@@ -200,12 +204,12 @@ export default function UnitEconomicsPage() {
       })
       setShowSaveDialog(false)
       setSaveProductName("")
-      // Refresh library if on that tab
-      if (activeTab === "library") {
-        loadSavedCalculations()
-      }
-    } catch (e) {
+      toast.success("Расчёт сохранён в библиотеку")
+      // Always refresh library cache
+      loadSavedCalculations()
+    } catch (e: any) {
       console.error("Save error:", e)
+      toast.error(e?.message || "Ошибка сохранения")
     } finally {
       setSavingCalculation(false)
     }
@@ -232,8 +236,10 @@ export default function UnitEconomicsPage() {
       setSavedCalculations(prev => prev.filter(calc => calc.id !== deleteId))
       setShowDeleteDialog(false)
       setDeleteId(null)
-    } catch (e) {
+      toast.success("Расчёт удалён")
+    } catch (e: any) {
       console.error("Delete error:", e)
+      toast.error(e?.message || "Ошибка удаления")
     }
   }
 
@@ -370,6 +376,11 @@ export default function UnitEconomicsPage() {
                             {t("unit.categoryLabel")} {parsedProduct.category}
                           </p>
                         )}
+                        {parsedProduct.weight_kg && (
+                          <p className="text-muted-foreground">
+                            {t("unit.productWeight")}: {parsedProduct.weight_kg} кг
+                          </p>
+                        )}
                       </div>
                     </div>
                   ) : (
@@ -453,10 +464,8 @@ export default function UnitEconomicsPage() {
                     <p className="text-xs text-muted-foreground">
                       {t("unit.kaspiCommission")}{" "}
                       <span className="font-medium">
-                        {formatPercent(result.commission_rate)}
-                        {!values.useVat && ` + НДС = ${formatPercent(result.commission_effective_rate)}`}
+                        {formatPercent(result.commission_rate)} (с НДС)
                       </span>
-                      {values.useVat ? ` ${t("unit.withVAT")}` : ` ${t("unit.withoutVAT")}`}
                     </p>
                   )}
                 </div>
@@ -551,19 +560,6 @@ export default function UnitEconomicsPage() {
                       />
                     </div>
 
-                    {/* VAT toggle */}
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="useVat" className="cursor-pointer">
-                        {t("unit.commissionVAT")}
-                      </Label>
-                      <Switch
-                        id="useVat"
-                        checked={values.useVat}
-                        onCheckedChange={(checked) =>
-                          setValues({ ...values, useVat: checked })
-                        }
-                      />
-                    </div>
                   </div>
                 )}
 
@@ -699,7 +695,7 @@ export default function UnitEconomicsPage() {
                     <div className="flex justify-between items-center">
                       <span className="text-muted-foreground">
                         {t("unit.kaspiCommission")} (
-                        {formatPercent(result.commission_effective_rate)})
+                        {formatPercent(result.commission_rate)})
                       </span>
                       <span className="text-red-500">-{formatPrice(result.commission_amount)}</span>
                     </div>

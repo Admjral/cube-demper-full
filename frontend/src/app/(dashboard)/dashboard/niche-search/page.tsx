@@ -51,6 +51,19 @@ function formatPrice(price: number): string {
   return new Intl.NumberFormat('ru-KZ').format(price) + ' ₸'
 }
 
+function sanitizeKaspiUrl(url: string | null | undefined): string {
+  if (!url) return 'https://kaspi.kz'
+  // Fix doubled URLs like "https://kaspi.kzhttps//kaspi.kz/shop/p/..."
+  const doubleMatch = url.match(/https?:\/\/kaspi\.kz(https?\/\/kaspi\.kz\/.*)/)
+  if (doubleMatch) {
+    return 'https://kaspi.kz/' + doubleMatch[1].replace(/^https?\/\/kaspi\.kz\//, '')
+  }
+  // Fix missing colon: "https//..." -> "https://..."
+  if (url.startsWith('https//')) return 'https://' + url.slice(7)
+  if (url.startsWith('http//')) return 'http://' + url.slice(6)
+  return url
+}
+
 function getCompetitionBadge(merchantCount: number, t: (key: string) => string) {
   if (merchantCount <= 5) {
     return <Badge className="bg-green-500/20 text-green-500 hover:bg-green-500/30">{t("niche.competitionLow")}</Badge>
@@ -493,7 +506,7 @@ export default function NicheSearchPage() {
                             size="sm"
                             onClick={(e) => {
                               e.stopPropagation()
-                              window.open(product.kaspi_url, '_blank')
+                              window.open(sanitizeKaspiUrl(product.kaspi_url), '_blank')
                             }}
                           >
                             <ExternalLink className="h-4 w-4" />
@@ -622,7 +635,7 @@ export default function NicheSearchPage() {
               <div className="flex gap-3">
                 <Button
                   className="flex-1"
-                  onClick={() => window.open(selectedProduct.kaspi_url, '_blank')}
+                  onClick={() => window.open(sanitizeKaspiUrl(selectedProduct.kaspi_url), '_blank')}
                 >
                   <ExternalLink className="h-4 w-4 mr-2" />
                   {t("niche.openOnKaspi")}

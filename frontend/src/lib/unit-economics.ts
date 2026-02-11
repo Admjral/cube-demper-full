@@ -10,9 +10,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || ''
 export interface CategoryCommission {
   category: string
   subcategory?: string
-  commission_no_vat: number
-  commission_with_vat: number
-  has_variable_rates?: boolean
+  commission_rate: number  // Total rate including VAT
 }
 
 export interface DeliveryCost {
@@ -187,11 +185,9 @@ export async function getCategories(): Promise<CategoryCommission[]> {
 export async function getCommission(
   category: string,
   subcategory?: string,
-  useVat: boolean = false
 ): Promise<CategoryCommission> {
   const params = new URLSearchParams({ category })
   if (subcategory) params.append('subcategory', subcategory)
-  if (useVat) params.append('use_vat', 'true')
 
   return fetchAPI<CategoryCommission>(`/unit-economics/commission?${params}`)
 }

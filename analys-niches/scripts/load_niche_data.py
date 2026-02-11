@@ -131,10 +131,22 @@ async def load_products(
         except (json.JSONDecodeError, TypeError):
             pass
 
-        # Kaspi URL
-        product_url = p.get("product_url", "")
+        # Kaspi URL — normalize to full valid URL
+        product_url = p.get("product_url", "") or ""
         if product_url:
-            kaspi_url = product_url if product_url.startswith("http") else f"https://kaspi.kz{product_url}"
+            # Strip any protocol prefix issues (e.g. "https//..." without colon)
+            product_url = product_url.strip()
+            if product_url.startswith("https//"):
+                product_url = "https://" + product_url[7:]
+            elif product_url.startswith("http//"):
+                product_url = "http://" + product_url[6:]
+
+            if product_url.startswith("http"):
+                kaspi_url = product_url
+            elif product_url.startswith("/"):
+                kaspi_url = f"https://kaspi.kz{product_url}"
+            else:
+                kaspi_url = f"https://kaspi.kz/{product_url}"
         else:
             kaspi_url = None
 
