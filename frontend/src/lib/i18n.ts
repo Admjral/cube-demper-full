@@ -650,6 +650,25 @@ const translations: Record<Locale, Record<string, string>> = {
     "integrations.storeLimit": "Лимит: 1 магазин на аккаунт",
     "integrations.storeLimitDesc": "Для подключения нового магазина обратитесь в поддержку",
 
+    // === API Токен ===
+    "integrations.apiToken": "API Токен",
+    "integrations.apiTokenDesc": "Токен для доступа к заказам и телефонам покупателей",
+    "integrations.apiTokenSave": "Сохранить токен",
+    "integrations.apiTokenSaved": "Токен сохранён",
+    "integrations.apiTokenSaveError": "Ошибка сохранения токена",
+    "integrations.apiTokenActive": "Токен активен",
+    "integrations.apiTokenInvalid": "Токен недействителен",
+    "integrations.apiTokenNotSet": "Токен не указан",
+    "integrations.apiTokenPlaceholder": "Вставьте API токен из Kaspi MC",
+    "integrations.apiTokenHowTo": "Как получить API токен",
+    "integrations.apiTokenStep1": "Откройте kaspi.kz/mc и войдите в кабинет продавца",
+    "integrations.apiTokenStep2": "Перейдите в Настройки \u2192 API",
+    "integrations.apiTokenStep3": "Нажмите \u00ABСгенерировать новый токен\u00BB",
+    "integrations.apiTokenStep4": "Скопируйте токен и вставьте в поле выше",
+    "integrations.apiTokenExpiredWarning": "Токен действует ограниченное время. Если рассылка перестала работать \u2014 сгенерируйте новый токен в Kaspi MC.",
+    "integrations.apiTokenExpiredAlert": "У магазина \u00AB{name}\u00BB истёк API токен",
+    "integrations.apiTokenRenew": "Обновить токен",
+
     // === Страница поддержки ===
     "support.pageTitle": "Техподдержка",
     "support.pageSubtitle": "Обычно отвечаем в течение часа",
@@ -1311,6 +1330,25 @@ const translations: Record<Locale, Record<string, string>> = {
     // === Дүкен лимиті ===
     "integrations.storeLimit": "Лимит: аккаунтқа 1 дүкен",
     "integrations.storeLimitDesc": "Жаңа дүкен қосу үшін қолдау қызметіне хабарласыңыз",
+
+    // === API Токен ===
+    "integrations.apiToken": "API Токен",
+    "integrations.apiTokenDesc": "Тапсырыстар мен сатып алушылардың телефондарына қол жеткізу токені",
+    "integrations.apiTokenSave": "Токенді сақтау",
+    "integrations.apiTokenSaved": "Токен сақталды",
+    "integrations.apiTokenSaveError": "Токенді сақтау қатесі",
+    "integrations.apiTokenActive": "Токен белсенді",
+    "integrations.apiTokenInvalid": "Токен жарамсыз",
+    "integrations.apiTokenNotSet": "Токен көрсетілмеген",
+    "integrations.apiTokenPlaceholder": "Kaspi MC-ден API токенді қойыңыз",
+    "integrations.apiTokenHowTo": "API токенді қалай алуға болады",
+    "integrations.apiTokenStep1": "kaspi.kz/mc ашыңыз және сатушы кабинетіне кіріңіз",
+    "integrations.apiTokenStep2": "Баптаулар \u2192 API бөліміне өтіңіз",
+    "integrations.apiTokenStep3": "\u00ABЖаңа токен генерациялау\u00BB батырмасын басыңыз",
+    "integrations.apiTokenStep4": "Токенді көшіріп, жоғарыдағы өріске қойыңыз",
+    "integrations.apiTokenExpiredWarning": "Токен белгілі уақыт аралығында жарамды. Егер хабарлама жіберу тоқтаса \u2014 Kaspi MC-де жаңа токен жасаңыз.",
+    "integrations.apiTokenExpiredAlert": "\u00AB{name}\u00BB дүкенінің API токені жарамсыз",
+    "integrations.apiTokenRenew": "Токенді жаңарту",
 
     // === Қолдау беті ===
     "support.pageTitle": "Қолдау қызметі",

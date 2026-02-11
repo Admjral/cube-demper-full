@@ -9,6 +9,8 @@ export interface KaspiStore {
   products_count: number
   last_sync: string | null
   is_active: boolean
+  api_key_set: boolean
+  api_key_valid: boolean
 }
 
 export interface KaspiAuthRequest {
