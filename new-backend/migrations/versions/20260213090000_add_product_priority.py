@@ -1,6 +1,6 @@
 """Add is_priority column to products table
 
-Revision ID: 20260213100000
+Revision ID: 20260213090000
 Revises: 20260212160000
 Create Date: 2026-02-13
 
@@ -10,7 +10,7 @@ Max 10 priority products per store.
 from alembic import op
 
 # revision identifiers
-revision = '20260213100000'
+revision = '20260213090000'
 down_revision = '20260212160000'
 branch_labels = None
 depends_on = None
