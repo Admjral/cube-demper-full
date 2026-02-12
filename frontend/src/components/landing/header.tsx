@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import Link from 'next/link'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -21,8 +22,9 @@ export function Header() {
     <header className="fixed top-0 left-0 right-0 z-50 glass-header">
       <nav className="container mx-auto px-4 h-16 flex items-center justify-between">
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-2">
-          <span className="text-xl font-bold text-foreground">Demper</span>
+        <Link href="/" className="flex items-center">
+          <Image src="/logodark.svg" alt="Demper" width={120} height={42} className="h-8 w-auto dark:hidden" priority />
+          <Image src="/logowhite.svg" alt="Demper" width={120} height={42} className="h-8 w-auto hidden dark:block" priority />
         </Link>
 
         {/* Desktop Navigation */}

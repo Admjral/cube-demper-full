@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useT } from "@/lib/i18n"
 import { useAuth } from "@/hooks/use-auth"
 import { useFeatures } from "@/hooks/api/use-features"
@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Avatar } from "@/components/ui/avatar"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { featureLabels } from "@/lib/features"
 import { format } from "date-fns"
 import { ru } from "date-fns/locale"
@@ -26,19 +27,65 @@ import {
   CreditCard,
   Sparkles,
   ArrowRight,
+  Loader2,
+  MessageCircle,
 } from "lucide-react"
 import Link from "next/link"
+import { toast } from "sonner"
+import { api } from "@/lib/api"
+import type { UserProfileUpdate } from "@/types/api"
 
 export default function ProfilePage() {
   const t = useT()
-  const { user, loading, signOut } = useAuth()
+  const { user, loading, signOut, refreshUser } = useAuth()
   const { data: features } = useFeatures()
   const [isSaving, setIsSaving] = useState(false)
+
+  // Form state
+  const [fullName, setFullName] = useState("")
+  const [companyName, setCompanyName] = useState("")
+  const [bin, setBin] = useState("")
+  const [taxType, setTaxType] = useState("")
+
+  // Initialize form from user data
+  useEffect(() => {
+    if (user) {
+      setFullName(user.full_name || "")
+      setCompanyName(user.company_name || "")
+      setBin(user.bin || "")
+      setTaxType(user.tax_type || "")
+    }
+  }, [user])
+
+  const handleSave = async () => {
+    setIsSaving(true)
+    try {
+      const updates: UserProfileUpdate = {}
+
+      if (fullName !== (user?.full_name || "")) updates.full_name = fullName
+      if (companyName !== (user?.company_name || "")) updates.company_name = companyName
+      if (bin !== (user?.bin || "")) updates.bin = bin
+      if (taxType !== (user?.tax_type || "")) updates.tax_type = taxType
+
+      if (Object.keys(updates).length === 0) {
+        toast.info(t("profile.noChanges"))
+        return
+      }
+
+      await api.patch("/auth/me", updates)
+      await refreshUser()
+      toast.success(t("profile.saved"))
+    } catch (error) {
+      console.error("Failed to update profile:", error)
+      toast.error(t("common.error"))
+    } finally {
+      setIsSaving(false)
+    }
+  }
 
   // Extract user info
   const userEmail = user?.email || ""
   const userName = user?.full_name || user?.email?.split("@")[0] || ""
-  const [firstName, lastName] = userName.split(" ")
 
   if (loading) {
     return (
@@ -199,33 +246,41 @@ export default function ProfilePage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="firstName">
-                {t("profile.firstName")}
-              </Label>
-              <Input id="firstName" defaultValue={firstName || ""} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="lastName">
-                {t("profile.lastName")}
-              </Label>
-              <Input id="lastName" defaultValue={lastName || ""} />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="fullName">
+              {t("profile.fullName")}
+            </Label>
+            <Input
+              id="fullName"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              placeholder={t("profile.fullNamePlaceholder")}
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="email" className="flex items-center gap-2">
               <Mail className="h-4 w-4 text-muted-foreground" />
               Email
             </Label>
-            <Input id="email" type="email" defaultValue={userEmail} disabled />
+            <Input id="email" type="email" value={userEmail} disabled />
           </div>
           <div className="space-y-2">
             <Label htmlFor="phone" className="flex items-center gap-2">
               <Phone className="h-4 w-4 text-muted-foreground" />
               {t("profile.phone")}
             </Label>
-            <Input id="phone" placeholder={t("profile.phonePlaceholder")} />
+            <Input
+              id="phone"
+              value={user?.phone || ""}
+              disabled
+              placeholder={t("profile.phonePlaceholder")}
+            />
+            <Alert>
+              <MessageCircle className="h-4 w-4" />
+              <AlertDescription className="text-sm">
+                {t("profile.phoneChangeHint")}
+              </AlertDescription>
+            </Alert>
           </div>
         </CardContent>
       </Card>
@@ -243,14 +298,25 @@ export default function ProfilePage() {
             <Label htmlFor="companyName">
               {t("profile.companyName")}
             </Label>
-            <Input id="companyName" placeholder={t("profile.companyPlaceholder")} />
+            <Input
+              id="companyName"
+              value={companyName}
+              onChange={(e) => setCompanyName(e.target.value)}
+              placeholder={t("profile.companyPlaceholder")}
+            />
           </div>
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="bin">
                 {t("profile.binIin")}
               </Label>
-              <Input id="bin" placeholder="123456789012" />
+              <Input
+                id="bin"
+                value={bin}
+                onChange={(e) => setBin(e.target.value)}
+                placeholder="123456789012"
+                maxLength={12}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="taxType">
@@ -258,6 +324,8 @@ export default function ProfilePage() {
               </Label>
               <Input
                 id="taxType"
+                value={taxType}
+                onChange={(e) => setTaxType(e.target.value)}
                 placeholder={t("profile.simplified")}
               />
             </div>
@@ -306,10 +374,15 @@ export default function ProfilePage() {
 
       {/* Actions */}
       <div className="flex flex-col sm:flex-row gap-4">
-        <Button className="flex-1" disabled={isSaving}>
-          {isSaving
-            ? t("profile.saving")
-            : t("profile.saveChanges")}
+        <Button className="flex-1" onClick={handleSave} disabled={isSaving}>
+          {isSaving ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              {t("profile.saving")}
+            </>
+          ) : (
+            t("profile.saveChanges")
+          )}
         </Button>
         <Button
           variant="outline"

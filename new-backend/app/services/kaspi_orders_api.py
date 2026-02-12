@@ -15,6 +15,7 @@ import httpx
 import asyncpg
 
 from ..config import settings
+from ..core.rate_limiter import get_orders_rate_limiter
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ class KaspiOrdersAPI:
             "X-Auth-Token": api_token,
             "Content-Type": "application/vnd.api+json",
             "Accept": "application/vnd.api+json",
+            "User-Agent": "Mozilla/5.0",
         }
 
     def _get_client_kwargs(self) -> dict:
@@ -90,6 +92,9 @@ class KaspiOrdersAPI:
             async with httpx.AsyncClient(**self._get_client_kwargs()) as client:
                 while page < max_pages:
                     params["page[number]"] = page
+
+                    # Rate limiting: 6 RPS for Orders API
+                    await get_orders_rate_limiter().acquire()
 
                     response = await client.get(
                         self.BASE_URL,

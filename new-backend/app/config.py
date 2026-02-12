@@ -82,11 +82,15 @@ class Settings(BaseSettings):
     pricefeed_rps: float = 1.5               # Pricefeed API (per merchant account!) - safe 2, ban ~3, 30-min ban!
     pricefeed_cooldown_seconds: int = 1800    # 30-min cooldown after pricefeed 429
     offers_ban_pause_seconds: int = 15        # Pause after 403 from offers API
+    priority_check_interval_minutes: int = 3  # Priority products checked every 3 min
 
     # Kaspi API
     kaspi_api_base_url: str = "https://kaspi.kz/shop/api"
     kaspi_auth_url: str = "https://idmc.shop.kaspi.kz"
     kaspi_api_proxy: Optional[str] = None  # KZ proxy for geo-restricted REST API
+    offers_proxy: Optional[str] = None  # Proxy for Kaspi offers API (when VPS IP is banned)
+    offers_relay_url: Optional[str] = None  # Railway relay URL for offers API (VPS → Railway → Kaspi)
+    offers_relay_secret: Optional[str] = None  # Shared secret for relay auth
 
     # WAHA Configuration (shared container from docker-compose)
     waha_url: str = "http://waha:3000"  # WAHA API URL inside Docker network

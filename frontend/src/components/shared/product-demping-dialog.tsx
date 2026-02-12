@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
@@ -15,7 +15,7 @@ import { formatPrice } from '@/lib/utils'
 import { PriceHistoryView } from './price-history-view'
 import { CityPricesDialog } from './city-prices-dialog'
 import { useT } from '@/lib/i18n'
-import { RefreshCw, Loader2, CheckCircle, AlertCircle, Play, MapPin, Package } from 'lucide-react'
+import { RefreshCw, Loader2, CheckCircle, AlertCircle, Play, MapPin, Package, Zap } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface ProductDempingDialogProps {
@@ -39,6 +39,7 @@ export function ProductDempingDialog({ productId, open, onOpenChange }: ProductD
   const [customStep, setCustomStep] = useState(100)
   const [preOrderEnabled, setPreOrderEnabled] = useState(false)
   const [preOrderDays, setPreOrderDays] = useState(7)
+  const [isPriority, setIsPriority] = useState(false)
   const [showCityDialog, setShowCityDialog] = useState(false)
 
   const t = useT()
@@ -54,6 +55,7 @@ export function ProductDempingDialog({ productId, open, onOpenChange }: ProductD
       setCustomStep(details.price_step_override || details.store_price_step)
       setPreOrderEnabled((details.pre_order_days || 0) > 0)
       setPreOrderDays(details.pre_order_days || 7)
+      setIsPriority(details.is_priority || false)
     }
   }, [details])
 
@@ -69,6 +71,7 @@ export function ProductDempingDialog({ productId, open, onOpenChange }: ProductD
         max_price: maxPrice,
         price_step_override: useGlobalStep ? null : customStep,
         pre_order_days: preOrderEnabled ? preOrderDays : 0,
+        is_priority: isPriority,
       }
     })
 
@@ -140,12 +143,11 @@ export function ProductDempingDialog({ productId, open, onOpenChange }: ProductD
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Детальные настройки демпинга</DialogTitle>
-          {details && (
-            <p className="text-sm text-muted-foreground">
-              {details.product_name} | SKU: {details.kaspi_sku || 'N/A'} |
-              Текущая цена: {formatPrice(details.current_price)}
-            </p>
-          )}
+          <DialogDescription>
+            {details
+              ? `${details.product_name} | SKU: ${details.kaspi_sku || 'N/A'} | Текущая цена: ${formatPrice(details.current_price)}`
+              : 'Загрузка...'}
+          </DialogDescription>
         </DialogHeader>
 
         {isLoading ? (
@@ -270,9 +272,9 @@ export function ProductDempingDialog({ productId, open, onOpenChange }: ProductD
                         <span>1 {t("preOrder.day")}</span>
                         <span>30 {t("preOrder.daysUnit")}</span>
                       </div>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-xs text-muted-foreground" suppressHydrationWarning>
                         {t("preOrder.deliveryBy")}{" "}
-                        <span className="font-medium text-foreground">
+                        <span className="font-medium text-foreground" suppressHydrationWarning>
                           {new Date(Date.now() + preOrderDays * 86400000).toLocaleDateString("ru-RU", {
                             day: "numeric",
                             month: "long",
@@ -280,6 +282,32 @@ export function ProductDempingDialog({ productId, open, onOpenChange }: ProductD
                         </span>
                       </p>
                     </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Приоритет */}
+              <Card className={isPriority ? "border-yellow-500/50 bg-yellow-500/5" : ""}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <Zap className="h-5 w-5 text-yellow-500" />
+                      <div>
+                        <p className="font-medium">{t("priority.title")}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {t("priority.description")}
+                        </p>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={isPriority}
+                      onCheckedChange={setIsPriority}
+                    />
+                  </div>
+                  {isPriority && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {t("priority.limit")}
+                    </p>
                   )}
                 </CardContent>
               </Card>

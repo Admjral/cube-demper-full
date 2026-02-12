@@ -491,7 +491,9 @@ async def list_products(
             f"""
             SELECT p.id, p.store_id, p.kaspi_product_id, p.kaspi_sku, p.external_kaspi_id,
                    p.name, p.price, p.min_profit, p.bot_active, p.last_check_time,
-                   p.availabilities, p.created_at, p.updated_at
+                   p.availabilities, p.created_at, p.updated_at,
+                   COALESCE(p.pre_order_days, 0) as pre_order_days,
+                   COALESCE(p.is_priority, false) as is_priority
             FROM products p
             JOIN kaspi_stores k ON k.id = p.store_id
             WHERE {where_clause}
@@ -513,6 +515,7 @@ async def list_products(
                 min_profit=p['min_profit'],
                 bot_active=p['bot_active'],
                 pre_order_days=p.get('pre_order_days', 0) or 0,
+                is_priority=p.get('is_priority', False) or False,
                 last_check_time=p['last_check_time'],
                 availabilities=json.loads(p['availabilities']) if isinstance(p['availabilities'], str) else p['availabilities'],
                 created_at=p['created_at'],
@@ -607,6 +610,26 @@ async def update_product(
             updates.append(f"pre_order_days = ${param_count}")
             params.append(update_data.pre_order_days)
 
+        if update_data.is_priority is not None:
+            # Enforce limit: max 10 priority products per store
+            if update_data.is_priority:
+                priority_count = await conn.fetchval(
+                    """
+                    SELECT COUNT(*) FROM products
+                    WHERE store_id = $1 AND is_priority = TRUE AND id != $2
+                    """,
+                    product['store_id'],
+                    uuid.UUID(product_id)
+                )
+                if priority_count >= 10:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Maximum 10 priority products per store"
+                    )
+            param_count += 1
+            updates.append(f"is_priority = ${param_count}")
+            params.append(update_data.is_priority)
+
         if not updates:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -642,6 +665,7 @@ async def update_product(
             min_profit=updated['min_profit'],
             bot_active=updated['bot_active'],
             pre_order_days=updated.get('pre_order_days', 0) or 0,
+            is_priority=updated.get('is_priority', False) or False,
             last_check_time=updated['last_check_time'],
             availabilities=availabilities,
             created_at=updated['created_at'],
@@ -705,6 +729,7 @@ async def get_product_demping_details(
             demping_strategy=details['demping_strategy'] or 'standard',
             strategy_params=strategy_params,
             pre_order_days=details.get('pre_order_days', 0) or 0,
+            is_priority=details.get('is_priority', False) or False,
             store_price_step=details['store_price_step'],
             store_min_margin_percent=details['store_min_margin_percent'],
             store_work_hours_start=details['store_work_hours_start'],
@@ -1333,12 +1358,42 @@ async def get_store_stats(
             uuid.UUID(store_id)
         )
 
+        # Get orders stats
+        orders_stats = await conn.fetchrow(
+            """
+            SELECT
+                COUNT(*) FILTER (WHERE order_date >= CURRENT_DATE) as today_orders,
+                COALESCE(SUM(total_price) FILTER (WHERE order_date >= CURRENT_DATE), 0) as today_revenue,
+                COUNT(*) FILTER (WHERE order_date >= NOW() - INTERVAL '7 days') as week_orders,
+                COALESCE(SUM(total_price) FILTER (WHERE order_date >= NOW() - INTERVAL '7 days'), 0) as week_revenue,
+                COUNT(*) FILTER (WHERE order_date >= NOW() - INTERVAL '30 days') as month_orders,
+                COALESCE(SUM(total_price) FILTER (WHERE order_date >= NOW() - INTERVAL '30 days'), 0) as month_revenue,
+                COUNT(*) as total_orders,
+                COALESCE(SUM(total_price), 0) as total_revenue
+            FROM orders
+            WHERE store_id = $1
+            """,
+            uuid.UUID(store_id)
+        )
+
+        avg_order_value = (
+            orders_stats['total_revenue'] // orders_stats['total_orders']
+            if orders_stats['total_orders'] > 0 else 0
+        )
+
         return StoreStats(
             store_id=store_id,
             store_name=store['name'],
             products_count=stats['total_products'] or 0,
             active_products_count=stats['active_products'] or 0,
             demping_enabled_count=stats['demping_enabled'] or 0,
+            today_orders=orders_stats['today_orders'] or 0,
+            today_revenue=orders_stats['today_revenue'] or 0,
+            week_orders=orders_stats['week_orders'] or 0,
+            week_revenue=orders_stats['week_revenue'] or 0,
+            month_orders=orders_stats['month_orders'] or 0,
+            month_revenue=orders_stats['month_revenue'] or 0,
+            avg_order_value=avg_order_value,
             last_sync=store['last_sync']
         )
 
@@ -1418,9 +1473,19 @@ async def get_store_analytics(
                     'items': 0
                 })
 
+        # Compute summary totals from daily stats
+        total_orders = sum(d['orders'] for d in daily_stats)
+        total_revenue = sum(d['revenue'] for d in daily_stats)
+        total_items_sold = sum(d['items'] for d in daily_stats)
+        avg_order_value = total_revenue // total_orders if total_orders > 0 else 0
+
         return SalesAnalytics(
             store_id=store_id,
             period=period,
+            total_orders=total_orders,
+            total_revenue=total_revenue,
+            total_items_sold=total_items_sold,
+            avg_order_value=avg_order_value,
             daily_stats=daily_stats
         )
 
@@ -1562,6 +1627,96 @@ async def sync_store_products_by_id(
         "message": "Product sync started in background",
         "store_id": store_id
     }
+
+
+@router.post("/stores/{store_id}/sync-prices", status_code=status.HTTP_202_ACCEPTED)
+async def sync_store_prices(
+    store_id: str,
+    background_tasks: BackgroundTasks,
+    current_user: Annotated[dict, Depends(get_current_user)],
+    pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
+):
+    """Sync product prices from Kaspi Offers API into our DB"""
+    async with pool.acquire() as conn:
+        store = await conn.fetchrow(
+            "SELECT id, merchant_id FROM kaspi_stores WHERE id = $1 AND user_id = $2",
+            uuid.UUID(store_id),
+            current_user['id']
+        )
+
+        if not store:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Store not found"
+            )
+
+        # Get products with external_kaspi_id
+        products = await conn.fetch(
+            """
+            SELECT id, external_kaspi_id, price
+            FROM products
+            WHERE store_id = $1 AND external_kaspi_id IS NOT NULL
+            """,
+            uuid.UUID(store_id)
+        )
+
+    if not products:
+        return {
+            "status": "accepted",
+            "message": "No products to sync prices for",
+            "store_id": store_id
+        }
+
+    background_tasks.add_task(
+        _sync_prices_task,
+        products=[dict(p) for p in products],
+        merchant_uid=store['merchant_id'],
+        store_id=store_id
+    )
+
+    return {
+        "status": "accepted",
+        "message": f"Price sync started for {len(products)} products",
+        "store_id": store_id
+    }
+
+
+async def _sync_prices_task(products: list, merchant_uid: str, store_id: str):
+    """Background task: fetch current prices from Kaspi and update DB"""
+    pool = await get_db_pool()
+    updated = 0
+
+    for product in products:
+        try:
+            offers_data = await parse_product_by_sku(
+                product_id=str(product['external_kaspi_id'])
+            )
+
+            if not offers_data or 'offers' not in offers_data:
+                continue
+
+            # Find our offer by merchant_uid
+            our_price = None
+            for offer in offers_data['offers']:
+                mid = offer.get('merchantId') or offer.get('merchant_id') or ''
+                if str(mid) == str(merchant_uid):
+                    our_price = offer.get('price')
+                    break
+
+            if our_price is not None and int(our_price) != product['price']:
+                async with pool.acquire() as conn:
+                    await conn.execute(
+                        "UPDATE products SET price = $1, updated_at = NOW() WHERE id = $2",
+                        int(our_price),
+                        product['id']
+                    )
+                    updated += 1
+
+        except Exception as e:
+            logger.warning(f"Failed to sync price for product {product['id']}: {e}")
+            continue
+
+    logger.info(f"Price sync completed for store {store_id}: {updated}/{len(products)} updated")
 
 
 @router.post("/stores/{store_id}/sync-orders", status_code=status.HTTP_202_ACCEPTED)

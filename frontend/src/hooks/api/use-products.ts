@@ -243,6 +243,22 @@ export function useSyncProducts() {
   })
 }
 
+// Sync prices from Kaspi (fetch current prices from Kaspi Offers API)
+export function useSyncPrices() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (storeId: string) =>
+      api.post<SyncProductsResponse>(`/kaspi/stores/${storeId}/sync-prices`),
+    onSuccess: (_, storeId) => {
+      // Invalidate products after a delay to allow sync to complete
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: productKeys.list(storeId) })
+      }, 5000)
+    },
+  })
+}
+
 // Bulk update products (toggle demping for multiple products)
 export interface BulkUpdateRequest {
   product_ids: string[]

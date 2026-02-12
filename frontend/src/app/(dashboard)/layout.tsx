@@ -5,7 +5,6 @@ import { useRouter, usePathname } from "next/navigation"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { Header } from "@/components/dashboard/header"
 import { BottomNav } from "@/components/dashboard/bottom-nav"
-import { SupportChatWidget } from "@/components/support/chat-widget"
 import { SubscriptionBanner } from "@/components/shared/subscription-banner"
 import { FreePlanGate } from "@/components/shared/free-plan-gate"
 import { useAuth } from "@/hooks/use-auth"
@@ -65,8 +64,6 @@ export default function DashboardLayout({
         <BottomNav />
       </div>
 
-      {/* Support chat widget */}
-      <SupportChatWidget />
     </div>
   )
 }

@@ -17,6 +17,7 @@ class ProductResponse(BaseModel):
     min_profit: int = Field(..., description="Minimum profit in tiyns")
     bot_active: bool
     pre_order_days: int = 0
+    is_priority: bool = False
     last_check_time: Optional[datetime]
     availabilities: Optional[dict]
     created_at: datetime

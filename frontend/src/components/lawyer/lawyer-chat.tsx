@@ -120,30 +120,15 @@ export function LawyerChat({ language }: LawyerChatProps) {
 
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden">
-      {/* Header */}
-      <div className="p-4 border-b border-border flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-            <Scale className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h3 className="font-semibold text-foreground">
-              {language === 'kk' ? 'ИИ Заңгер' : 'ИИ Юрист'}
-            </h3>
-            <p className="text-sm text-muted-foreground">
-              {language === 'kk' 
-                ? 'ҚР заңнамасы бойынша кеңес' 
-                : 'Консультации по законодательству РК'}
-            </p>
-          </div>
-        </div>
-        {localMessages.length > 0 && (
-          <Button variant="ghost" size="sm" onClick={handleClearHistory}>
-            <Trash2 className="h-4 w-4 mr-1" />
-            Очистить
+      {/* Clear button (only when messages exist) */}
+      {localMessages.length > 0 && (
+        <div className="flex justify-end px-3 py-1.5 border-b border-border">
+          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={handleClearHistory}>
+            <Trash2 className="h-3 w-3 mr-1" />
+            {language === 'kk' ? 'Тазалау' : 'Очистить'}
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Messages */}
       <ScrollArea ref={scrollRef} className="flex-1 min-h-0 p-4">

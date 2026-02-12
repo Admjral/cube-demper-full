@@ -58,6 +58,7 @@ class ProductUpdateRequest(BaseModel):
     demping_strategy: Optional[str] = Field(None, pattern="^(standard|always_first|stay_top_n)$")
     strategy_params: Optional[dict] = None
     pre_order_days: Optional[int] = Field(None, ge=0, le=30, description="Pre-order days (0=off, 1-30=on)")
+    is_priority: Optional[bool] = None
 
 
 class BulkPriceUpdateRequest(BaseModel):
@@ -118,6 +119,7 @@ class ProductDempingDetails(BaseModel):
     demping_strategy: str = "standard"
     strategy_params: Optional[dict] = None
     pre_order_days: int = 0
+    is_priority: bool = False
 
     # Global store settings (for display)
     store_price_step: int

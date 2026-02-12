@@ -1,10 +1,12 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { useStore } from "@/store/use-store"
 import { useT } from "@/lib/i18n"
+import { api } from "@/lib/api"
+import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Separator } from "@/components/ui/separator"
 import {
@@ -15,22 +17,56 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import {
-  Settings,
   Bell,
   Moon,
   Sun,
   Languages,
   Store,
-  Smartphone,
-  Mail,
-  MessageSquare,
+  ShoppingCart,
+  TrendingDown,
+  Headphones,
+  Loader2,
 } from "lucide-react"
 import { useTheme } from "next-themes"
+
+interface NotificationSettings {
+  orders: boolean
+  price_changes: boolean
+  support: boolean
+}
 
 export default function SettingsPage() {
   const { locale, setLocale, stores, selectedStore, setSelectedStore } = useStore()
   const { theme, setTheme } = useTheme()
   const t = useT()
+
+  const [notifSettings, setNotifSettings] = useState<NotificationSettings>({
+    orders: true,
+    price_changes: true,
+    support: true,
+  })
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  // Load notification settings
+  useEffect(() => {
+    api.get<NotificationSettings>("/notifications/settings")
+      .then((data) => setNotifSettings(data))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await api.put("/notifications/settings", notifSettings)
+      toast.success(t("settings.settingsSaved"))
+    } catch {
+      toast.error(t("settings.settingsSaveError"))
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -165,46 +201,10 @@ export default function SettingsPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Push notifications */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Smartphone className="h-5 w-5 text-muted-foreground" />
-              <div>
-                <p className="font-medium">
-                  {t("settings.pushNotifications")}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {t("settings.browserNotifications")}
-                </p>
-              </div>
-            </div>
-            <Switch defaultChecked />
-          </div>
-
-          <Separator />
-
-          {/* Email notifications */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Mail className="h-5 w-5 text-muted-foreground" />
-              <div>
-                <p className="font-medium">
-                  {t("settings.emailNotifications")}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {t("settings.emailNotificationsDesc")}
-                </p>
-              </div>
-            </div>
-            <Switch defaultChecked />
-          </div>
-
-          <Separator />
-
           {/* Order notifications */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <MessageSquare className="h-5 w-5 text-muted-foreground" />
+              <ShoppingCart className="h-5 w-5 text-muted-foreground" />
               <div>
                 <p className="font-medium">
                   {t("settings.newOrders")}
@@ -214,7 +214,11 @@ export default function SettingsPage() {
                 </p>
               </div>
             </div>
-            <Switch defaultChecked />
+            <Switch
+              checked={notifSettings.orders}
+              onCheckedChange={(v) => setNotifSettings((s) => ({ ...s, orders: v }))}
+              disabled={loading}
+            />
           </div>
 
           <Separator />
@@ -222,7 +226,7 @@ export default function SettingsPage() {
           {/* Price bot notifications */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Settings className="h-5 w-5 text-muted-foreground" />
+              <TrendingDown className="h-5 w-5 text-muted-foreground" />
               <div>
                 <p className="font-medium">
                   {t("settings.priceChanges")}
@@ -232,13 +236,40 @@ export default function SettingsPage() {
                 </p>
               </div>
             </div>
-            <Switch />
+            <Switch
+              checked={notifSettings.price_changes}
+              onCheckedChange={(v) => setNotifSettings((s) => ({ ...s, price_changes: v }))}
+              disabled={loading}
+            />
+          </div>
+
+          <Separator />
+
+          {/* Support notifications */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Headphones className="h-5 w-5 text-muted-foreground" />
+              <div>
+                <p className="font-medium">
+                  {t("settings.support")}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {t("settings.supportDesc")}
+                </p>
+              </div>
+            </div>
+            <Switch
+              checked={notifSettings.support}
+              onCheckedChange={(v) => setNotifSettings((s) => ({ ...s, support: v }))}
+              disabled={loading}
+            />
           </div>
         </CardContent>
       </Card>
 
       {/* Save button */}
-      <Button className="w-full sm:w-auto">
+      <Button className="w-full sm:w-auto" onClick={handleSave} disabled={saving || loading}>
+        {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
         {t("settings.saveSettings")}
       </Button>
     </div>

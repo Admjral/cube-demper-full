@@ -6,6 +6,7 @@ import { ThemeToggle } from "@/components/shared/theme-toggle"
 import { LanguageSwitcher } from "@/components/shared/language-switcher"
 import { StoreSelector } from "@/components/shared/store-selector"
 import { NotificationBell } from "@/components/notifications/notification-bell"
+import { SupportChatWidget } from "@/components/support/chat-widget"
 import { Menu } from "lucide-react"
 
 export function Header() {
@@ -35,6 +36,9 @@ export function Header() {
         <div className="flex items-center gap-1">
           {/* Notifications */}
           <NotificationBell />
+
+          {/* Support chat */}
+          <SupportChatWidget />
 
           {/* Language switcher */}
           <LanguageSwitcher />

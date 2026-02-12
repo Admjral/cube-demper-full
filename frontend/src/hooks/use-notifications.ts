@@ -122,6 +122,10 @@ export function getNotificationMeta(type: string): {
     case 'referral_payout_completed':
       return { icon: 'CreditCard', color: 'text-green-500', bgColor: 'bg-green-500/10' }
 
+    // Support
+    case 'support_message':
+      return { icon: 'Headphones', color: 'text-blue-500', bgColor: 'bg-blue-500/10' }
+
     // System
     case 'system_subscription_expiring':
       return { icon: 'Clock', color: 'text-yellow-500', bgColor: 'bg-yellow-500/10' }

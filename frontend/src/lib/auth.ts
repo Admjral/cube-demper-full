@@ -10,6 +10,9 @@ export interface User {
   full_name: string | null
   phone: string | null
   phone_verified: boolean
+  company_name: string | null
+  bin: string | null
+  tax_type: string | null
   avatar_url: string | null
   role: 'user' | 'admin'
   created_at: string

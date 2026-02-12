@@ -120,9 +120,16 @@ function NoStoreSelected() {
   )
 }
 
+function formatCompact(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
+  if (value >= 1_000) return `${(value / 1_000).toFixed(0)}K`
+  return value.toString()
+}
+
 function SimpleBarChart({ data }: { data: { date: string; revenue: number; orders: number }[] }) {
   const t = useT()
   const { locale } = useStore()
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
 
   if (!data || data.length === 0) {
     return (
@@ -135,37 +142,110 @@ function SimpleBarChart({ data }: { data: { date: string; revenue: number; order
   }
 
   const maxRevenue = Math.max(...data.map((d) => d.revenue))
+  const barAreaHeight = 240
+
+  // Y-axis tick values (5 ticks including 0)
+  const ticks = maxRevenue > 0
+    ? [0, 1, 2, 3, 4].map((i) => Math.round((maxRevenue / 4) * i))
+    : [0]
 
   return (
-    <div className="h-[300px] flex items-end gap-1 p-4">
-      {data.map((day, index) => {
-        const height = maxRevenue > 0 ? (day.revenue / maxRevenue) * 100 : 0
-        const date = new Date(day.date)
-        const dayLabel = date.toLocaleDateString(locale === "ru" ? "ru-RU" : "kk-KZ", {
-          day: "numeric",
-          month: "short",
-        })
-
-        return (
-          <div
-            key={index}
-            className="flex-1 flex flex-col items-center gap-2 group"
-          >
-            <div className="relative w-full flex justify-center">
-              <div
-                className="w-full max-w-[40px] bg-primary/20 hover:bg-primary/40 rounded-t transition-all cursor-pointer"
-                style={{ height: `${Math.max(height, 2)}%`, minHeight: "8px" }}
-                title={`${dayLabel}: ${formatPrice(day.revenue)} (${day.orders} ${t("sales.orders")})`}
-              />
-            </div>
-            {data.length <= 14 && (
-              <span className="text-[10px] text-muted-foreground rotate-45 origin-left">
-                {dayLabel}
-              </span>
-            )}
+    <div className="relative">
+      <div className="flex">
+        {/* Bars area */}
+        <div className="flex-1 relative">
+          {/* Grid lines */}
+          <div className="absolute inset-0 px-4 pointer-events-none" style={{ height: `${barAreaHeight}px` }}>
+            {ticks.map((tick, i) => {
+              const bottom = maxRevenue > 0 ? (tick / maxRevenue) * barAreaHeight : 0
+              return (
+                <div
+                  key={i}
+                  className="absolute left-4 right-0 border-t border-border/30"
+                  style={{ bottom: `${bottom}px` }}
+                />
+              )
+            })}
           </div>
-        )
-      })}
+
+          {/* Bars */}
+          <div className="flex items-end gap-1 px-4 relative" style={{ height: `${barAreaHeight}px` }}>
+            {data.map((day, index) => {
+              const barHeight = maxRevenue > 0 ? (day.revenue / maxRevenue) * barAreaHeight : 0
+              const date = new Date(day.date)
+              const dayLabel = date.toLocaleDateString(locale === "ru" ? "ru-RU" : "kk-KZ", {
+                day: "numeric",
+                month: "short",
+              })
+              const isHovered = hoveredIndex === index
+
+              return (
+                <div
+                  key={index}
+                  className="flex-1 flex flex-col items-center relative"
+                  onMouseEnter={() => setHoveredIndex(index)}
+                  onMouseLeave={() => setHoveredIndex(null)}
+                >
+                  {/* Tooltip */}
+                  {isHovered && (
+                    <div className="absolute bottom-full mb-2 z-10 pointer-events-none">
+                      <div className="bg-popover text-popover-foreground border shadow-lg rounded-lg px-3 py-2 text-xs whitespace-nowrap">
+                        <p className="font-semibold">{dayLabel}</p>
+                        <p>{formatPrice(day.revenue)}</p>
+                        <p className="text-muted-foreground">
+                          {day.orders} {t("sales.orders")}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  <div
+                    className={`w-full max-w-[40px] rounded-t transition-all cursor-pointer ${
+                      isHovered ? "bg-primary/50" : "bg-primary/20"
+                    }`}
+                    style={{ height: `${Math.max(barHeight, 4)}px` }}
+                  />
+                </div>
+              )
+            })}
+          </div>
+
+          {/* X-axis labels */}
+          {data.length <= 14 && (
+            <div className="flex gap-1 px-4 mt-2">
+              {data.map((day, index) => {
+                const date = new Date(day.date)
+                const dayLabel = date.toLocaleDateString(locale === "ru" ? "ru-RU" : "kk-KZ", {
+                  day: "numeric",
+                  month: "short",
+                })
+                return (
+                  <div key={index} className="flex-1 text-center">
+                    <span className="text-[10px] text-muted-foreground">
+                      {dayLabel}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Y-axis labels (right side) */}
+        <div className="w-12 relative shrink-0" style={{ height: `${barAreaHeight}px` }}>
+          {ticks.map((tick, i) => {
+            const bottom = maxRevenue > 0 ? (tick / maxRevenue) * barAreaHeight : 0
+            return (
+              <span
+                key={i}
+                className="absolute right-0 text-[10px] text-muted-foreground -translate-y-1/2"
+                style={{ bottom: `${bottom}px` }}
+              >
+                {formatCompact(tick)}
+              </span>
+            )
+          })}
+        </div>
+      </div>
     </div>
   )
 }

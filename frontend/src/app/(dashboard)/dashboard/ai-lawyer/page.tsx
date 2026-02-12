@@ -96,22 +96,16 @@ export default function AILawyerPage() {
   if (activeTab) {
     return (
       <SubscriptionGate>
-      <div className="h-[calc(100vh-12rem)] lg:h-[calc(100vh-8rem)] flex flex-col">
-        {/* Header */}
-        <div className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Button 
-              variant="ghost" 
-              size="sm"
-              onClick={() => setActiveTab(null)}
-            >
-              ← Назад
-            </Button>
-            <h1 className="text-xl font-semibold">
-              {features.find(f => f.id === activeTab)?.title}
-            </h1>
-          </div>
-          <LanguageSelector language={language} onChange={handleLanguageChange} />
+      <div className="h-[calc(100vh-7rem)] lg:h-[calc(100vh-5rem)] flex flex-col">
+        {/* Minimal header — just back arrow */}
+        <div className="mb-2 flex items-center">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setActiveTab(null)}
+          >
+            ← {language === 'kk' ? 'Артқа' : 'Назад'}
+          </Button>
         </div>
 
         {/* Content */}
@@ -123,12 +117,6 @@ export default function AILawyerPage() {
           {activeTab === 'taxes' && <TaxCalculator />}
           {activeTab === 'fees' && <FeeCalculator />}
         </Card>
-
-        {/* Disclaimer */}
-        <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1 justify-center">
-          <Sparkles className="h-3 w-3" />
-          Powered by Gemini AI. Не заменяет консультацию профессионального юриста.
-        </p>
       </div>
       </SubscriptionGate>
     )

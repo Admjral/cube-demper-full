@@ -42,10 +42,22 @@ export interface UserProfile {
   id: string
   email: string
   full_name: string | null
+  phone: string | null
+  phone_verified: boolean
+  company_name: string | null
+  bin: string | null
+  tax_type: string | null
   avatar_url: string | null
   role: 'user' | 'admin'
   created_at: string
   updated_at: string
+}
+
+export interface UserProfileUpdate {
+  full_name?: string
+  company_name?: string
+  bin?: string
+  tax_type?: string
 }
 
 // Subscription types
@@ -189,6 +201,7 @@ export interface KaspiProduct {
   min_profit: number
   bot_active: boolean
   pre_order_days: number
+  is_priority: boolean
   last_check_time: string | null
   availabilities: Record<string, any> | null
   created_at: string
@@ -276,6 +289,7 @@ export interface ProductDempingDetails {
   demping_strategy: 'standard' | 'always_first' | 'stay_top_n'
   strategy_params: { top_position?: number } | null
   pre_order_days: number
+  is_priority: boolean
 
   // Global store settings (for display)
   store_price_step: number
@@ -295,6 +309,7 @@ export interface ProductDempingUpdate {
   demping_strategy?: 'standard' | 'always_first' | 'stay_top_n'
   strategy_params?: { top_position?: number } | null
   pre_order_days?: number
+  is_priority?: boolean
 }
 
 // =============================================

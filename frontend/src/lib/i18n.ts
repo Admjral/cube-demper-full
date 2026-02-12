@@ -71,15 +71,15 @@ const translations: Record<Locale, Record<string, string>> = {
     "settings.currentStore": "Текущий магазин",
     "settings.notSelected": "Не выбран",
     "settings.notifications": "Уведомления",
-    "settings.pushNotifications": "Push-уведомления",
-    "settings.browserNotifications": "Уведомления в браузере",
-    "settings.emailNotifications": "Email-уведомления",
-    "settings.emailNotificationsDesc": "Важные уведомления на почту",
     "settings.newOrders": "Новые заказы",
     "settings.newOrdersDesc": "Уведомления о новых заказах",
     "settings.priceChanges": "Изменения цен",
     "settings.priceChangesDesc": "Уведомления от ценового бота",
+    "settings.support": "Техподдержка",
+    "settings.supportDesc": "Уведомления о сообщениях от поддержки",
     "settings.saveSettings": "Сохранить настройки",
+    "settings.settingsSaved": "Настройки сохранены",
+    "settings.settingsSaveError": "Ошибка сохранения настроек",
 
     // === Демпинг цен ===
     "priceBot.title": "Демпинг цен",
@@ -268,6 +268,25 @@ const translations: Record<Locale, Record<string, string>> = {
     "preOrder.daysUnit": "дн.",
     "preOrder.deliveryBy": "Доставка до",
 
+    // === Приоритет ===
+    "priority.title": "Приоритет",
+    "priority.description": "Проверка каждые 3 мин вместо обычного интервала",
+    "priority.limit": "Макс. 10 приоритетных товаров на магазин",
+
+    // === Синхронизация цен ===
+    "priceBot.syncPrices": "Обновить цены",
+    "priceBot.syncPricesStarted": "Обновление цен запущено",
+
+    // === Статус очереди ===
+    "priceBot.status": "Статус",
+    "priceBot.lastCheck": "Последняя проверка",
+    "priceBot.nextCheck": "Следующая",
+    "priceBot.never": "Никогда",
+    "priceBot.inQueue": "В очереди",
+    "priceBot.now": "Сейчас",
+    "priceBot.minAgo": "мин. назад",
+    "priceBot.hoursAgo": "ч. назад",
+
     // === Склейка накладных ===
     "invoice.title": "Склейка накладных",
     "invoice.subtitle": "Объедините несколько накладных на одном листе A4",
@@ -343,8 +362,11 @@ const translations: Record<Locale, Record<string, string>> = {
     "profile.personalInfo": "Личная информация",
     "profile.firstName": "Имя",
     "profile.lastName": "Фамилия",
+    "profile.fullName": "ФИО",
+    "profile.fullNamePlaceholder": "Иванов Иван Иванович",
     "profile.phone": "Телефон",
     "profile.phonePlaceholder": "+7 XXX XXX XXXX",
+    "profile.phoneChangeHint": "Для изменения номера телефона обратитесь в техподдержку",
     "profile.businessInfo": "Бизнес информация",
     "profile.companyName": "Название компании",
     "profile.companyPlaceholder": "ТОО Моя компания",
@@ -360,6 +382,8 @@ const translations: Record<Locale, Record<string, string>> = {
     "profile.enable": "Включить",
     "profile.saving": "Сохранение...",
     "profile.saveChanges": "Сохранить изменения",
+    "profile.saved": "Профиль обновлён",
+    "profile.noChanges": "Нет изменений для сохранения",
     "profile.logout": "Выйти",
 
     // === WhatsApp ===
@@ -483,6 +507,22 @@ const translations: Record<Locale, Record<string, string>> = {
     "wa.broadcastProgress": "Прогресс",
     "wa.noBroadcasts": "Рассылок пока нет",
     "wa.noBroadcastsDesc": "Создайте рассылку для массовой отправки WhatsApp сообщений",
+    "wa.templates": "Шаблоны",
+    "wa.aiSalesmanTab": "AI Продажник",
+    "wa.addTemplate": "Добавить шаблон",
+    "wa.noTrigger": "Без триггера",
+    "wa.templateActive": "Активен",
+    "wa.templateInactive": "Неактивен",
+    "wa.settingsSaved": "Настройки сохранены",
+    "wa.settingsSaveError": "Ошибка сохранения настроек",
+    "wa.selectStore": "Выберите магазин",
+    "wa.noHistory": "Нет истории сообщений",
+    "wa.noHistoryDesc": "AI Продажник начнёт отправлять сообщения после включения",
+    "wa.period7d": "7 дней",
+    "wa.period30d": "30 дней",
+    "wa.period90d": "90 дней",
+    "wa.dailyStats": "По дням",
+    "wa.suggestedProducts": "Рекомендованные товары",
 
     // === WhatsApp шаблоны (компоненты) ===
     "waTpl.editTemplate": "Редактировать шаблон",
@@ -752,15 +792,15 @@ const translations: Record<Locale, Record<string, string>> = {
     "settings.currentStore": "Ағымдағы дүкен",
     "settings.notSelected": "Таңдалмаған",
     "settings.notifications": "Хабарламалар",
-    "settings.pushNotifications": "Push-хабарламалар",
-    "settings.browserNotifications": "Браузер хабарламалары",
-    "settings.emailNotifications": "Email-хабарламалар",
-    "settings.emailNotificationsDesc": "Маңызды хабарламалар поштаға",
     "settings.newOrders": "Жаңа тапсырыстар",
     "settings.newOrdersDesc": "Жаңа тапсырыстар туралы хабарламалар",
     "settings.priceChanges": "Баға өзгерістері",
     "settings.priceChangesDesc": "Баға ботының хабарламалары",
+    "settings.support": "Техқолдау",
+    "settings.supportDesc": "Қолдау хабарламалары туралы хабарламалар",
     "settings.saveSettings": "Баптауларды сақтау",
+    "settings.settingsSaved": "Баптаулар сақталды",
+    "settings.settingsSaveError": "Баптауларды сақтау қатесі",
 
     // === Баға боты ===
     "priceBot.title": "Баға боты",
@@ -949,6 +989,25 @@ const translations: Record<Locale, Record<string, string>> = {
     "preOrder.daysUnit": "күн",
     "preOrder.deliveryBy": "Жеткізу мерзімі",
 
+    // === Басымдық ===
+    "priority.title": "Басымдық",
+    "priority.description": "3 мин сайын тексеру (әдеттегі аралықтың орнына)",
+    "priority.limit": "Дүкен үшін ең көбі 10 басымды тауар",
+
+    // === Бағаларды синхрондау ===
+    "priceBot.syncPrices": "Бағаларды жаңарту",
+    "priceBot.syncPricesStarted": "Бағаларды жаңарту басталды",
+
+    // === Кезек мәртебесі ===
+    "priceBot.status": "Мәртебе",
+    "priceBot.lastCheck": "Соңғы тексеру",
+    "priceBot.nextCheck": "Келесі",
+    "priceBot.never": "Ешқашан",
+    "priceBot.inQueue": "Кезекте",
+    "priceBot.now": "Қазір",
+    "priceBot.minAgo": "мин. бұрын",
+    "priceBot.hoursAgo": "сағ. бұрын",
+
     // === Жүкқұжаттарды біріктіру ===
     "invoice.title": "Жүкқұжаттарды біріктіру",
     "invoice.subtitle": "Бірнеше жүкқұжатты бір A4 парағына біріктіріңіз",
@@ -1024,8 +1083,11 @@ const translations: Record<Locale, Record<string, string>> = {
     "profile.personalInfo": "Жеке ақпарат",
     "profile.firstName": "Аты",
     "profile.lastName": "Тегі",
+    "profile.fullName": "Толық аты-жөні",
+    "profile.fullNamePlaceholder": "Иванов Иван Иванович",
     "profile.phone": "Телефон",
     "profile.phonePlaceholder": "+7 XXX XXX XXXX",
+    "profile.phoneChangeHint": "Телефон нөмірін өзгерту үшін техникалық қолдауға хабарласыңыз",
     "profile.businessInfo": "Бизнес ақпарат",
     "profile.companyName": "Компания атауы",
     "profile.companyPlaceholder": "ЖШС Менің компаниям",
@@ -1041,6 +1103,8 @@ const translations: Record<Locale, Record<string, string>> = {
     "profile.enable": "Қосу",
     "profile.saving": "Сақталуда...",
     "profile.saveChanges": "Өзгерістерді сақтау",
+    "profile.saved": "Профиль жаңартылды",
+    "profile.noChanges": "Сақтау үшін өзгерістер жоқ",
     "profile.logout": "Шығу",
 
     // === WhatsApp ===
@@ -1164,6 +1228,22 @@ const translations: Record<Locale, Record<string, string>> = {
     "wa.broadcastProgress": "Прогресс",
     "wa.noBroadcasts": "Таратылымдар жоқ",
     "wa.noBroadcastsDesc": "WhatsApp хабарламаларын жаппай жіберу үшін таратылым жасаңыз",
+    "wa.templates": "Үлгілер",
+    "wa.aiSalesmanTab": "AI Сатушы",
+    "wa.addTemplate": "Үлгі қосу",
+    "wa.noTrigger": "Триггерсіз",
+    "wa.templateActive": "Белсенді",
+    "wa.templateInactive": "Белсенді емес",
+    "wa.settingsSaved": "Баптаулар сақталды",
+    "wa.settingsSaveError": "Баптауларды сақтау қатесі",
+    "wa.selectStore": "Дүкенді таңдаңыз",
+    "wa.noHistory": "Хабарламалар тарихы жоқ",
+    "wa.noHistoryDesc": "AI Сатушы қосылғаннан кейін хабарламалар жібере бастайды",
+    "wa.period7d": "7 күн",
+    "wa.period30d": "30 күн",
+    "wa.period90d": "90 күн",
+    "wa.dailyStats": "Күн бойынша",
+    "wa.suggestedProducts": "Ұсынылған тауарлар",
 
     // === WhatsApp үлгілер (компоненттер) ===
     "waTpl.editTemplate": "Үлгіні өңдеу",

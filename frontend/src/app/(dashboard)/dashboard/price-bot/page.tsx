@@ -4,7 +4,7 @@ import { useState } from "react"
 import { useStore } from "@/store/use-store"
 import { useT } from "@/lib/i18n"
 import { SubscriptionGate } from "@/components/shared/subscription-gate"
-import { useProducts, useDempingSettings, useUpdateProduct, useUpdateDempingSettings, useSyncProducts, useBulkUpdateProducts } from "@/hooks/api/use-products"
+import { useProducts, useDempingSettings, useUpdateProduct, useUpdateDempingSettings, useSyncProducts, useSyncPrices, useBulkUpdateProducts } from "@/hooks/api/use-products"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -46,6 +46,7 @@ import {
   RefreshCw,
   CheckSquare,
   Square,
+  Zap,
 } from "lucide-react"
 import Link from "next/link"
 import { toast } from "sonner"
@@ -157,6 +158,7 @@ export default function PriceBotPage() {
   const updateProduct = useUpdateProduct()
   const updateDempingSettings = useUpdateDempingSettings()
   const syncProducts = useSyncProducts()
+  const syncPrices = useSyncPrices()
   const bulkUpdate = useBulkUpdateProducts()
 
   const handleSyncProducts = async () => {
@@ -167,6 +169,16 @@ export default function PriceBotPage() {
       toast.success(
         t("priceBot.syncProducts")
       )
+    } catch (error) {
+      toast.error(t("priceBot.loadingError"))
+    }
+  }
+
+  const handleSyncPrices = async () => {
+    if (!selectedStore?.id) return
+    try {
+      await syncPrices.mutateAsync(selectedStore.id)
+      toast.success(t("priceBot.syncPricesStarted"))
     } catch (error) {
       toast.error(t("priceBot.loadingError"))
     }
@@ -241,6 +253,28 @@ export default function PriceBotPage() {
 
   const activeBotsCount = products?.filter((p) => p.bot_active).length || 0
   const totalProducts = products?.length || 0
+  const checkInterval = dempingSettings?.check_interval_minutes || 15
+  const PRIORITY_INTERVAL = 3
+
+  // Queue status helpers
+  const formatTimeAgo = (dateStr: string | null): string => {
+    if (!dateStr) return t("priceBot.never")
+    const diff = Date.now() - new Date(dateStr).getTime()
+    const mins = Math.floor(diff / 60000)
+    if (mins < 1) return t("priceBot.now")
+    if (mins < 60) return `${mins} ${t("priceBot.minAgo")}`
+    const hours = Math.floor(mins / 60)
+    return `${hours} ${t("priceBot.hoursAgo")}`
+  }
+
+  const formatNextCheck = (lastCheck: string | null, isPriority: boolean): string => {
+    const interval = isPriority ? PRIORITY_INTERVAL : checkInterval
+    if (!lastCheck) return t("priceBot.inQueue")
+    const nextTime = new Date(lastCheck).getTime() + interval * 60000
+    const remaining = Math.max(0, Math.ceil((nextTime - Date.now()) / 60000))
+    if (remaining <= 0) return t("priceBot.inQueue")
+    return `~${remaining} мин.`
+  }
 
   // Selection handlers
   const isAllSelected = products && products.length > 0 && selectedProductIds.size === products.length
@@ -310,6 +344,18 @@ export default function PriceBotPage() {
               <RefreshCw className="h-4 w-4 mr-2" />
             )}
             {t("priceBot.syncProducts")}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleSyncPrices}
+            disabled={!selectedStore || syncPrices.isPending}
+          >
+            {syncPrices.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <TrendingUp className="h-4 w-4 mr-2" />
+            )}
+            {t("priceBot.syncPrices")}
           </Button>
           <Button onClick={handleOpenSettingsDialog} disabled={!selectedStore}>
             <Settings2 className="h-4 w-4 mr-2" />
@@ -505,7 +551,10 @@ export default function PriceBotPage() {
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1 min-w-0" >
-                          <h3 className="font-medium truncate">{product.name}</h3>
+                          <div className="flex items-center gap-1.5">
+                            {product.is_priority && <Zap className="h-4 w-4 text-yellow-500 flex-shrink-0" />}
+                            <h3 className="font-medium truncate">{product.name}</h3>
+                          </div>
                           <p className="text-sm text-muted-foreground">{product.kaspi_sku}</p>
                         </div>
                         <div className="p-2 -m-2" onClick={(e) => e.stopPropagation()}>
@@ -530,7 +579,14 @@ export default function PriceBotPage() {
                           <p className="text-sm">{formatPrice(product.min_profit)}</p>
                         </div>
                       </div>
-                      <div className="mt-4 flex items-center justify-between">
+                      {product.bot_active && (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {t("priceBot.lastCheck")}: {formatTimeAgo(product.last_check_time)}
+                          {" \u00B7 "}
+                          {t("priceBot.nextCheck")}: {formatNextCheck(product.last_check_time, product.is_priority)}
+                        </p>
+                      )}
+                      <div className="mt-3 flex items-center justify-between">
                         <Badge variant={product.bot_active ? "default" : "secondary"}>
                           {product.bot_active
                             ? t("priceBot.dempingOn")
@@ -574,6 +630,9 @@ export default function PriceBotPage() {
                           <th className="text-center p-4 text-sm font-medium text-muted-foreground">
                             {t("priceBot.demping")}
                           </th>
+                          <th className="text-center p-4 text-sm font-medium text-muted-foreground">
+                            {t("priceBot.status")}
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -592,11 +651,14 @@ export default function PriceBotPage() {
                               />
                             </td>
                             <td className="p-4" onClick={() => setSelectedProductId(product.id)}>
-                              <div>
-                                <p className="font-medium">{product.name}</p>
-                                <p className="text-sm text-muted-foreground">
-                                  {product.kaspi_sku}
-                                </p>
+                              <div className="flex items-center gap-1.5">
+                                {product.is_priority && <Zap className="h-4 w-4 text-yellow-500 flex-shrink-0" />}
+                                <div>
+                                  <p className="font-medium">{product.name}</p>
+                                  <p className="text-sm text-muted-foreground">
+                                    {product.kaspi_sku}
+                                  </p>
+                                </div>
                               </div>
                             </td>
                             <td className="p-4" onClick={() => setSelectedProductId(product.id)}>
@@ -618,6 +680,16 @@ export default function PriceBotPage() {
                                 onCheckedChange={() => toggleDemping(product)}
                                 disabled={updateProduct.isPending}
                               />
+                            </td>
+                            <td className="p-4 text-center" onClick={() => setSelectedProductId(product.id)}>
+                              {product.bot_active ? (
+                                <div className="text-xs space-y-0.5">
+                                  <p className="text-muted-foreground">{formatTimeAgo(product.last_check_time)}</p>
+                                  <p className="text-green-600 dark:text-green-400">{formatNextCheck(product.last_check_time, product.is_priority)}</p>
+                                </div>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">-</span>
+                              )}
                             </td>
                           </tr>
                         ))}

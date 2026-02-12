@@ -82,6 +82,13 @@ export function useAuth() {
     return authClient.updatePassword(token, newPassword)
   }, [])
 
+  const refreshUser = useCallback(async () => {
+    const { user } = await authClient.getCurrentUser()
+    if (user) {
+      setState({ user, loading: false })
+    }
+  }, [])
+
   return {
     ...state,
     signIn,
@@ -91,5 +98,6 @@ export function useAuth() {
     verifyOtp,
     resetPassword,
     updatePassword,
+    refreshUser,
   }
 }

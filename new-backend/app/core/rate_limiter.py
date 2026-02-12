@@ -198,3 +198,23 @@ def is_merchant_cooled_down(merchant_uid: str) -> bool:
     # Expired — clean up
     _pricefeed_cooldowns.pop(merchant_uid, None)
     return False
+
+
+# ============================================================================
+# Orders API rate limiter (MC GraphQL + REST API)
+# ============================================================================
+
+_orders_rate_limiter: Optional[TokenBucket] = None
+
+
+def get_orders_rate_limiter() -> TokenBucket:
+    """
+    Get rate limiter for Orders API (MC GraphQL + REST API).
+
+    Conservative 6 RPS to avoid triggering limits on MC GraphQL endpoint.
+    """
+    global _orders_rate_limiter
+    if _orders_rate_limiter is None:
+        # 6 RPS is safe for MC GraphQL (conservative estimate)
+        _orders_rate_limiter = TokenBucket(rate=6.0)
+    return _orders_rate_limiter
