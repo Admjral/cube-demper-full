@@ -72,7 +72,7 @@ class AISalesmanService:
 3. Упомяни 1-2 релевантных товара из каталога
 4. Не используй эмодзи больше 1-2 штук
 5. Обращайся на "вы"
-6. Не давай скидок без согласия магазина
+6. Не предлагай скидки и промокоды
 7. Не обещай того, чего нет в каталоге
 
 Формат ответа:
@@ -83,13 +83,13 @@ class AISalesmanService:
 Твоя задача - составить теплое сообщение в WhatsApp:
 1. Поблагодари за повторную покупку
 2. Предложи 1-2 товара на основе истории покупок
-3. Упомяни возможность скидки для постоянных клиентов (если магазин разрешает)
 
 Правила:
 - Русский язык
 - Максимум 4 предложения
 - Дружелюбный тон
 - Без навязчивости
+- Не предлагай скидки и промокоды
 
 Формат ответа:
 Только текст сообщения.""",
@@ -100,7 +100,6 @@ class AISalesmanService:
 1. Русский язык
 2. 2-3 предложения максимум
 3. Не давить, просто напомнить
-4. Если магазин дает бонус за отзыв - упомяни его
 
 Формат ответа:
 Только текст сообщения.""",
@@ -233,10 +232,6 @@ class AISalesmanService:
         if shop_settings:
             if shop_settings.get('tone'):
                 prompt += f"\n\nТон общения: {shop_settings['tone']}"
-            if shop_settings.get('discount_percent'):
-                prompt += f"\nМожно предложить скидку до {shop_settings['discount_percent']}%"
-            if shop_settings.get('promo_code'):
-                prompt += f"\nПромокод для клиента: {shop_settings['promo_code']}"
 
         return prompt
 
@@ -323,20 +318,17 @@ class AISalesmanService:
     async def generate_review_request(
         self,
         context: OrderContext,
-        bonus_text: str = None,
     ) -> SalesmanMessage:
         """
         Сгенерировать запрос на отзыв.
 
         Args:
             context: Контекст заказа
-            bonus_text: Текст бонуса за отзыв (скидка, промокод)
         """
         user_prompt = f"""Клиент {context.customer_name or 'Покупатель'} купил:
 {', '.join(item.get('name', 'Товар') for item in context.items[:3])}
 
 {"Это первая покупка." if context.is_first_purchase else f"Клиент делал {len(context.purchase_history)} покупок ранее."}
-{f"За отзыв предлагаем: {bonus_text}" if bonus_text else ""}
 
 Составь вежливую просьбу оставить отзыв."""
 
@@ -381,6 +373,15 @@ async def process_order_for_upsell(
         Сгенерированное сообщение или None
     """
     async with pool.acquire() as conn:
+        # 0. Дедупликация — не отправляем повторно для того же заказа
+        existing = await conn.fetchval(
+            "SELECT id FROM ai_salesman_messages WHERE order_id = $1",
+            order_id
+        )
+        if existing:
+            logger.info("AI salesman already sent for order %s, skipping", order_id)
+            return None
+
         # 1. Получаем данные заказа
         order = await conn.fetchrow("""
             SELECT o.*, s.user_id, s.name as store_name
@@ -434,7 +435,7 @@ async def process_order_for_upsell(
 
         # 5. Получаем настройки магазина для ИИ
         shop_settings = await conn.fetchrow("""
-            SELECT ai_tone, ai_discount_percent, ai_promo_code, ai_enabled
+            SELECT ai_tone, ai_enabled, ai_max_messages_per_day
             FROM kaspi_stores
             WHERE id = $1
         """, order['store_id'])
@@ -473,8 +474,6 @@ async def process_order_for_upsell(
         if shop_settings:
             settings_dict = {
                 'tone': shop_settings.get('ai_tone'),
-                'discount_percent': shop_settings.get('ai_discount_percent'),
-                'promo_code': shop_settings.get('ai_promo_code'),
             }
 
         # 7. Генерируем сообщение
