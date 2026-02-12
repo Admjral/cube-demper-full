@@ -118,6 +118,13 @@ async def lifespan(app: FastAPI):
             periodic_orders_sync, pool, name="orders_sync", restart_delay=60
         ))
 
+        # Start preorder status checker in background (every 5 min)
+        logger.info("[STARTUP] Starting preorder checker in background...")
+        from .services.preorder_checker import periodic_preorder_check
+        asyncio.create_task(_safe_background_task(
+            periodic_preorder_check, pool, name="preorder_check", restart_delay=60
+        ))
+
         total_elapsed = time.time() - total_start
         logger.info(f"[STARTUP] ✅ Application ready in {total_elapsed:.2f}s")
 

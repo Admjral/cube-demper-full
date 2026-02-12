@@ -59,6 +59,8 @@ class ProductUpdateRequest(BaseModel):
     strategy_params: Optional[dict] = None
     pre_order_days: Optional[int] = Field(None, ge=0, le=30, description="Pre-order days (0=off, 1-30=on)")
     is_priority: Optional[bool] = None
+    delivery_demping_enabled: Optional[bool] = None
+    delivery_filter: Optional[str] = Field(None, pattern="^(same_or_faster|today_tomorrow|till_3_days|till_5_days)$")
 
 
 class BulkPriceUpdateRequest(BaseModel):
@@ -120,12 +122,18 @@ class ProductDempingDetails(BaseModel):
     strategy_params: Optional[dict] = None
     pre_order_days: int = 0
     is_priority: bool = False
+    preorder_status: str = "none"  # none / pending / active
+    delivery_demping_enabled: bool = False
+    delivery_filter: str = "same_or_faster"
 
     # Global store settings (for display)
     store_price_step: int
     store_min_margin_percent: int
     store_work_hours_start: str
     store_work_hours_end: str
+
+    # Store points (PP→city mapping)
+    store_points: Optional[dict] = None
 
     # Statistics
     last_check_time: Optional[datetime] = None
@@ -274,7 +282,8 @@ class ProductCityPriceResponse(BaseModel):
 
 class ProductCityPricesRequest(BaseModel):
     """Schema for setting up city prices for a product"""
-    apply_to_all_cities: bool = True  # If true, use same settings for all cities
+    apply_to_all_cities: bool = False
+    auto_from_store_points: bool = False  # Auto-init from store's PP→city mapping
     cities: List[ProductCityPriceCreate] = []  # Specific city settings
 
 
