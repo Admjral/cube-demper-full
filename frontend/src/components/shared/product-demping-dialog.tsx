@@ -15,7 +15,8 @@ import { formatPrice } from '@/lib/utils'
 import { PriceHistoryView } from './price-history-view'
 import { CityPricesDialog } from './city-prices-dialog'
 import { useT } from '@/lib/i18n'
-import { RefreshCw, Loader2, CheckCircle, AlertCircle, Play, MapPin, Package } from 'lucide-react'
+import { RefreshCw, Loader2, CheckCircle, AlertCircle, Play, MapPin, Package, Timer, Clock, Truck } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
 
 interface ProductDempingDialogProps {
@@ -39,6 +40,8 @@ export function ProductDempingDialog({ productId, open, onOpenChange }: ProductD
   const [customStep, setCustomStep] = useState(100)
   const [preOrderEnabled, setPreOrderEnabled] = useState(false)
   const [preOrderDays, setPreOrderDays] = useState(7)
+  const [deliveryDempingEnabled, setDeliveryDempingEnabled] = useState(false)
+  const [deliveryFilter, setDeliveryFilter] = useState<string>('same_or_faster')
   const [showCityDialog, setShowCityDialog] = useState(false)
 
   const t = useT()
@@ -54,6 +57,8 @@ export function ProductDempingDialog({ productId, open, onOpenChange }: ProductD
       setCustomStep(details.price_step_override || details.store_price_step)
       setPreOrderEnabled((details.pre_order_days || 0) > 0)
       setPreOrderDays(details.pre_order_days || 7)
+      setDeliveryDempingEnabled(details.delivery_demping_enabled || false)
+      setDeliveryFilter(details.delivery_filter || 'same_or_faster')
     }
   }, [details])
 
@@ -69,6 +74,8 @@ export function ProductDempingDialog({ productId, open, onOpenChange }: ProductD
         max_price: maxPrice,
         price_step_override: useGlobalStep ? null : customStep,
         pre_order_days: preOrderEnabled ? preOrderDays : 0,
+        delivery_demping_enabled: deliveryDempingEnabled,
+        delivery_filter: deliveryFilter as 'same_or_faster' | 'today_tomorrow' | 'till_3_days' | 'till_5_days',
       }
     })
 
@@ -217,7 +224,14 @@ export function ProductDempingDialog({ productId, open, onOpenChange }: ProductD
                       <div>
                         <p className="font-medium">Демпинг по городам</p>
                         <p className="text-sm text-muted-foreground">
-                          Настройте разные цены для разных городов Казахстана
+                          {(() => {
+                            const sp = details?.store_points
+                            if (!sp) return 'Нет данных о складах'
+                            const cities = new Set(Object.values(sp).filter(d => d?.enabled).map(d => d.city_name))
+                            if (cities.size === 1) return `Город: ${Array.from(cities)[0]}`
+                            if (cities.size > 1) return `Города: ${Array.from(cities).join(', ')}`
+                            return 'Нет активных складов'
+                          })()}
                         </p>
                       </div>
                     </div>
@@ -232,8 +246,65 @@ export function ProductDempingDialog({ productId, open, onOpenChange }: ProductD
                 </CardContent>
               </Card>
 
+              {/* Демпинг по доставке */}
+              <Card className={
+                deliveryDempingEnabled ? "border-blue-500/50 bg-blue-500/5" : ""
+              }>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <Truck className="h-5 w-5 text-blue-500" />
+                      <div>
+                        <p className="font-medium">Демпинг по доставке</p>
+                        <p className="text-sm text-muted-foreground">
+                          Конкурировать только с продавцами с быстрой доставкой
+                        </p>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={deliveryDempingEnabled}
+                      onCheckedChange={(checked) => {
+                        setDeliveryDempingEnabled(checked)
+                      }}
+                    />
+                  </div>
+
+                  {deliveryDempingEnabled && (
+                    <div className="mt-4 space-y-3">
+                      {details?.bot_active && (
+                        <p className="text-xs text-orange-600">
+                          При сохранении обычный демпинг будет отключён
+                        </p>
+                      )}
+                      <div className="space-y-2">
+                        <Label className="text-sm">Фильтр по скорости доставки</Label>
+                        <Select value={deliveryFilter} onValueChange={setDeliveryFilter}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="same_or_faster">Такая же или быстрее (как у меня)</SelectItem>
+                            <SelectItem value="today_tomorrow">Сегодня-завтра</SelectItem>
+                            <SelectItem value="till_3_days">До 3 дней</SelectItem>
+                            <SelectItem value="till_5_days">До 5 дней</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Демпер будет игнорировать конкурентов с более медленной доставкой и конкурировать
+                        только с теми, кто доставляет быстро
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
               {/* Предзаказ */}
-              <Card className={preOrderEnabled ? "border-orange-500/50 bg-orange-500/5" : ""}>
+              <Card className={
+                details?.preorder_status === 'active' ? "border-green-500/50 bg-green-500/5" :
+                details?.preorder_status === 'pending' ? "border-yellow-500/50 bg-yellow-500/5" :
+                preOrderEnabled ? "border-orange-500/50 bg-orange-500/5" : ""
+              }>
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
@@ -245,11 +316,45 @@ export function ProductDempingDialog({ productId, open, onOpenChange }: ProductD
                         </p>
                       </div>
                     </div>
-                    <Switch
-                      checked={preOrderEnabled}
-                      onCheckedChange={setPreOrderEnabled}
-                    />
+                    <div className="flex items-center gap-3">
+                      {details?.preorder_status === 'pending' && (
+                        <Badge variant="outline" className="border-yellow-500 text-yellow-600 gap-1">
+                          <Clock className="h-3 w-3" />
+                          Ожидание
+                        </Badge>
+                      )}
+                      {details?.preorder_status === 'active' && (
+                        <Badge variant="outline" className="border-green-500 text-green-600 gap-1">
+                          <CheckCircle className="h-3 w-3" />
+                          Активен
+                        </Badge>
+                      )}
+                      <Switch
+                        checked={preOrderEnabled}
+                        onCheckedChange={setPreOrderEnabled}
+                      />
+                    </div>
                   </div>
+
+                  {/* Status messages */}
+                  {details?.preorder_status === 'pending' && (
+                    <div className="mt-3 space-y-1">
+                      <div className="flex items-center gap-2 text-sm text-yellow-600">
+                        <Timer className="h-4 w-4 animate-pulse" />
+                        <span>Ожидание активации на Kaspi...</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground ml-6">
+                        Демпинг автоматически отключён. Проверяем статус каждые 5 минут.
+                      </p>
+                    </div>
+                  )}
+                  {details?.preorder_status === 'active' && (
+                    <div className="flex items-center gap-2 mt-3 text-sm text-green-600">
+                      <CheckCircle className="h-4 w-4" />
+                      <span>Предзаказ активен на Kaspi ({details.pre_order_days} дней)</span>
+                    </div>
+                  )}
+
                   {preOrderEnabled && (
                     <div className="mt-4 space-y-3">
                       <div className="flex items-center justify-between">
@@ -279,6 +384,11 @@ export function ProductDempingDialog({ productId, open, onOpenChange }: ProductD
                           })}
                         </span>
                       </p>
+                      {details?.preorder_status !== 'pending' && details?.preorder_status !== 'active' && (
+                        <p className="text-xs text-orange-600">
+                          При сохранении демпинг будет автоматически отключён
+                        </p>
+                      )}
                     </div>
                   )}
                 </CardContent>
@@ -409,6 +519,7 @@ export function ProductDempingDialog({ productId, open, onOpenChange }: ProductD
         productId={productId}
         productName={details?.product_name}
         basePrice={details?.current_price || 0}
+        storePoints={details?.store_points}
         open={showCityDialog}
         onOpenChange={setShowCityDialog}
       />

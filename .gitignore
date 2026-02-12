@@ -24,3 +24,5 @@ pars.py
 .vscode/
 *.swp
 .DS_Store
+kaspi.env
+rail.env

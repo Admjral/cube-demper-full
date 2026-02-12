@@ -122,6 +122,12 @@ export function getNotificationMeta(type: string): {
     case 'referral_payout_completed':
       return { icon: 'CreditCard', color: 'text-green-500', bgColor: 'bg-green-500/10' }
 
+    // Preorders
+    case 'preorder_activated':
+      return { icon: 'Timer', color: 'text-green-500', bgColor: 'bg-green-500/10' }
+    case 'preorder_failed':
+      return { icon: 'AlertTriangle', color: 'text-orange-500', bgColor: 'bg-orange-500/10' }
+
     // System
     case 'system_subscription_expiring':
       return { icon: 'Clock', color: 'text-yellow-500', bgColor: 'bg-yellow-500/10' }

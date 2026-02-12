@@ -24,6 +24,10 @@ class NotificationType:
     REFERRAL_PAID = "referral_paid"
     REFERRAL_PAYOUT_COMPLETED = "referral_payout_completed"
 
+    # Preorders
+    PREORDER_ACTIVATED = "preorder_activated"
+    PREORDER_FAILED = "preorder_failed"
+
     # System
     SYSTEM_SUBSCRIPTION_EXPIRING = "system_subscription_expiring"
     SYSTEM_SUBSCRIPTION_EXPIRED = "system_subscription_expired"
@@ -213,6 +217,48 @@ async def notify_referral_paid(
         data={
             "referral_email": referral_email,
             "commission": commission,
+        },
+    )
+
+
+async def notify_preorder_activated(
+    pool: asyncpg.Pool,
+    user_id: uuid.UUID,
+    product_name: str,
+    pre_order_days: int,
+    product_id: Optional[uuid.UUID] = None,
+) -> uuid.UUID:
+    """Notify user that preorder was successfully activated on Kaspi."""
+    return await create_notification(
+        pool=pool,
+        user_id=user_id,
+        notification_type=NotificationType.PREORDER_ACTIVATED,
+        title="Предзаказ активирован",
+        message=f"{product_name}: предзаказ {pre_order_days} дней активен на Kaspi",
+        data={
+            "product_id": str(product_id) if product_id else None,
+            "product_name": product_name,
+            "pre_order_days": pre_order_days,
+        },
+    )
+
+
+async def notify_preorder_failed(
+    pool: asyncpg.Pool,
+    user_id: uuid.UUID,
+    product_name: str,
+    product_id: Optional[uuid.UUID] = None,
+) -> uuid.UUID:
+    """Notify user that preorder was not detected on Kaspi after 24h."""
+    return await create_notification(
+        pool=pool,
+        user_id=user_id,
+        notification_type=NotificationType.PREORDER_FAILED,
+        title="Предзаказ не активирован",
+        message=f"{product_name}: предзаказ не обнаружен на Kaspi. Проверьте товар в Kaspi MC.",
+        data={
+            "product_id": str(product_id) if product_id else None,
+            "product_name": product_name,
         },
     )
 

@@ -503,6 +503,8 @@ async def sync_product(
     user_id: Optional[UUID] = None,
     use_proxy: bool = False,
     module: Optional[str] = None,
+    city_prices: Optional[Dict[str, int]] = None,
+    pre_order_days: Optional[int] = None,
 ) -> dict:
     """
     Sync product price to Kaspi.
@@ -512,11 +514,13 @@ async def sync_product(
 
     Args:
         product_id: Internal product UUID (can be string or UUID)
-        new_price: New price to set
+        new_price: New price to set (ignored when city_prices provided)
         session: Session data with cookies
         user_id: User UUID (reserved for future proxy support)
         use_proxy: Whether to use proxy (reserved, proxies don't help for pricefeed)
         module: Proxy module name (reserved for future)
+        city_prices: Optional dict {city_id: price} for per-city pricing
+        pre_order_days: Optional pre-order days override (0 = remove pre-order)
 
     Returns:
         Success response
@@ -525,19 +529,24 @@ async def sync_product(
         KaspiAuthError: If session is invalid
         httpx.HTTPError: If API request fails
     """
-    logger.info(f"Syncing product {product_id} with price {new_price}")
+    logger.info(f"Syncing product {product_id} with price {new_price}"
+                f"{f', city_prices={city_prices}' if city_prices else ''}"
+                f"{f', preOrder={pre_order_days}' if pre_order_days else ''}")
 
     # Convert product_id to UUID if it's a string
     product_uuid = uuid_module.UUID(product_id) if isinstance(product_id, str) else product_id
 
-    # Get product data from database
+    # Get product data and store points from database
     pool = await get_db_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            SELECT id, kaspi_product_id, kaspi_sku, price, store_id
-            FROM products
-            WHERE id = $1
+            SELECT p.id, p.kaspi_product_id, p.kaspi_sku, p.price, p.store_id,
+                   p.pre_order_days, p.availabilities,
+                   ks.store_points
+            FROM products p
+            JOIN kaspi_stores ks ON ks.id = p.store_id
+            WHERE p.id = $1
             """,
             product_uuid
         )
@@ -558,18 +567,61 @@ async def sync_product(
     headers = _get_merchant_headers()
     url = "https://mc.shop.kaspi.kz/pricefeed/upload/merchant/process"
 
+    # Determine pre-order days: explicit param > DB value
+    effective_pre_order = pre_order_days if pre_order_days is not None else (row.get("pre_order_days") or 0)
+
+    # Build availabilities for ALL PPs where product is available
+    product_avail = row.get("availabilities") or {}
+    if isinstance(product_avail, str):
+        product_avail = json.loads(product_avail)
+
+    store_points = row.get("store_points") or {}
+    if isinstance(store_points, str):
+        store_points = json.loads(store_points)
+
+    # Determine which PPs to include:
+    # - If product has availabilities data, use those PPs (only where available=yes)
+    # - If store has store_points, include all enabled PPs
+    # - Fallback to PP1 only
+    pp_keys = set()
+    if product_avail:
+        for pp_key, pp_data in product_avail.items():
+            if isinstance(pp_data, dict) and pp_data.get("available") == "yes":
+                pp_keys.add(pp_key)
+    if not pp_keys and store_points:
+        for pp_key, sp_data in store_points.items():
+            if isinstance(sp_data, dict) and sp_data.get("enabled", True):
+                pp_keys.add(pp_key)
+
+    availabilities = []
+    for pp_key in sorted(pp_keys) if pp_keys else ["PP1"]:
+        avail = {
+            "available": "yes",
+            "storeId": f"{merchant_uid}_{pp_key}",
+            "stockEnabled": False
+        }
+        if effective_pre_order and effective_pre_order > 0:
+            avail["preOrder"] = effective_pre_order
+        availabilities.append(avail)
+
+    if len(availabilities) > 1:
+        logger.info(f"Multi-PP sync for product {product_id}: {[a['storeId'] for a in availabilities]}")
+
     body = {
         "merchantUid": merchant_uid,
-        "availabilities": [
-            {
-                "available": "yes",
-                "storeId": f"{merchant_uid}_PP1",
-                "stockEnabled": False
-            }
-        ],
+        "availabilities": availabilities,
         "sku": row["kaspi_sku"],
-        "price": new_price
     }
+
+    # City-specific pricing vs global pricing
+    if city_prices:
+        body["cityprices"] = [
+            {"cityId": cid, "price": cprice}
+            for cid, cprice in city_prices.items()
+        ]
+        logger.info(f"Using cityprices for {len(city_prices)} cities")
+    else:
+        body["price"] = new_price
 
     # Check if this merchant is in pricefeed cooldown (30-min ban)
     if is_merchant_cooled_down(merchant_uid):
@@ -613,19 +665,21 @@ async def sync_product(
         response.raise_for_status()
         response_data = response.json()
 
-        # Update price in database
-        async with pool.acquire() as conn:
-            await conn.execute(
-                """
-                UPDATE products
-                SET price = $1, updated_at = NOW()
-                WHERE id = $2
-                """,
-                new_price,
-                product_uuid
-            )
+        # Update price in database (use new_price for global, skip for city-only)
+        if not city_prices:
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    """
+                    UPDATE products
+                    SET price = $1, updated_at = NOW()
+                    WHERE id = $2
+                    """,
+                    new_price,
+                    product_uuid
+                )
 
-        logger.info(f"Successfully synced product {product_uuid} with price {new_price}")
+        logger.info(f"Successfully synced product {product_uuid}"
+                     f"{f' with price {new_price}' if not city_prices else f' with {len(city_prices)} city prices'}")
 
         return {
             "success": True,

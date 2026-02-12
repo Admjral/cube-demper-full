@@ -23,8 +23,12 @@ from ..core.security import encrypt_session, decrypt_session
 from ..core.database import get_db_pool
 from ..core.http_client import get_http_client
 from ..core.circuit_breaker import get_kaspi_auth_circuit_breaker, CircuitOpenError
+from ..schemas.kaspi import KASPI_CITIES
 
 logger = logging.getLogger(__name__)
+
+# Reverse lookup: city_name → public API city_id
+_CITY_NAME_TO_ID = {name: cid for cid, name in KASPI_CITIES.items()}
 
 # Per-merchant login locks to prevent concurrent Playwright logins for the same account
 _merchant_login_locks: dict[str, asyncio.Lock] = {}
@@ -188,14 +192,40 @@ def _format_cookies(cookies: list) -> dict:
     return formatted_cookies
 
 
+def _build_store_points(points_data: list) -> dict:
+    """Convert MC GraphQL points data to PP→city mapping with public API city IDs.
+
+    MC uses internal city IDs that differ from the public offers API.
+    We map by city_name to get the correct public API city_id.
+    Falls back to MC city_id for cities not in KASPI_CITIES.
+    """
+    store_points = {}
+    for pt in points_data:
+        pp_name = pt.get("name", "")
+        city = pt.get("city") or {}
+        mc_city_id = city.get("id", "")
+        city_name = city.get("name", "")
+        enabled = pt.get("enabled", False)
+
+        # Map MC city name to public API city_id
+        public_city_id = _CITY_NAME_TO_ID.get(city_name, mc_city_id)
+
+        store_points[pp_name] = {
+            "city_id": public_city_id,
+            "city_name": city_name,
+            "enabled": enabled,
+        }
+    return store_points
+
+
 async def _get_merchant_info(
     cookies: list
-) -> Tuple[str, str]:
+) -> Tuple[str, str, dict]:
     """
-    Get merchant UID and name from Kaspi API.
+    Get merchant UID, name, and store points (PP→city mapping) from Kaspi API.
 
     Returns:
-        Tuple[merchant_uid, shop_name]
+        Tuple[merchant_uid, shop_name, store_points]
     """
     try:
         cookies_dict = _format_cookies(cookies)
@@ -230,7 +260,7 @@ async def _get_merchant_info(
         merchant_uid = merchants[0]['uid']
         logger.debug(f"Found merchant UID: {merchant_uid}")
 
-        # Get merchant details
+        # Get merchant details + store points (PP→city mapping)
         payload = {
             "operationName": "getMerchant",
             "variables": {"id": merchant_uid},
@@ -241,6 +271,14 @@ async def _get_merchant_info(
                         name
                         logo {
                             url
+                        }
+                        points {
+                            id
+                            name
+                            enabled
+                            virtual
+                            type
+                            city { id name }
                         }
                     }
                 }
@@ -257,10 +295,20 @@ async def _get_merchant_info(
         response.raise_for_status()
         shop_data = response.json()
 
-        shop_name = shop_data['data']['merchant']['name']
+        merchant = shop_data['data']['merchant']
+        shop_name = merchant['name']
+
+        # Build PP→city mapping from points
+        points_data = merchant.get('points') or []
+        store_points = _build_store_points(points_data)
+        if store_points:
+            logger.info(f"Store points for {merchant_uid}: {list(store_points.keys())}")
+        else:
+            logger.warning(f"No store points found for {merchant_uid}")
+
         logger.info(f"Retrieved merchant: {shop_name} ({merchant_uid})")
 
-        return merchant_uid, shop_name
+        return merchant_uid, shop_name, store_points
 
     except httpx.HTTPError as e:
         logger.error(f"HTTP error getting merchant info: {e}")
@@ -329,7 +377,7 @@ async def authenticate_kaspi(
             )
 
         # Complete login - get merchant info
-        merchant_uid, shop_name = await _get_merchant_info(cookies)
+        merchant_uid, shop_name, store_points = await _get_merchant_info(cookies)
 
         # Build GUID (session data)
         guid = {
@@ -347,6 +395,7 @@ async def authenticate_kaspi(
             'merchant_uid': merchant_uid,
             'shop_name': shop_name,
             'guid': encrypted_guid,
+            'store_points': store_points,
             'requires_sms': False
         }
 
@@ -398,7 +447,7 @@ async def verify_sms_code(
         success, updated_cookies = await _verify_sms_on_page(page, sms_code, cookies)
 
         # Get merchant info
-        merchant_uid, shop_name = await _get_merchant_info(updated_cookies)
+        merchant_uid, shop_name, store_points = await _get_merchant_info(updated_cookies)
 
         # Build complete GUID
         guid = {
@@ -420,19 +469,21 @@ async def verify_sms_code(
                 await conn.execute(
                     """
                     UPDATE kaspi_stores
-                    SET guid = $1, name = $2, updated_at = NOW()
-                    WHERE merchant_id = $3
+                    SET guid = $1, name = $2, store_points = $3::jsonb, updated_at = NOW()
+                    WHERE merchant_id = $4
                     """,
                     json.dumps({'encrypted': encrypted_guid}),
                     shop_name,
+                    json.dumps(store_points),
                     merchant_uid
                 )
-                logger.info(f"Updated store {merchant_uid} with verified session")
+                logger.info(f"Updated store {merchant_uid} with verified session and {len(store_points)} store points")
 
         return {
             'merchant_uid': merchant_uid,
             'shop_name': shop_name,
-            'guid': encrypted_guid
+            'guid': encrypted_guid,
+            'store_points': store_points,
         }
 
     finally:
@@ -707,18 +758,20 @@ async def get_active_session_with_refresh(
                     # Attempt to re-authenticate
                     new_session = await authenticate_kaspi(email, password, merchant_id)
 
-                    # If successful, update database
+                    # If successful, update database (including refreshed store_points)
+                    new_store_points = new_session.get('store_points', {})
                     await conn.execute(
                         """
                         UPDATE kaspi_stores
-                        SET guid = $1, needs_reauth = false, reauth_reason = NULL, updated_at = NOW()
-                        WHERE merchant_id = $2
+                        SET guid = $1, store_points = $2::jsonb, needs_reauth = false, reauth_reason = NULL, updated_at = NOW()
+                        WHERE merchant_id = $3
                         """,
                         json.dumps({'encrypted': new_session['guid']}),
+                        json.dumps(new_store_points),
                         merchant_id
                     )
 
-                    logger.info(f"Successfully refreshed session for merchant {merchant_id}")
+                    logger.info(f"Successfully refreshed session for merchant {merchant_id} with {len(new_store_points)} store points")
 
                     # Return decrypted session
                     return decrypt_session(new_session['guid'])

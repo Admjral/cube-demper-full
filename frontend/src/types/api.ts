@@ -276,6 +276,12 @@ export interface ProductDempingDetails {
   demping_strategy: 'standard' | 'always_first' | 'stay_top_n'
   strategy_params: { top_position?: number } | null
   pre_order_days: number
+  preorder_status: 'none' | 'pending' | 'active'
+  delivery_demping_enabled: boolean
+  delivery_filter: 'same_or_faster' | 'today_tomorrow' | 'till_3_days' | 'till_5_days'
+
+  // Store points (PP→city mapping)
+  store_points: Record<string, { city_id: string; city_name: string; enabled: boolean }> | null
 
   // Global store settings (for display)
   store_price_step: number
@@ -295,6 +301,8 @@ export interface ProductDempingUpdate {
   demping_strategy?: 'standard' | 'always_first' | 'stay_top_n'
   strategy_params?: { top_position?: number } | null
   pre_order_days?: number
+  delivery_demping_enabled?: boolean
+  delivery_filter?: 'same_or_faster' | 'today_tomorrow' | 'till_3_days' | 'till_5_days'
 }
 
 // =============================================
@@ -403,7 +411,8 @@ export interface ProductCityPriceUpdate {
 }
 
 export interface ProductCityPricesRequest {
-  apply_to_all_cities: boolean
+  apply_to_all_cities?: boolean
+  auto_from_store_points?: boolean
   cities: ProductCityPriceCreate[]
 }
 

@@ -26,6 +26,7 @@ Usage:
 """
 
 import asyncio
+import json
 import logging
 import random
 import signal
@@ -45,6 +46,62 @@ from ..services.api_parser import parse_product_by_sku, sync_product, get_mercha
 from ..services.kaspi_auth_service import get_active_session_with_refresh
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# Delivery Duration Ranking (for delivery demping)
+# Lower = faster delivery. Used to filter competitors by delivery speed.
+# ============================================================================
+
+DELIVERY_DURATION_RANK = {
+    "TODAY": 1,
+    "TOMORROW": 2,
+    "TILL_3_DAYS": 3,
+    "TILL_5_DAYS": 5,
+    "TILL_7_DAYS": 7,
+    "OTHER": 99,
+}
+
+# Maps our delivery_filter setting to max allowed deliveryDuration rank
+DELIVERY_FILTER_MAX_RANK = {
+    "today_tomorrow": 2,   # Only TODAY, TOMORROW
+    "till_3_days": 3,      # TODAY, TOMORROW, TILL_3_DAYS
+    "till_5_days": 5,      # Up to TILL_5_DAYS
+    "same_or_faster": None, # Dynamic: use our own delivery speed as threshold
+}
+
+
+def _offer_passes_delivery_filter(
+    offer: dict,
+    delivery_filter: str,
+    our_delivery_duration: Optional[str] = None,
+) -> bool:
+    """Check if a competitor offer passes the delivery filter.
+
+    Args:
+        offer: Raw offer from Kaspi API with deliveryDuration field
+        delivery_filter: Filter setting (today_tomorrow, till_3_days, till_5_days, same_or_faster)
+        our_delivery_duration: Our own deliveryDuration (for same_or_faster mode)
+
+    Returns:
+        True if the offer should be included as a competitor
+    """
+    offer_duration = offer.get("deliveryDuration")
+    if not offer_duration:
+        return True  # No delivery info = include (conservative)
+
+    offer_rank = DELIVERY_DURATION_RANK.get(offer_duration, 99)
+
+    if delivery_filter == "same_or_faster":
+        if not our_delivery_duration:
+            return True  # Can't compare, include all
+        our_rank = DELIVERY_DURATION_RANK.get(our_delivery_duration, 99)
+        return offer_rank <= our_rank
+    else:
+        max_rank = DELIVERY_FILTER_MAX_RANK.get(delivery_filter)
+        if max_rank is None:
+            return True
+        return offer_rank <= max_rank
 
 
 # ============================================================================
@@ -317,9 +374,14 @@ class DemperWorker:
                         products.price_step_override,
                         products.demping_strategy,
                         products.strategy_params,
+                        products.availabilities as product_availabilities,
+                        products.pre_order_days,
+                        products.delivery_demping_enabled,
+                        products.delivery_filter,
                         kaspi_stores.merchant_id,
                         kaspi_stores.guid,
                         kaspi_stores.user_id,
+                        kaspi_stores.store_points,
                         COALESCE(ds.check_interval_minutes, 15) as check_interval_minutes,
                         COALESCE(ds.work_hours_start, '00:00') as work_hours_start,
                         COALESCE(ds.work_hours_end, '23:59') as work_hours_end,
@@ -329,19 +391,16 @@ class DemperWorker:
                     FROM products
                     JOIN kaspi_stores ON kaspi_stores.id = products.store_id
                     LEFT JOIN demping_settings ds ON ds.store_id = products.store_id
-                    WHERE products.bot_active = TRUE
+                    WHERE (products.bot_active = TRUE OR products.delivery_demping_enabled = TRUE)
                       AND kaspi_stores.is_active = TRUE
                       AND kaspi_stores.guid IS NOT NULL
                       AND products.external_kaspi_id IS NOT NULL
                       AND COALESCE(kaspi_stores.needs_reauth, false) = FALSE
                       AND COALESCE(ds.is_enabled, true) = TRUE
-                      -- Check if within working hours (Kazakhstan time, UTC+5)
-                      -- Default to 24/7 if not set (00:00-23:59)
                       AND (
                           COALESCE(ds.work_hours_start, '00:00')::time <= (NOW() AT TIME ZONE 'Asia/Almaty')::time
                           AND COALESCE(ds.work_hours_end, '23:59')::time >= (NOW() AT TIME ZONE 'Asia/Almaty')::time
                       )
-                      -- Check if enough time passed since last check
                       AND (
                           products.last_check_time IS NULL
                           OR products.last_check_time < NOW() - (COALESCE(ds.check_interval_minutes, 15) || ' minutes')::interval
@@ -470,13 +529,22 @@ class DemperWorker:
                     return False
                 logger.debug(f"[{sku}] Got session for merchant {merchant_id}")
 
+                # Check if product has multiple cities (PP→city mapping)
+                cities = self._get_product_cities(product)
+                if len(cities) > 1:
+                    return await self._process_product_cities(product, cities, session)
+
+                # Single-city: use real city from store_points (not hardcoded Almaty)
+                single_city_id = cities[0]["city_id"] if cities else None
+
                 # Fetch competitor prices (with proxy rotation for module='demper')
                 user_id = product.get("user_id")
                 product_data = await parse_product_by_sku(
                     str(external_id),
                     session,
+                    city_id=single_city_id,
                     user_id=user_id,
-                    use_proxy=True,  # ✅ Use proxy pool for demper module
+                    use_proxy=True,
                     module='demper'
                 )
 
@@ -498,11 +566,29 @@ class DemperWorker:
                 if merchant_id != '30391544' and len(offers) > 0:
                     logger.info(f"Found {len(offers)} offers for SKU {sku} (merchant {merchant_id})")
 
+                # Delivery demping: find our deliveryDuration and apply filter
+                is_delivery_demping = product.get("delivery_demping_enabled", False)
+                delivery_filter = product.get("delivery_filter", "same_or_faster")
+                our_delivery_duration = None
+
+                if is_delivery_demping:
+                    # Find our own delivery duration from raw offers
+                    for offer in offers:
+                        if offer.get("merchantId") == merchant_id:
+                            our_delivery_duration = offer.get("deliveryDuration")
+                            break
+                    logger.info(
+                        f"[{sku}] Delivery demping: filter={delivery_filter}, "
+                        f"our_duration={our_delivery_duration}"
+                    )
+
                 # Sort offers by price and find our position
                 # Mark offers as excluded if they belong to excluded_merchant_ids
+                # For delivery demping: also exclude offers that don't match delivery filter
                 sorted_offers = []
                 our_price = None
                 our_position = None
+                filtered_out_count = 0
 
                 for offer in offers:
                     offer_merchant_id = offer.get("merchantId")
@@ -510,14 +596,26 @@ class DemperWorker:
                     if offer_price is not None:
                         is_ours = offer_merchant_id == merchant_id
                         is_excluded = offer_merchant_id in excluded_merchant_ids
+
+                        # Delivery demping: filter competitors by delivery speed
+                        if is_delivery_demping and not is_ours and not is_excluded:
+                            if not _offer_passes_delivery_filter(offer, delivery_filter, our_delivery_duration):
+                                filtered_out_count += 1
+                                is_excluded = True  # Treat slow-delivery competitors as excluded
+
                         sorted_offers.append({
                             "merchant_id": offer_merchant_id,
                             "price": Decimal(str(offer_price)),
                             "is_ours": is_ours,
-                            "is_excluded": is_excluded  # Own stores or excluded merchants
+                            "is_excluded": is_excluded
                         })
                         if is_ours:
                             our_price = Decimal(str(offer_price))
+
+                if is_delivery_demping and filtered_out_count > 0:
+                    logger.info(
+                        f"[{sku}] Delivery filter excluded {filtered_out_count} slow-delivery competitors"
+                    )
 
                 sorted_offers.sort(key=lambda x: x["price"])
 
@@ -591,9 +689,10 @@ class DemperWorker:
                     product_id=str(product_id),
                     new_price=int(target_price),
                     session=session,
-                    user_id=user_id,  # ✅ Use proxy pool
-                    use_proxy=True,   # ✅ Enable proxy rotation
-                    module='demper'   # ✅ Use demper module proxies (70 proxies)
+                    user_id=user_id,
+                    use_proxy=True,
+                    module='demper',
+                    pre_order_days=product.get('pre_order_days'),
                 )
 
                 if not sync_result or not sync_result.get("success"):
@@ -606,16 +705,18 @@ class DemperWorker:
                 await self._update_product_price(product_id, int(target_price))
 
                 # Record price change to history
+                reason_prefix = "delivery_demper" if is_delivery_demping else "demper"
                 await self._record_price_change(
                     product_id=product_id,
                     old_price=int(current_price),
                     new_price=int(target_price),
                     competitor_price=int(min_competitor_price),
-                    change_reason=f"demper_{strategy}"
+                    change_reason=f"{reason_prefix}_{strategy}"
                 )
 
+                mode_label = f"Delivery[{delivery_filter}]" if is_delivery_demping else f"[{strategy}]"
                 logger.info(
-                    f"✓ Demper [{strategy}]: Updated {sku} from {current_price} to {target_price} "
+                    f"✓ Demper {mode_label}: Updated {sku} from {current_price} to {target_price} "
                     f"(competitor: {min_competitor_price})"
                 )
 
@@ -627,6 +728,232 @@ class DemperWorker:
             finally:
                 # Random delay between product processing
                 await asyncio.sleep(random.uniform(0.1, 0.3))
+
+    def _get_product_cities(self, product: Dict[str, Any]) -> List[Dict]:
+        """Get cities where product is available, based on store_points PP→city mapping.
+
+        Returns list of dicts: [{"city_id": "770000000", "city_name": "Астана", "pp": "PP1"}, ...]
+        Returns empty list or single-element list for single-city products.
+        """
+        store_points = product.get("store_points") or {}
+        if isinstance(store_points, str):
+            store_points = json.loads(store_points)
+
+        product_avail = product.get("product_availabilities") or {}
+        if isinstance(product_avail, str):
+            product_avail = json.loads(product_avail)
+
+        if not store_points:
+            return []
+
+        cities = []
+        for pp_key, sp_data in store_points.items():
+            if not isinstance(sp_data, dict):
+                continue
+            # Only include PPs where product is available (or all if no avail data)
+            if product_avail:
+                pp_avail = product_avail.get(pp_key, {})
+                if isinstance(pp_avail, dict) and pp_avail.get("available") != "yes":
+                    continue
+            if sp_data.get("enabled", True) and sp_data.get("city_id"):
+                cities.append({
+                    "city_id": sp_data["city_id"],
+                    "city_name": sp_data.get("city_name", ""),
+                    "pp": pp_key,
+                })
+
+        return cities
+
+    async def _process_product_cities(
+        self, product: Dict[str, Any], cities: List[Dict], session: dict
+    ) -> bool:
+        """Process product with per-city demping.
+
+        For each city: fetch competitors, calculate target price.
+        Then send one batched sync_product() with city_prices.
+        """
+        product_id = product["id"]
+        sku = product["kaspi_sku"]
+        external_id = product["external_kaspi_id"]
+        current_price = Decimal(str(product["price"]))
+        merchant_id = product["merchant_id"]
+        user_id = product.get("user_id")
+
+        min_price = Decimal(str(product.get("min_price") or product.get("min_profit") or 0))
+        max_price = product.get("max_price")
+        if max_price:
+            max_price = Decimal(str(max_price))
+        price_step = Decimal(str(product.get("price_step_override") or product.get("store_price_step") or 1))
+        strategy = product.get("demping_strategy") or "standard"
+        strategy_params = product.get("strategy_params") or {}
+        excluded_merchant_ids = set(product.get("excluded_merchant_ids") or [])
+        excluded_merchant_ids.add(merchant_id)
+        is_delivery_demping = product.get("delivery_demping_enabled", False)
+        delivery_filter = product.get("delivery_filter", "same_or_faster")
+
+        KASPI_MIN_PRICE = Decimal("10")
+        effective_min_price = max(min_price, KASPI_MIN_PRICE) if min_price > 0 else KASPI_MIN_PRICE
+
+        city_names = [c["city_name"] for c in cities]
+        logger.info(f"[{sku}] Multi-city demping: {city_names}")
+
+        city_target_prices: Dict[str, int] = {}
+        any_change = False
+
+        for city_info in cities:
+            city_id = city_info["city_id"]
+            city_name = city_info["city_name"]
+
+            try:
+                # Fetch competitors for this city
+                product_data = await parse_product_by_sku(
+                    str(external_id),
+                    session,
+                    user_id=user_id,
+                    use_proxy=True,
+                    module='demper',
+                    city_id=city_id
+                )
+
+                if not product_data:
+                    logger.debug(f"[{sku}] No data for city {city_name}")
+                    continue
+
+                offers = product_data.get("offers", []) if isinstance(product_data, dict) else product_data
+                if not offers:
+                    logger.debug(f"[{sku}] No offers for city {city_name}")
+                    continue
+
+                # Find our delivery duration for this city (for delivery demping)
+                our_delivery_duration = None
+                if is_delivery_demping:
+                    for offer in offers:
+                        if offer.get("merchantId") == merchant_id:
+                            our_delivery_duration = offer.get("deliveryDuration")
+                            break
+
+                # Sort offers and find competitors
+                sorted_offers = []
+                our_position = None
+                for offer in offers:
+                    offer_merchant_id = offer.get("merchantId")
+                    offer_price = offer.get("price")
+                    if offer_price is not None:
+                        is_ours = offer_merchant_id == merchant_id
+                        is_excluded = offer_merchant_id in excluded_merchant_ids
+
+                        # Delivery demping: filter competitors by delivery speed
+                        if is_delivery_demping and not is_ours and not is_excluded:
+                            if not _offer_passes_delivery_filter(offer, delivery_filter, our_delivery_duration):
+                                is_excluded = True
+
+                        sorted_offers.append({
+                            "merchant_id": offer_merchant_id,
+                            "price": Decimal(str(offer_price)),
+                            "is_ours": is_ours,
+                            "is_excluded": is_excluded,
+                        })
+                sorted_offers.sort(key=lambda x: x["price"])
+
+                for i, offer in enumerate(sorted_offers):
+                    if offer["is_ours"]:
+                        our_position = i + 1
+                        break
+
+                # Find min competitor price
+                min_competitor_price = None
+                for offer in sorted_offers:
+                    if not offer["is_excluded"]:
+                        min_competitor_price = offer["price"]
+                        break
+
+                if min_competitor_price is None:
+                    logger.debug(f"[{sku}] No competitors in {city_name}")
+                    continue
+
+                # Calculate target price
+                target_price = self._calculate_target_price(
+                    strategy=strategy,
+                    strategy_params=strategy_params,
+                    current_price=current_price,
+                    min_competitor_price=min_competitor_price,
+                    sorted_offers=sorted_offers,
+                    our_position=our_position,
+                    price_step=price_step,
+                    merchant_id=merchant_id,
+                )
+
+                if target_price is None:
+                    continue
+
+                # Apply constraints
+                if target_price < effective_min_price:
+                    if current_price > effective_min_price:
+                        target_price = effective_min_price
+                    else:
+                        continue
+
+                if max_price and target_price > max_price:
+                    target_price = max_price
+
+                city_target_prices[city_id] = int(target_price)
+                if int(target_price) != int(current_price):
+                    any_change = True
+
+                logger.info(
+                    f"[{sku}] {city_name}: target={target_price}, "
+                    f"competitor={min_competitor_price}, pos={our_position}"
+                )
+
+            except Exception as e:
+                logger.error(f"[{sku}] Error processing city {city_name}: {e}", exc_info=True)
+                continue
+
+        # Update last_check_time regardless
+        await self._update_last_check_time(product_id)
+
+        if not city_target_prices:
+            logger.debug(f"[{sku}] No city prices calculated")
+            return False
+
+        if not any_change:
+            logger.debug(f"[{sku}] No price changes needed across cities")
+            return False
+
+        # One batched sync with city_prices
+        try:
+            sync_result = await sync_product(
+                product_id=str(product_id),
+                new_price=int(current_price),  # base price stays
+                session=session,
+                user_id=user_id,
+                use_proxy=True,
+                module='demper',
+                city_prices=city_target_prices,
+                pre_order_days=product.get('pre_order_days'),
+            )
+
+            if not sync_result or not sync_result.get("success"):
+                logger.error(f"[{sku}] Failed to sync city prices: {sync_result}")
+                return False
+
+            logger.info(f"[{sku}] City demping OK: {city_target_prices}")
+
+            # Record price change (use first city as representative)
+            first_city_price = next(iter(city_target_prices.values()))
+            await self._record_price_change(
+                product_id=product_id,
+                old_price=int(current_price),
+                new_price=first_city_price,
+                competitor_price=None,
+                change_reason=f"demper_city_{strategy}",
+            )
+
+            return True
+
+        except Exception as e:
+            logger.error(f"[{sku}] Error syncing city prices: {e}", exc_info=True)
+            return False
 
     def _calculate_target_price(
         self,
