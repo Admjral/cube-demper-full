@@ -609,110 +609,117 @@ async def parse_kaspi_url(
 
                 html = response.text
 
-            # Extract product name from title
-            product_name = None
-            title_match = re.search(r'<title>([^<]+)</title>', html)
-            if title_match:
-                title = title_match.group(1)
-                # Remove " — Kaspi.kz" suffix
-                product_name = re.sub(r'\s*[—-]\s*Kaspi\.kz.*$', '', title).strip()
+        if html is None:
+            return ProductParseResult(
+                kaspi_url=url,
+                success=False,
+                error="Failed to fetch page from both relay and direct"
+            )
 
-            # Extract price
-            price = None
-            # Try different price patterns
-            price_patterns = [
-                r'"price":\s*(\d+)',
-                r'itemoffered-price["\s]*:\s*["\']?(\d+)',
-                r'data-product-price="(\d+)"',
-                r'"offers":\s*\{[^}]*"price":\s*(\d+)',
-            ]
-            for pattern in price_patterns:
-                price_match = re.search(pattern, html)
-                if price_match:
-                    price = float(price_match.group(1))
+        # Extract product name from title
+        product_name = None
+        title_match = re.search(r'<title>([^<]+)</title>', html)
+        if title_match:
+            title = title_match.group(1)
+            # Remove " — Kaspi.kz" suffix
+            product_name = re.sub(r'\s*[—-]\s*Kaspi\.kz.*$', '', title).strip()
+
+        # Extract price
+        price = None
+        # Try different price patterns
+        price_patterns = [
+            r'"price":\s*(\d+)',
+            r'itemoffered-price["\s]*:\s*["\']?(\d+)',
+            r'data-product-price="(\d+)"',
+            r'"offers":\s*\{[^}]*"price":\s*(\d+)',
+        ]
+        for pattern in price_patterns:
+            price_match = re.search(pattern, html)
+            if price_match:
+                price = float(price_match.group(1))
+                break
+
+        # Extract category
+        category = None
+        subcategory = None
+
+        # Method 1: Try to find category in structured data
+        cat_patterns = [
+            r'"category":\s*"([^"]+)"',
+            r'itemListElement[^}]*"name":\s*"([^"]+)"',
+        ]
+        for pattern in cat_patterns:
+            cat_matches = re.findall(pattern, html)
+            if cat_matches:
+                for cat in cat_matches:
+                    if cat in ALL_CATEGORIES:
+                        category = cat
+                        break
+                if category:
                     break
 
-            # Extract category
-            category = None
-            subcategory = None
+        # Method 2: Detect from product name using keywords
+        if not category and product_name:
+            category, subcategory = detect_category_from_text(product_name)
 
-            # Method 1: Try to find category in structured data
-            cat_patterns = [
-                r'"category":\s*"([^"]+)"',
-                r'itemListElement[^}]*"name":\s*"([^"]+)"',
-            ]
-            for pattern in cat_patterns:
-                cat_matches = re.findall(pattern, html)
-                if cat_matches:
-                    for cat in cat_matches:
-                        if cat in ALL_CATEGORIES:
-                            category = cat
-                            break
-                    if category:
+        # Method 3: Detect from URL slug
+        if not category:
+            url_slug = url.lower()
+            category, subcategory = detect_category_from_text(url_slug)
+
+        # Method 4: Check breadcrumbs in HTML
+        if not category:
+            breadcrumb_match = re.search(r'breadcrumb[^>]*>([^<]+)', html, re.IGNORECASE)
+            if breadcrumb_match:
+                category, subcategory = detect_category_from_text(breadcrumb_match.group(1))
+
+        # Extract image
+        image_url = None
+        img_match = re.search(r'"image":\s*"([^"]+)"', html)
+        if img_match:
+            image_url = img_match.group(1)
+
+        # Extract weight from characteristics table
+        weight_kg = None
+        weight_patterns = [
+            # "Вес" ... "0.23 кг" or "230 г" in specs table
+            r'[Вв]ес[^<]*?</[^>]+>\s*<[^>]+>\s*([0-9.,]+)\s*(кг|г|kg|g)',
+            # JSON-like: "weight": "0.23" or "Вес": "1.5 кг"
+            r'"[Вв]ес":\s*"?([0-9.,]+)\s*(кг|г|kg|g)"?',
+            # Spec row: Вес ... 1.5 кг
+            r'[Вв]ес\s*(?:товара|брутто|нетто|,\s*кг)?\s*[:<]?\s*([0-9.,]+)\s*(кг|г|kg|g)',
+            # "weight":"0.228" in JSON data
+            r'"weight":\s*"?([0-9.,]+)"?',
+        ]
+        for pattern in weight_patterns:
+            w_match = re.search(pattern, html)
+            if w_match:
+                try:
+                    value = float(w_match.group(1).replace(',', '.'))
+                    # Check if there's a unit group
+                    unit = w_match.group(2).lower() if w_match.lastindex >= 2 else 'kg'
+                    if unit in ('г', 'g'):
+                        weight_kg = round(value / 1000, 3)
+                    else:
+                        weight_kg = round(value, 3)
+                    # Sanity check: weight should be 0.01 - 100 kg
+                    if weight_kg < 0.01 or weight_kg > 100:
+                        weight_kg = None
+                    else:
                         break
+                except (ValueError, IndexError):
+                    continue
 
-            # Method 2: Detect from product name using keywords
-            if not category and product_name:
-                category, subcategory = detect_category_from_text(product_name)
-
-            # Method 3: Detect from URL slug
-            if not category:
-                url_slug = url.lower()
-                category, subcategory = detect_category_from_text(url_slug)
-
-            # Method 4: Check breadcrumbs in HTML
-            if not category:
-                breadcrumb_match = re.search(r'breadcrumb[^>]*>([^<]+)', html, re.IGNORECASE)
-                if breadcrumb_match:
-                    category, subcategory = detect_category_from_text(breadcrumb_match.group(1))
-
-            # Extract image
-            image_url = None
-            img_match = re.search(r'"image":\s*"([^"]+)"', html)
-            if img_match:
-                image_url = img_match.group(1)
-
-            # Extract weight from characteristics table
-            weight_kg = None
-            weight_patterns = [
-                # "Вес" ... "0.23 кг" or "230 г" in specs table
-                r'[Вв]ес[^<]*?</[^>]+>\s*<[^>]+>\s*([0-9.,]+)\s*(кг|г|kg|g)',
-                # JSON-like: "weight": "0.23" or "Вес": "1.5 кг"
-                r'"[Вв]ес":\s*"?([0-9.,]+)\s*(кг|г|kg|g)"?',
-                # Spec row: Вес ... 1.5 кг
-                r'[Вв]ес\s*(?:товара|брутто|нетто|,\s*кг)?\s*[:<]?\s*([0-9.,]+)\s*(кг|г|kg|g)',
-                # "weight":"0.228" in JSON data
-                r'"weight":\s*"?([0-9.,]+)"?',
-            ]
-            for pattern in weight_patterns:
-                w_match = re.search(pattern, html)
-                if w_match:
-                    try:
-                        value = float(w_match.group(1).replace(',', '.'))
-                        # Check if there's a unit group
-                        unit = w_match.group(2).lower() if w_match.lastindex >= 2 else 'kg'
-                        if unit in ('г', 'g'):
-                            weight_kg = round(value / 1000, 3)
-                        else:
-                            weight_kg = round(value, 3)
-                        # Sanity check: weight should be 0.01 - 100 kg
-                        if weight_kg < 0.01 or weight_kg > 100:
-                            weight_kg = None
-                        else:
-                            break
-                    except (ValueError, IndexError):
-                        continue
-
-            return ProductParseResult(
-                product_name=product_name,
-                price=price,
-                category=category,
-                subcategory=subcategory,
-                weight_kg=weight_kg,
-                image_url=image_url,
-                kaspi_url=url,
-                success=True
-            )
+        return ProductParseResult(
+            product_name=product_name,
+            price=price,
+            category=category,
+            subcategory=subcategory,
+            weight_kg=weight_kg,
+            image_url=image_url,
+            kaspi_url=url,
+            success=True
+        )
 
     except httpx.TimeoutException:
         return ProductParseResult(

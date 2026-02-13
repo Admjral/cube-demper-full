@@ -1,6 +1,6 @@
 """Kaspi router - handles Kaspi store management, authentication, and product sync"""
 
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Body, Depends, HTTPException, status, BackgroundTasks
 from typing import Annotated, List, Optional, Dict, Any
 from pydantic import BaseModel
 import asyncpg
@@ -2187,13 +2187,20 @@ async def set_product_city_prices(
                 created_prices.append(row)
         else:
             # Apply specific city settings
+            # Load store_points for city_name fallback
+            store_points = product.get('store_points') or {}
+            if isinstance(store_points, str):
+                store_points = json.loads(store_points)
+            # Build city_id → city_name map from store_points
+            sp_city_names = {}
+            for pp_key, sp_data in store_points.items():
+                if isinstance(sp_data, dict) and sp_data.get("city_id"):
+                    sp_city_names[sp_data["city_id"]] = sp_data.get("city_name", sp_data["city_id"])
+
             for city_price in request.cities:
-                city_name = KASPI_CITIES.get(city_price.city_id)
+                city_name = KASPI_CITIES.get(city_price.city_id) or sp_city_names.get(city_price.city_id)
                 if not city_name:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Unknown city_id: {city_price.city_id}"
-                    )
+                    city_name = city_price.city_id  # Last resort: use ID as name
 
                 row = await conn.fetchrow(
                     """
@@ -2361,12 +2368,16 @@ async def delete_product_city_price(
     return None
 
 
+class RunCityDempingRequest(BaseModel):
+    city_ids: Optional[List[str]] = None
+
+
 @router.post("/products/{product_id}/run-city-demping", response_model=MultiCityDempingResult)
 async def run_product_city_demping(
     product_id: str,
     current_user: Annotated[dict, Depends(get_current_user)],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
-    city_ids: Optional[List[str]] = None
+    request: RunCityDempingRequest = Body(default=RunCityDempingRequest())
 ):
     """
     Run demping for a product across multiple cities.
@@ -2398,6 +2409,7 @@ async def run_product_city_demping(
             )
 
         # Get city prices to process
+        city_ids = request.city_ids
         if city_ids:
             city_prices = await conn.fetch(
                 """
