@@ -1,7 +1,35 @@
 # Claude Code Instructions for Cube Demper Project
 
 ## Project Overview
-Cube Demper - сервис для автоматического демпинга цен на Kaspi.kz маркетплейсе.
+Cube Demper — сервис для автоматического демпинга цен на Kaspi.kz маркетплейсе.
+
+## Architecture
+
+### Primary Production — VPS (`cube-demper.shop`)
+- **Сервер**: ps.kz (Казахстан), IP `195.93.152.71`, Ubuntu, Docker Compose
+- **Зачем VPS**: Kaspi REST API + Pricefeed API требуют KZ IP
+- **7 сервисов**: frontend, backend, postgres, redis, worker-1, worker-2, waha
+- **Домен**: `cube-demper.shop` (Cloudflare DNS → A record → VPS IP), SSL через nginx + Let's Encrypt
+- **SSH**: `/opt/homebrew/Cellar/sshpass/1.06/bin/sshpass -p '<пароль>' ssh ubuntu@195.93.152.71`
+- **Структура на VPS**: `/home/ubuntu/cube-demper/` — `docker-compose.yml`, `.env`, `new-backend/`, `frontend/`, `nginx/`
+- **Все сервисы на VPS**, кроме offers-relay (см. ниже)
+
+### Railway — ТОЛЬКО offers-relay
+
+#### Project: `offers-relay` (единственный активный на Railway)
+- **GitHub**: `Admjral/offers-relay` (private), деплой через `railway up` из `/offers-relay/`
+- **Назначение**: Проксирует запросы к Kaspi, которые блокируются с VPS IP
+- **Эндпоинты**:
+  - `POST /relay/offers` — Kaspi Offers API (`/yml/offer-view/offers/{id}`), конкуренты
+  - `POST /relay/parse-url` — Kaspi product page HTML (для юнит-экономики `parse-url`)
+- **URL**: `https://offers-relay-production.up.railway.app`
+- **Auth**: Bearer token через `RELAY_SECRET`
+- **Config в бэкенде**: `offers_relay_url` + `offers_relay_secret` в `config.py`
+- **Fallback**: VPS бэкенд сначала пробует relay, при ошибке → direct запрос
+
+#### Project: `proud-vision` (НЕ используется как прод, только WAHA)
+- `waha-plus` — WhatsApp (NOWEB engine, OTP сессия: `default`)
+- Остальные сервисы (`frontend`, `backemd`, workers) — неактивны, прод на VPS
 
 ## Repository Structure
 
@@ -228,11 +256,10 @@ SELECT * FROM price_history ORDER BY created_at DESC LIMIT 20;
 ```
 
 ## Important Notes
-1. **Never force push to main/master branches**
-2. **Always sync both frontend and backend after changes**
-3. **Check Railway deploy logs after pushing**
-4. **Migrations run automatically on backend deploy**
-5. **Workers need manual configuration in Railway Dashboard**
+1. **Never force push** to main/master
+2. **VPS — единственный прод** для всех сервисов. Railway — только offers-relay
+3. **Migrations автоматические** при старте бэкенда (`alembic upgrade head`)
+4. **offers-relay** деплоится отдельно: `cd offers-relay && railway up`
 
 ---
 
@@ -248,16 +275,25 @@ SELECT * FROM price_history ORDER BY created_at DESC LIMIT 20;
 
 ## Learned Insights
 
-### Railway Deployment
-- **Healthcheck timeout**: Railway Network healthcheck может занимать 2-5 минут даже если приложение стартует быстро. Это нормально — инфраструктура Railway (DNS, load balancer).
-- **railway.toml**: Может конфликтовать с UI настройками. Лучше использовать дефолты Railway или настраивать через UI.
-- **Playwright при старте**: Блокирует startup на 30-60 секунд. Решение — запускать проверку в background через `asyncio.create_task()`.
+### Kaspi API
+- **Rate Limits**: Offers 8 RPS/IP (бан 403, 10с). Pricefeed 1.5 RPS/аккаунт (бан 429, **30 мин!**). Per-endpoint лимитеры в `rate_limiter.py`
+- **Offers API**: 405 с VPS IP → relay через Railway (`/relay/offers`). Fallback → direct
+- **Product pages** (`kaspi.kz/shop/p/...`): тоже через relay (`/relay/parse-url`). Используется в юнит-экономике
+- **Pricefeed API**: работает напрямую с VPS (KZ IP нужен)
+- **REST API** (`kaspi.kz/shop/api/v2/orders`): `X-Auth-Token` header, KZ IP required, `User-Agent` обязателен
+- **MC GraphQL**: `mc.shop.kaspi.kz/mc/facade/graphql`, cookies dict + `x-auth-version: 3`, НЕ Relay-схема, телефоны замаскированы
+- **Orders Sync**: Фоновая задача в бэкенде (НЕ в воркерах), каждые 60 мин, MC GraphQL → только активные заказы
 
-### Admin Panel (2026-01-28)
-- Добавлена админ-панель из форка `hasabasa/cube-demper-full` branch `admin-panel`
-- Новые роутеры: `admin.py`, `partner_auth.py`
-- Новые таблицы: `partners`, колонка `is_blocked` в `users`
-- **Важно**: При добавлении роутера не забыть подключить в `main.py`
+### City Prices (2026-02-13)
+- `KASPI_CITIES` в `schemas/kaspi.py` — НЕ полный список, ~28 городов
+- Если city_id не в словаре → fallback на city_name из `store_points` магазина (не 400 ошибка)
+- `run-city-demping` принимает `{ city_ids: [...] }` как JSON body (`RunCityDempingRequest`)
+
+### Notification System (2026-02-12)
+- **`notification_settings` JSONB** в `users` — `{"orders": true, "price_changes": true, "support": true}`
+- Всегда проверять `get_user_notification_settings()` перед отправкой
+- Price: после `_record_price_change()` в `demper_instance.py`. Orders: только INSERT в `sync_orders_to_db()`. Support: в `support.py:send_message()`
+- Frontend: `iconMap` в `notification-bell.tsx` **должен** совпадать с `getNotificationMeta()` в `use-notifications.ts`
 
 ### Authentication
 - Login endpoint должен проверять `is_blocked` перед выдачей токена
