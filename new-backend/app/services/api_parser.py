@@ -663,8 +663,18 @@ async def sync_product(
             if isinstance(sp_data, dict) and sp_data.get("enabled", True):
                 pp_keys.add(pp_key)
 
+    # If no PPs found from product data or store_points, abort sync
+    # Sending only PP1 as fallback can remove product from real PPs (PP2, PP3, etc.)
+    if not pp_keys:
+        logger.warning(
+            f"No PP data for product {product_id} (sku={row['kaspi_sku']}). "
+            f"product_avail={bool(product_avail)}, store_points={bool(store_points)}. "
+            f"Skipping sync to avoid removing product from real PPs."
+        )
+        return {"success": False, "error": "no_pp_data", "product_id": str(product_uuid)}
+
     availabilities = []
-    for pp_key in sorted(pp_keys) if pp_keys else ["PP1"]:
+    for pp_key in sorted(pp_keys):
         avail = {
             "available": "yes",
             "storeId": f"{merchant_uid}_{pp_key}",
@@ -689,7 +699,9 @@ async def sync_product(
             {"cityId": cid, "price": cprice}
             for cid, cprice in city_prices.items()
         ]
-        logger.info(f"Using cityprices for {len(city_prices)} cities")
+        # Kaspi requires a base "price" even with cityprices — use min of city prices
+        body["price"] = min(city_prices.values())
+        logger.info(f"Using cityprices for {len(city_prices)} cities, base price={body['price']}")
     else:
         body["price"] = new_price
 
