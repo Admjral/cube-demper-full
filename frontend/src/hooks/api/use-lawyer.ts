@@ -8,7 +8,7 @@ import { useAuth } from '@/hooks/use-auth'
 // Types
 export type LawyerLanguage = 'ru' | 'kk'
 
-export type DocumentType = 
+export type DocumentType =
   | 'supply_contract'
   | 'sale_contract'
   | 'service_contract'
@@ -16,6 +16,7 @@ export type DocumentType =
   | 'employment_contract'
   | 'claim_to_supplier'
   | 'claim_to_buyer'
+  | 'claim_to_marketplace'
   | 'complaint_to_authority'
 
 export type TaxType = 'simplified_ip' | 'standard_ip' | 'too_kpn' | 'vat' | 'social'

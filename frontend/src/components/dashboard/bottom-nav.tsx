@@ -11,6 +11,7 @@ import {
   MessageSquare,
   Headphones,
 } from "lucide-react"
+import { useSupportUnread } from "@/hooks/use-support-unread"
 
 const mobileNavigation = [
   {
@@ -53,6 +54,7 @@ const mobileNavigation = [
 export function BottomNav() {
   const pathname = usePathname()
   const { locale } = useStore()
+  const { data: supportUnread } = useSupportUnread()
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 glass-bottom-nav lg:hidden safe-bottom">
@@ -60,6 +62,7 @@ export function BottomNav() {
         {mobileNavigation.map((item) => {
           const isActive = pathname === item.href ||
             (item.href !== "/dashboard" && pathname.startsWith(item.href))
+          const isSupport = item.href === '/dashboard/support'
 
           return (
             <Link
@@ -72,10 +75,15 @@ export function BottomNav() {
                   : "text-muted-foreground"
               )}
             >
-              <item.icon className={cn(
-                "h-5 w-5 transition-transform",
-                isActive && "scale-110"
-              )} />
+              <span className="relative">
+                <item.icon className={cn(
+                  "h-5 w-5 transition-transform",
+                  isActive && "scale-110"
+                )} />
+                {isSupport && (supportUnread ?? 0) > 0 && (
+                  <span className="absolute -top-1 -right-1.5 h-2.5 w-2.5 rounded-full bg-red-500" />
+                )}
+              </span>
               <span className="text-xs font-medium">
                 {locale === 'ru' ? item.nameRu : locale === 'kz' ? item.nameKz : item.name}
               </span>

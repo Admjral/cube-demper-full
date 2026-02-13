@@ -16,6 +16,7 @@ export interface SupportMessage {
 export interface SupportChat {
   id: string
   status: 'open' | 'closed' | 'pending'
+  unread_count: number
   created_at: string
 }
 
@@ -64,6 +65,10 @@ export async function sendUserMessage(content: string): Promise<SupportMessage> 
     method: 'POST',
     body: JSON.stringify({ content }),
   })
+}
+
+export async function markSupportMessagesRead(): Promise<{ success: boolean }> {
+  return fetchWithAuth('/support/user/chat/read', { method: 'POST' })
 }
 
 export function createUserChatWebSocket(

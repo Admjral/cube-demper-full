@@ -13,7 +13,6 @@ import {
   Bot,
   BarChart3,
   Calculator,
-  Package,
   MessageSquare,
   Plug,
   Scale,
@@ -27,6 +26,7 @@ import {
   Lock,
   Headphones,
 } from "lucide-react"
+import { useSupportUnread } from "@/hooks/use-support-unread"
 
 // Pages accessible on free plan
 const FREE_PLAN_ALLOWED = [
@@ -80,13 +80,6 @@ const navigation = [
     nameKz: "Бірлік экономикасы",
     href: "/dashboard/unit-economics",
     icon: Calculator,
-  },
-  {
-    name: "Pre-orders",
-    nameRu: "Предзаказы",
-    nameKz: "Алдын ала тапсырыс",
-    href: "/dashboard/pre-orders",
-    icon: Package,
   },
   {
     name: "WhatsApp",
@@ -149,6 +142,7 @@ export function Sidebar() {
   const { data: features } = useFeatures()
   const isAdmin = user?.role === 'admin'
   const isFreePlan = features && (features.plan_code === 'free' || (!features.plan_code && features.features?.length === 0))
+  const { data: supportUnread } = useSupportUnread()
 
   return (
     <>
@@ -235,6 +229,7 @@ export function Sidebar() {
             )}
             {bottomNavigation.map((item) => {
               const isActive = pathname === item.href
+              const isSupport = item.href === '/dashboard/support'
               return (
                 <Link
                   key={item.href}
@@ -247,8 +242,18 @@ export function Sidebar() {
                       : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
                   )}
                 >
-                  <item.icon className="h-5 w-5 shrink-0" />
-                  <span>{locale === 'ru' ? item.nameRu : locale === 'kz' ? item.nameKz : item.name}</span>
+                  <span className="relative shrink-0">
+                    <item.icon className="h-5 w-5" />
+                    {isSupport && (supportUnread ?? 0) > 0 && (
+                      <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-red-500" />
+                    )}
+                  </span>
+                  <span className="flex-1">{locale === 'ru' ? item.nameRu : locale === 'kz' ? item.nameKz : item.name}</span>
+                  {isSupport && (supportUnread ?? 0) > 0 && (
+                    <span className="h-5 min-w-5 px-1 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">
+                      {supportUnread}
+                    </span>
+                  )}
                 </Link>
               )
             })}

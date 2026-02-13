@@ -24,6 +24,7 @@ from ..core.database import get_db_pool
 from .kaspi_mc_service import get_kaspi_mc_service, KaspiMCError
 from .kaspi_orders_api import get_kaspi_orders_api, KaspiTokenInvalidError
 from .waha_service import get_waha_service, WahaError
+from .ai_salesman_service import process_order_for_upsell
 
 logger = logging.getLogger(__name__)
 
@@ -258,12 +259,20 @@ class OrderEventProcessor:
                     wa_session['session_name']
                 )
 
-                return {
+                result = {
                     "status": "sent",
                     "message_id": str(message_record['id']) if message_record else None,
                     "recipient": order_data['phone'],
                     "text": message_text,
                 }
+
+                # Schedule AI Salesman upsell 5 min after template
+                if event in (OrderEvent.ORDER_APPROVED, OrderEvent.ORDER_ACCEPTED_BY_MERCHANT):
+                    asyncio.create_task(
+                        _delayed_ai_salesman(user_id, store_id, order_code, pool)
+                    )
+
+                return result
 
             except WahaError as e:
                 logger.error(f"Failed to send WhatsApp message: {e}")
@@ -432,3 +441,38 @@ async def process_new_kaspi_order(
         )
 
     return result or {"status": "no_action"}
+
+
+async def _delayed_ai_salesman(
+    user_id: str,
+    store_id: str,
+    order_code: str,
+    pool: asyncpg.Pool,
+    delay_seconds: int = 300,
+):
+    """
+    Отложенный запуск AI Salesman после авторассылки.
+
+    Ждёт delay_seconds (по умолчанию 5 мин), затем генерирует
+    и отправляет допродажное сообщение через AI.
+    """
+    await asyncio.sleep(delay_seconds)
+    try:
+        async with pool.acquire() as conn:
+            order = await conn.fetchrow(
+                "SELECT id FROM orders WHERE kaspi_order_code = $1 AND store_id = $2",
+                order_code, UUID(store_id)
+            )
+
+        if not order:
+            logger.debug(f"[AI_SALESMAN] Order {order_code} not found in DB, skipping")
+            return
+
+        result = await process_order_for_upsell(order['id'], pool, send_message=True)
+        if result:
+            logger.info(f"[AI_SALESMAN] Sent upsell for order {order_code}: {result.trigger.value}")
+        else:
+            logger.debug(f"[AI_SALESMAN] Skipped order {order_code} (no phone/disabled/limit)")
+
+    except Exception as e:
+        logger.error(f"[AI_SALESMAN] Failed for order {order_code}: {e}")

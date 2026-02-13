@@ -7,26 +7,29 @@ Cube Demper — сервис для автоматического демпин�
 
 ### Primary Production — VPS (`cube-demper.shop`)
 - **Сервер**: ps.kz (Казахстан), IP `195.93.152.71`, Ubuntu, Docker Compose
-- **Зачем VPS**: Kaspi REST API + Offers API требуют KZ IP
+- **Зачем VPS**: Kaspi REST API + Pricefeed API требуют KZ IP
 - **7 сервисов**: frontend, backend, postgres, redis, worker-1, worker-2, waha
 - **Домен**: `cube-demper.shop` (Cloudflare DNS → A record → VPS IP), SSL через nginx + Let's Encrypt
 - **SSH**: `/opt/homebrew/Cellar/sshpass/1.06/bin/sshpass -p '<пароль>' ssh ubuntu@195.93.152.71`
 - **Структура на VPS**: `/home/ubuntu/cube-demper/` — `docker-compose.yml`, `.env`, `new-backend/`, `frontend/`, `nginx/`
+- **Все сервисы на VPS**, кроме offers-relay (см. ниже)
 
-### Railway — fallback + вспомогательные сервисы
+### Railway — ТОЛЬКО offers-relay
 
-#### Project: `proud-vision` (основной, НЕ используется как прод)
-- `frontend`, `backemd` (typo, не менять), `Postgres`, `Redis`, `worker-1`, `worker-2`
-- `waha-plus` — WhatsApp (NOWEB engine, OTP сессия: `default`)
-
-#### Project: `offers-relay` (отдельный!)
-- **GitHub**: `Admjral/offers-relay` (private)
-- **Назначение**: Проксирует запросы к Kaspi Offers API (`/yml/offer-view/offers/{id}`)
-- **Зачем**: VPS IP заблокирован Kaspi (405), Railway IP работает
+#### Project: `offers-relay` (единственный активный на Railway)
+- **GitHub**: `Admjral/offers-relay` (private), деплой через `railway up` из `/offers-relay/`
+- **Назначение**: Проксирует запросы к Kaspi, которые блокируются с VPS IP
+- **Эндпоинты**:
+  - `POST /relay/offers` — Kaspi Offers API (`/yml/offer-view/offers/{id}`), конкуренты
+  - `POST /relay/parse-url` — Kaspi product page HTML (для юнит-экономики `parse-url`)
 - **URL**: `https://offers-relay-production.up.railway.app`
 - **Auth**: Bearer token через `RELAY_SECRET`
 - **Config в бэкенде**: `offers_relay_url` + `offers_relay_secret` в `config.py`
-- **Fallback**: В `parse_product_by_sku()` — сначала relay, при ошибке → direct
+- **Fallback**: VPS бэкенд сначала пробует relay, при ошибке → direct запрос
+
+#### Project: `proud-vision` (НЕ используется как прод, только WAHA)
+- `waha-plus` — WhatsApp (NOWEB engine, OTP сессия: `default`)
+- Остальные сервисы (`frontend`, `backemd`, workers) — неактивны, прод на VPS
 
 ## Repository Structure
 
@@ -115,9 +118,9 @@ UPDATE kaspi_stores SET needs_reauth = FALSE WHERE guid IS NOT NULL;
 
 ## Important Notes
 1. **Never force push** to main/master
-2. **Always sync both repos** after changes (или деплой на VPS)
-3. **Migrations автоматические** при старте бэкенда
-4. **VPS — основной прод**, Railway — fallback/relay
+2. **VPS — единственный прод** для всех сервисов. Railway — только offers-relay
+3. **Migrations автоматические** при старте бэкенда (`alembic upgrade head`)
+4. **offers-relay** деплоится отдельно: `cd offers-relay && railway up`
 
 ---
 
@@ -131,10 +134,18 @@ UPDATE kaspi_stores SET needs_reauth = FALSE WHERE guid IS NOT NULL;
 
 ### Kaspi API
 - **Rate Limits**: Offers 8 RPS/IP (бан 403, 10с). Pricefeed 1.5 RPS/аккаунт (бан 429, **30 мин!**). Per-endpoint лимитеры в `rate_limiter.py`
-- **Offers API**: 405 с датацентр IP → relay через Railway (`offers-relay` проект)
+- **Offers API**: 405 с VPS IP → relay через Railway (`/relay/offers`). Fallback → direct
+- **Product pages** (`kaspi.kz/shop/p/...`): тоже через relay (`/relay/parse-url`). Используется в юнит-экономике
+- **Pricefeed API**: работает напрямую с VPS (KZ IP нужен)
 - **REST API** (`kaspi.kz/shop/api/v2/orders`): `X-Auth-Token` header, KZ IP required, `User-Agent` обязателен
 - **MC GraphQL**: `mc.shop.kaspi.kz/mc/facade/graphql`, cookies dict + `x-auth-version: 3`, НЕ Relay-схема, телефоны замаскированы
 - **Orders Sync**: Фоновая задача в бэкенде (НЕ в воркерах), каждые 60 мин, MC GraphQL → только активные заказы
+
+### City Prices (2026-02-13)
+- `KASPI_CITIES` в `schemas/kaspi.py` — НЕ полный список, ~28 городов
+- Если city_id не в словаре → fallback на city_name из `store_points` магазина (не 400 ошибка)
+- `run-city-demping` принимает `{ city_ids: [...] }` как JSON body (`RunCityDempingRequest`)
+
 
 ### Notification System (2026-02-12)
 - **`notification_settings` JSONB** в `users` — `{"orders": true, "price_changes": true, "support": true}`

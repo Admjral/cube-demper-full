@@ -450,9 +450,6 @@ class AISalesmanSettingsResponse(BaseModel):
     store_name: str
     ai_enabled: bool
     ai_tone: Optional[str] = None
-    ai_discount_percent: Optional[int] = None
-    ai_promo_code: Optional[str] = None
-    ai_review_bonus: Optional[str] = None
     ai_send_delay_minutes: int = 10
     ai_max_messages_per_day: int = 50
 
@@ -461,9 +458,6 @@ class UpdateAISalesmanSettingsRequest(BaseModel):
     """Запрос на обновление настроек AI Salesman"""
     ai_enabled: Optional[bool] = None
     ai_tone: Optional[str] = None
-    ai_discount_percent: Optional[int] = None
-    ai_promo_code: Optional[str] = None
-    ai_review_bonus: Optional[str] = None
     ai_send_delay_minutes: Optional[int] = None
     ai_max_messages_per_day: Optional[int] = None
 
@@ -481,7 +475,7 @@ async def get_salesman_settings(
             SELECT
                 id, name,
                 COALESCE(ai_enabled, true) as ai_enabled,
-                ai_tone, ai_discount_percent, ai_promo_code, ai_review_bonus,
+                ai_tone,
                 COALESCE(ai_send_delay_minutes, 10) as ai_send_delay_minutes,
                 COALESCE(ai_max_messages_per_day, 50) as ai_max_messages_per_day
             FROM kaspi_stores
@@ -494,9 +488,6 @@ async def get_salesman_settings(
                 store_name=s['name'],
                 ai_enabled=s['ai_enabled'],
                 ai_tone=s['ai_tone'],
-                ai_discount_percent=s['ai_discount_percent'],
-                ai_promo_code=s['ai_promo_code'],
-                ai_review_bonus=s['ai_review_bonus'],
                 ai_send_delay_minutes=s['ai_send_delay_minutes'],
                 ai_max_messages_per_day=s['ai_max_messages_per_day'],
             )
@@ -550,21 +541,6 @@ async def update_salesman_settings(
             updates.append(f"ai_tone = ${param_count}")
             params.append(request.ai_tone)
 
-        if request.ai_discount_percent is not None:
-            param_count += 1
-            updates.append(f"ai_discount_percent = ${param_count}")
-            params.append(request.ai_discount_percent)
-
-        if request.ai_promo_code is not None:
-            param_count += 1
-            updates.append(f"ai_promo_code = ${param_count}")
-            params.append(request.ai_promo_code)
-
-        if request.ai_review_bonus is not None:
-            param_count += 1
-            updates.append(f"ai_review_bonus = ${param_count}")
-            params.append(request.ai_review_bonus)
-
         if request.ai_send_delay_minutes is not None:
             param_count += 1
             updates.append(f"ai_send_delay_minutes = ${param_count}")
@@ -591,7 +567,7 @@ async def update_salesman_settings(
             RETURNING
                 id, name,
                 COALESCE(ai_enabled, true) as ai_enabled,
-                ai_tone, ai_discount_percent, ai_promo_code, ai_review_bonus,
+                ai_tone,
                 COALESCE(ai_send_delay_minutes, 10) as ai_send_delay_minutes,
                 COALESCE(ai_max_messages_per_day, 50) as ai_max_messages_per_day
         """
@@ -603,9 +579,6 @@ async def update_salesman_settings(
             store_name=updated['name'],
             ai_enabled=updated['ai_enabled'],
             ai_tone=updated['ai_tone'],
-            ai_discount_percent=updated['ai_discount_percent'],
-            ai_promo_code=updated['ai_promo_code'],
-            ai_review_bonus=updated['ai_review_bonus'],
             ai_send_delay_minutes=updated['ai_send_delay_minutes'],
             ai_max_messages_per_day=updated['ai_max_messages_per_day'],
         )

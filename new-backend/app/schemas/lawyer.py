@@ -25,6 +25,7 @@ class DocumentType(str, Enum):
     # Claims
     CLAIM_TO_SUPPLIER = "claim_to_supplier"
     CLAIM_TO_BUYER = "claim_to_buyer"
+    CLAIM_TO_MARKETPLACE = "claim_to_marketplace"
     COMPLAINT_TO_AUTHORITY = "complaint_to_authority"
     # Applications
     IP_REGISTRATION = "ip_registration"

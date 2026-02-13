@@ -1,13 +1,16 @@
 """
-Periodic orders sync service - fetches active orders from Kaspi MC GraphQL
-(or REST API when api_key is available) and saves them to the database.
+Periodic orders sync service - fetches active orders from Kaspi and saves them
+to the database. Accumulates customer contacts from orders.
 
 Runs as a background task in the backend (not in workers).
 Cycle: every 60 minutes, sequential processing with delays.
 
-Priority:
+Data sources (in priority order):
 1. REST API (X-Auth-Token) — real phone numbers, product names, prices
-2. MC GraphQL (session cookies) — fallback, limited data
+2. MC GraphQL (fallback) — phones are masked, no contacts accumulated
+
+Over time, the database accumulates full order history as orders pass through
+active states before completion.
 """
 import logging
 import asyncio
@@ -16,7 +19,7 @@ from datetime import datetime, timedelta
 import asyncpg
 
 from .kaspi_mc_service import get_kaspi_mc_service, KaspiMCError
-from .kaspi_orders_api import KaspiOrdersAPI, KaspiTokenInvalidError, KaspiOrdersAPIError
+from .kaspi_orders_api import get_kaspi_orders_api, KaspiOrdersAPI, KaspiTokenInvalidError, KaspiOrdersAPIError
 from .api_parser import sync_orders_to_db
 from .kaspi_auth_service import KaspiAuthError
 
@@ -73,7 +76,7 @@ async def _run_sync_cycle(pool: asyncpg.Pool):
     # Get all active stores with valid sessions + check for api_key
     async with pool.acquire() as conn:
         stores = await conn.fetch("""
-            SELECT id, merchant_id, name, api_key, api_key_valid
+            SELECT id, user_id, merchant_id, name, api_key, api_key_valid
             FROM kaspi_stores
             WHERE is_active = TRUE
               AND needs_reauth = FALSE
@@ -88,7 +91,6 @@ async def _run_sync_cycle(pool: asyncpg.Pool):
     logger.info(f"[ORDERS_SYNC] Starting cycle for {len(stores)} stores")
 
     mc = get_kaspi_mc_service()
-    rest_api = KaspiOrdersAPI()
     total_synced = 0
     total_errors = 0
 
@@ -98,21 +100,37 @@ async def _run_sync_cycle(pool: asyncpg.Pool):
         nonlocal total_synced, total_errors
 
         store_id = str(store['id'])
+        user_id = str(store['user_id'])
         merchant_id = store['merchant_id']
         store_name = store['name'] or merchant_id
-        api_key = store['api_key']
-        api_key_valid = store['api_key_valid']
+        api_key = store.get('api_key')
+        api_key_valid = store.get('api_key_valid', True)
 
         async with sem:
             try:
                 orders = None
+                source = "mc_graphql"
 
-                # Try REST API first if store has valid token
+                # Prefer REST API (returns real customer phones)
                 if api_key and api_key_valid:
                     try:
-                        orders = await _fetch_via_rest_api(rest_api, api_key, store_name)
+                        rest_api = get_kaspi_orders_api()
+                        now = datetime.utcnow()
+                        orders = await rest_api.fetch_orders(
+                            api_token=api_key,
+                            date_from=now - timedelta(days=14),
+                            date_to=now,
+                            states=[
+                                "APPROVED", "ACCEPTED_BY_MERCHANT",
+                                "DELIVERY", "PICKUP", "DELIVERED",
+                                "KASPI_DELIVERY",
+                            ],
+                            size=100,
+                        )
+                        source = "rest_api"
+                        logger.info(f"[ORDERS_SYNC] {store_name}: {len(orders)} orders via REST API")
                     except KaspiTokenInvalidError:
-                        logger.warning(f"[ORDERS_SYNC] {store_name}: API token invalid, marking invalid")
+                        logger.warning(f"[ORDERS_SYNC] {store_name}: API token invalid, marking and falling back to MC")
                         async with pool.acquire() as conn:
                             await conn.execute(
                                 "UPDATE kaspi_stores SET api_key_valid = FALSE WHERE id = $1",
@@ -129,14 +147,17 @@ async def _run_sync_cycle(pool: asyncpg.Pool):
                         merchant_id=merchant_id,
                         limit=200,
                     )
+                    source = "mc_graphql"
 
                 if orders:
-                    result = await sync_orders_to_db(store_id, orders)
+                    result = await sync_orders_to_db(store_id, orders, user_id=user_id)
                     synced = result.get('inserted', 0) + result.get('updated', 0)
+                    contacts = result.get('contacts_added', 0)
                     total_synced += synced
                     logger.info(
-                        f"[ORDERS_SYNC] {store_name}: {synced} orders "
-                        f"({result.get('inserted', 0)} new, {result.get('updated', 0)} updated)"
+                        f"[ORDERS_SYNC] {store_name}: {synced} orders via {source} "
+                        f"({result.get('inserted', 0)} new, {result.get('updated', 0)} updated"
+                        f"{f', {contacts} contacts' if contacts else ''})"
                     )
                 else:
                     logger.debug(f"[ORDERS_SYNC] {store_name}: no active orders")

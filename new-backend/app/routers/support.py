@@ -731,9 +731,19 @@ async def get_user_chat(
                 chat_id
             )
 
+        # Count unread messages from support staff
+        unread_count = await conn.fetchval(
+            """
+            SELECT COUNT(*) FROM support_messages
+            WHERE chat_id = $1 AND sender_type = 'support' AND is_read = FALSE
+            """,
+            chat["id"]
+        ) or 0
+
     return {
         "id": str(chat["id"]),
         "status": chat["status"],
+        "unread_count": unread_count,
         "created_at": chat["created_at"].isoformat() if chat["created_at"] else None,
     }
 
@@ -909,6 +919,40 @@ async def send_user_message(
         "is_read": message["is_read"],
         "created_at": message["created_at"].isoformat() if message["created_at"] else None,
     }
+
+
+@router.post("/user/chat/read")
+async def mark_user_messages_read(
+    current_user: Annotated[dict, Depends(get_current_user)],
+    pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
+):
+    """
+    Отметить все сообщения от поддержки как прочитанные (вызывается когда юзер открывает чат).
+    """
+    user_id = current_user["id"]
+
+    async with pool.acquire() as conn:
+        chat = await conn.fetchrow(
+            """
+            SELECT id FROM support_chats
+            WHERE user_id = $1 AND status != 'closed'
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            user_id
+        )
+
+        if chat:
+            await conn.execute(
+                """
+                UPDATE support_messages
+                SET is_read = TRUE
+                WHERE chat_id = $1 AND sender_type = 'support' AND is_read = FALSE
+                """,
+                chat["id"]
+            )
+
+    return {"success": True}
 
 
 # === WebSocket for real-time messaging ===

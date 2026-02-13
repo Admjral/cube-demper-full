@@ -183,12 +183,21 @@ async def submit_feedback(
                 detail="Message not found"
             )
         
-        await conn.execute("""
-            INSERT INTO lawyer_chat_feedback (user_id, chat_message_id, rating, comment)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (chat_message_id) DO UPDATE
-            SET rating = $3, comment = $4
-        """, current_user['id'], message_id, request.rating, request.comment)
+        # Check for existing feedback and update/insert
+        existing = await conn.fetchval(
+            "SELECT id FROM lawyer_chat_feedback WHERE chat_message_id = $1",
+            message_id
+        )
+        if existing:
+            await conn.execute("""
+                UPDATE lawyer_chat_feedback SET rating = $1, comment = $2
+                WHERE chat_message_id = $3
+            """, request.rating, request.comment, message_id)
+        else:
+            await conn.execute("""
+                INSERT INTO lawyer_chat_feedback (user_id, chat_message_id, rating, comment)
+                VALUES ($1, $2, $3, $4)
+            """, current_user['id'], message_id, request.rating, request.comment)
     
     return {"message": "Feedback submitted"}
 
@@ -211,6 +220,7 @@ async def generate_document(
     - employment_contract: Трудовой договор
     - claim_to_supplier: Претензия поставщику
     - claim_to_buyer: Претензия покупателю
+    - claim_to_marketplace: Претензия маркетплейсу
     """
     lawyer = get_ai_lawyer()
     
@@ -247,32 +257,31 @@ async def generate_document(
         )
 
 
-@router.get("/documents", response_model=List[DocumentHistoryItem])
+@router.get("/documents")
 async def get_document_history(
     current_user: Annotated[dict, Depends(get_current_user)],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     limit: int = 20
 ):
-    """Get history of generated documents"""
+    """Get history of generated documents (with content for preview)"""
     async with pool.acquire() as conn:
         docs = await conn.fetch("""
-            SELECT id, document_type, title, language, created_at
+            SELECT id, document_type, title, language, content, created_at
             FROM lawyer_documents
             WHERE user_id = $1
             ORDER BY created_at DESC
             LIMIT $2
         """, current_user['id'], limit)
-    
-    from ..schemas.lawyer import DocumentType
-    
+
     return [
-        DocumentHistoryItem(
-            id=str(d['id']),
-            document_type=DocumentType(d['document_type']),
-            title=d['title'],
-            language=LawyerLanguage(d['language']),
-            created_at=d['created_at']
-        )
+        {
+            "id": str(d['id']),
+            "document_type": d['document_type'],
+            "title": d['title'],
+            "language": d['language'],
+            "content": d['content'],
+            "created_at": d['created_at'].isoformat(),
+        }
         for d in docs
     ]
 

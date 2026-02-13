@@ -13,10 +13,12 @@ import {
   getUserMessages,
   sendUserMessage,
   createUserChatWebSocket,
+  markSupportMessagesRead,
   SupportMessage,
   SupportChat,
 } from "@/lib/support"
 import { useTranslation, getDateLocale } from "@/lib/i18n"
+import { useQueryClient } from "@tanstack/react-query"
 
 export default function SupportPage() {
   const { t, locale } = useTranslation()
@@ -28,6 +30,7 @@ export default function SupportPage() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
+  const queryClient = useQueryClient()
 
   useEffect(() => {
     async function loadChat() {
@@ -39,10 +42,19 @@ export default function SupportPage() {
         const messagesData = await getUserMessages()
         setMessages(messagesData.messages)
 
+        // Mark support messages as read when opening the page
+        markSupportMessagesRead().then(() => {
+          queryClient.setQueryData(['support', 'unread'], 0)
+        }).catch(() => {})
+
         if (chatData.id) {
           wsRef.current?.close()
           const ws = createUserChatWebSocket(chatData.id, (message) => {
             setMessages((prev) => [...prev, message])
+            // Auto-mark as read since user is on the page
+            markSupportMessagesRead().then(() => {
+              queryClient.setQueryData(['support', 'unread'], 0)
+            }).catch(() => {})
           })
           wsRef.current = ws
         }

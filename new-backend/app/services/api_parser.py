@@ -663,25 +663,24 @@ async def sync_product(
             if isinstance(sp_data, dict) and sp_data.get("enabled", True):
                 pp_keys.add(pp_key)
 
-    # If no PPs found from product data or store_points, abort sync
-    # Sending only PP1 as fallback can remove product from real PPs (PP2, PP3, etc.)
+    # If no PPs found from product data or store_points, send price-only update
+    # (skip availabilities to avoid removing product from real PPs)
     if not pp_keys:
         logger.warning(
             f"No PP data for product {product_id} (sku={row['kaspi_sku']}). "
             f"product_avail={bool(product_avail)}, store_points={bool(store_points)}. "
-            f"Skipping sync to avoid removing product from real PPs."
+            f"Skipping availabilities in pricefeed to avoid removing product from real PPs."
         )
-        return {"success": False, "error": "no_pp_data", "product_id": str(product_uuid)}
 
     availabilities = []
     for pp_key in sorted(pp_keys):
         avail = {
             "available": "yes",
             "storeId": f"{merchant_uid}_{pp_key}",
-            "stockEnabled": False
+            "stockEnabled": False,
         }
         if effective_pre_order and effective_pre_order > 0:
-            avail["preOrder"] = effective_pre_order
+            avail["preorder"] = effective_pre_order
         availabilities.append(avail)
 
     if len(availabilities) > 1:
@@ -691,10 +690,13 @@ async def sync_product(
         "merchantUid": merchant_uid,
         "sku": row["kaspi_sku"],
         "model": row["name"],
-        "availabilities": availabilities,
     }
 
-    # City-specific pricing vs global pricing
+    # Only include availabilities if we have PP data
+    if availabilities:
+        body["availabilities"] = availabilities
+
+    # City-specific pricing: add cityprices alongside the default price
     if city_prices:
         body["cityPrices"] = [
             {"cityId": cid, "value": cprice}
@@ -1086,16 +1088,42 @@ async def parse_order_details(order_data: dict) -> dict:
     }
 
 
+def _is_valid_phone(phone: str) -> bool:
+    """Check if customer phone is real (not masked by Kaspi MC)."""
+    if not phone:
+        return False
+    digits = "".join(filter(str.isdigit, phone))
+    # Masked phones from MC GraphQL: +0(000)-000-00-00 → all zeros
+    if not digits or all(d == '0' for d in digits):
+        return False
+    # Must have at least 10 digits
+    if len(digits) < 10:
+        return False
+    return True
+
+
+def _normalize_phone(phone: str) -> str:
+    """Normalize phone to +7XXXXXXXXXX format."""
+    digits = "".join(filter(str.isdigit, phone))
+    if len(digits) == 11 and digits.startswith('7'):
+        return f"+{digits}"
+    if len(digits) == 10:
+        return f"+7{digits}"
+    return f"+{digits}"
+
+
 async def sync_orders_to_db(
     store_id: str,
-    orders: List[dict]
+    orders: List[dict],
+    user_id: str = None,
 ) -> dict:
     """
-    Sync orders to database.
+    Sync orders to database and accumulate customer contacts.
 
     Args:
         store_id: Store UUID
         orders: List of parsed order dictionaries
+        user_id: Owner user UUID (for customer contacts accumulation)
 
     Returns:
         Sync result summary
@@ -1106,7 +1134,18 @@ async def sync_orders_to_db(
     pool = await get_db_pool()
     inserted = 0
     updated = 0
+    contacts_added = 0
     errors = 0
+
+    # Look up user_id if not provided
+    if not user_id:
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT user_id FROM kaspi_stores WHERE id = $1",
+                uuid_module.UUID(store_id)
+            )
+            if row:
+                user_id = str(row['user_id'])
 
     try:
         async with pool.acquire() as conn:
@@ -1186,6 +1225,40 @@ async def sync_orders_to_db(
                     else:
                         updated += 1
 
+                    # Accumulate customer contact (only for new orders with real phone)
+                    if user_id and result["inserted"] and _is_valid_phone(parsed["customer_phone"]):
+                        try:
+                            phone = _normalize_phone(parsed["customer_phone"])
+                            name = parsed["customer_name"] or None
+                            order_code = parsed["kaspi_order_code"] or None
+
+                            contact_result = await conn.fetchrow(
+                                """
+                                INSERT INTO customer_contacts (
+                                    id, user_id, store_id, phone, name,
+                                    first_order_code, last_order_code, orders_count
+                                )
+                                VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $5, 1)
+                                ON CONFLICT (user_id, phone)
+                                DO UPDATE SET
+                                    last_order_code = COALESCE($5, customer_contacts.last_order_code),
+                                    orders_count = customer_contacts.orders_count + 1,
+                                    name = COALESCE($4, customer_contacts.name),
+                                    store_id = COALESCE($2, customer_contacts.store_id),
+                                    updated_at = NOW()
+                                RETURNING (xmax = 0) as is_new
+                                """,
+                                uuid_module.UUID(user_id),
+                                uuid_module.UUID(store_id),
+                                phone,
+                                name,
+                                order_code,
+                            )
+                            if contact_result and contact_result["is_new"]:
+                                contacts_added += 1
+                        except Exception as e:
+                            logger.debug(f"Contact upsert error: {e}")
+
                     # Upsert order items (only for new orders)
                     if is_new_order:
                         for entry in parsed["entries"]:
@@ -1255,8 +1328,11 @@ async def sync_orders_to_db(
         logger.error(f"Error in sync_orders_to_db: {e}")
         raise
 
-    logger.info(f"Orders sync complete: {inserted} inserted, {updated} updated, {errors} errors")
-    return {"inserted": inserted, "updated": updated, "errors": errors}
+    logger.info(
+        f"Orders sync complete: {inserted} inserted, {updated} updated, "
+        f"{contacts_added} new contacts, {errors} errors"
+    )
+    return {"inserted": inserted, "updated": updated, "contacts_added": contacts_added, "errors": errors}
 
 
 # ============================================================================

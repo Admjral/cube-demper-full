@@ -460,6 +460,47 @@ ___________________ / {claimant_name} /
 
 Дата: {date}
 """,
+
+    DocumentType.CLAIM_TO_MARKETPLACE: """# ПРЕТЕНЗИЯ
+
+{city}                                                                 {date}
+
+**Кому:** {marketplace_name}
+{marketplace_address}
+
+**От кого:** {claimant_name}
+{claimant_address}
+Тел.: {claimant_contacts}
+
+## ПРЕТЕНЗИЯ
+о нарушении прав продавца на маркетплейсе
+
+Я, {claimant_name}, являюсь продавцом на маркетплейсе {marketplace_name} (далее — Маркетплейс).
+
+{claim_description}
+
+На основании Закона Республики Казахстан «О защите прав потребителей», Гражданского кодекса РК (статьи 272, 349, 353), а также Правил оказания услуг маркетплейса,
+
+**ТРЕБУЮ:**
+
+{requirements}
+
+{claim_amount_text}
+
+В случае отказа в удовлетворении претензии оставляю за собой право обратиться в суд, а также в уполномоченный орган по защите прав потребителей с жалобой на действия Маркетплейса.
+
+Претензия должна быть рассмотрена в течение 10 календарных дней с момента её получения.
+
+Приложения:
+1. Скриншоты из личного кабинета продавца
+2. Документы, подтверждающие нарушение
+
+С уважением,
+
+___________________ / {claimant_name} /
+
+Дата: {date}
+""",
 }
 
 
@@ -789,8 +830,18 @@ class AILawyerService:
             data = self._prepare_supply_contract_data(data)
         elif document_type == DocumentType.EMPLOYMENT_CONTRACT:
             data = self._prepare_employment_contract_data(data)
-        elif document_type in (DocumentType.CLAIM_TO_SUPPLIER, DocumentType.CLAIM_TO_BUYER):
+        elif document_type in (DocumentType.CLAIM_TO_SUPPLIER, DocumentType.CLAIM_TO_BUYER, DocumentType.CLAIM_TO_MARKETPLACE):
             data = self._prepare_claim_data(data)
+            if document_type == DocumentType.CLAIM_TO_MARKETPLACE:
+                data.setdefault('marketplace_name', 'Kaspi.kz')
+                # Set address based on marketplace
+                marketplace_addresses = {
+                    'Kaspi.kz': 'г. Алматы, пр. Аль-Фараби 77/7',
+                    'Wildberries': 'г. Алматы, ул. Тимирязева 28В, БЦ "Atakent Park"',
+                    'Ozon': 'г. Алматы, ул. Розыбакиева 247, БЦ "Premium"',
+                    'Uzum Market': 'г. Ташкент, ул. Мустакиллик 75',
+                }
+                data.setdefault('marketplace_address', marketplace_addresses.get(data.get('marketplace_name', ''), 'г. Алматы'))
 
         # Fill template
         content = template.format(**data)
@@ -803,6 +854,7 @@ class AILawyerService:
             DocumentType.EMPLOYMENT_CONTRACT: f"Трудовой договор № {data['number']}",
             DocumentType.CLAIM_TO_SUPPLIER: f"Претензия поставщику от {data['date']}",
             DocumentType.CLAIM_TO_BUYER: f"Претензия покупателю от {data['date']}",
+            DocumentType.CLAIM_TO_MARKETPLACE: f"Претензия маркетплейсу от {data['date']}",
         }
         title = titles.get(document_type, f"Документ № {data['number']}")
         
@@ -859,7 +911,7 @@ class AILawyerService:
             contract_date = data['contract_date']
             if isinstance(contract_date, date):
                 contract_date = contract_date.strftime("%d.%m.%Y")
-            data['contract_info'] = f"Между мной и {data['respondent_name']} был заключён договор № {data['contract_number']} от {contract_date}."
+            data['contract_info'] = f"Между мной и {data.get('respondent_name', 'ответчиком')} был заключён договор № {data['contract_number']} от {contract_date}."
         else:
             data['contract_info'] = ""
         

@@ -21,11 +21,13 @@ import {
   getUserMessages,
   sendUserMessage,
   createUserChatWebSocket,
+  markSupportMessagesRead,
   SupportMessage,
   SupportChat,
 } from "@/lib/support"
 import { authClient } from "@/lib/auth"
 import { useT } from "@/lib/i18n"
+import { useQueryClient } from "@tanstack/react-query"
 
 export function SupportChatWidget() {
   const [open, setOpen] = useState(false)
@@ -38,6 +40,7 @@ export function SupportChatWidget() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
+  const queryClient = useQueryClient()
   const t = useT()
 
   const pathname = usePathname()
@@ -64,6 +67,8 @@ export function SupportChatWidget() {
               setMessages((prev) => [...prev, message])
               if (!open && message.sender_type === "support") {
                 setUnreadCount((c) => c + 1)
+                // Bump sidebar/bottom-nav unread indicator
+                queryClient.setQueryData(['support', 'unread'], (old: number | undefined) => (old ?? 0) + 1)
               }
             }
           )
@@ -88,10 +93,14 @@ export function SupportChatWidget() {
   }, [messages])
 
   useEffect(() => {
+    // Clear unread count when opening and mark as read on backend
     if (open) {
       setUnreadCount(0)
+      markSupportMessagesRead().then(() => {
+        queryClient.setQueryData(['support', 'unread'], 0)
+      }).catch(() => {})
     }
-  }, [open])
+  }, [open, queryClient])
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault()
