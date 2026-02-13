@@ -2348,13 +2348,18 @@ async def run_product_city_demping(
                 target_price = min_competitor_price - price_step
 
                 if target_price < min_price:
-                    results.append(CityDempingResult(
-                        city_id=city_id, city_name=city_name,
-                        status="waiting",
-                        message=f"Конкурент ({min_competitor_price}) ниже минимума ({min_price})",
-                        competitor_price=min_competitor_price, our_position=our_position
-                    ))
-                    continue
+                    if current_price > min_price:
+                        # Competitor below our min — set price to our min (floor)
+                        target_price = min_price
+                    else:
+                        # Already at or below min, nothing to do
+                        results.append(CityDempingResult(
+                            city_id=city_id, city_name=city_name,
+                            status="waiting",
+                            message=f"Конкурент ({min_competitor_price}) ниже минимума ({min_price})",
+                            competitor_price=min_competitor_price, our_position=our_position
+                        ))
+                        continue
 
                 if max_price and target_price > max_price:
                     target_price = max_price

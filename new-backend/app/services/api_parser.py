@@ -593,15 +593,20 @@ async def sync_product(
             if isinstance(sp_data, dict) and sp_data.get("enabled", True):
                 pp_keys.add(pp_key)
 
+    if not pp_keys:
+        # No PP data at all — don't override Kaspi's existing availabilities
+        # Just send price update without availabilities to avoid removing product from sales
+        logger.warning(f"No PP data for product {product_id}, skipping availabilities in pricefeed")
+
     availabilities = []
-    for pp_key in sorted(pp_keys) if pp_keys else ["PP1"]:
+    for pp_key in sorted(pp_keys):
         avail = {
             "available": "yes",
             "storeId": f"{merchant_uid}_{pp_key}",
-            "stockEnabled": False
+            "stockEnabled": False,
         }
         if effective_pre_order and effective_pre_order > 0:
-            avail["preOrder"] = effective_pre_order
+            avail["preorder"] = effective_pre_order
         availabilities.append(avail)
 
     if len(availabilities) > 1:
@@ -609,19 +614,21 @@ async def sync_product(
 
     body = {
         "merchantUid": merchant_uid,
-        "availabilities": availabilities,
         "sku": row["kaspi_sku"],
+        "price": new_price,
     }
 
-    # City-specific pricing vs global pricing
+    # Only include availabilities if we have PP data
+    if availabilities:
+        body["availabilities"] = availabilities
+
+    # City-specific pricing: add cityprices alongside the default price
     if city_prices:
         body["cityprices"] = [
             {"cityId": cid, "price": cprice}
             for cid, cprice in city_prices.items()
         ]
         logger.info(f"Using cityprices for {len(city_prices)} cities")
-    else:
-        body["price"] = new_price
 
     # Check if this merchant is in pricefeed cooldown (30-min ban)
     if is_merchant_cooled_down(merchant_uid):
