@@ -640,6 +640,8 @@ async def update_product(
             updates.append(f"is_priority = ${param_count}")
             params.append(update_data.is_priority)
 
+        # Preorder status tracking (independent of is_priority)
+        if update_data.pre_order_days is not None:
             if update_data.pre_order_days > 0:
                 # Auto-disable demping and track preorder status
                 updates.append("bot_active = false")
@@ -2503,13 +2505,18 @@ async def run_product_city_demping(
                 target_price = min_competitor_price - price_step
 
                 if target_price < min_price:
-                    results.append(CityDempingResult(
-                        city_id=city_id, city_name=city_name,
-                        status="waiting",
-                        message=f"Конкурент ({min_competitor_price}) ниже минимума ({min_price})",
-                        competitor_price=min_competitor_price, our_position=our_position
-                    ))
-                    continue
+                    if current_price > min_price:
+                        # Competitor below our min — set price to our min (floor)
+                        target_price = min_price
+                    else:
+                        # Already at or below min, nothing to do
+                        results.append(CityDempingResult(
+                            city_id=city_id, city_name=city_name,
+                            status="waiting",
+                            message=f"Конкурент ({min_competitor_price}) ниже минимума ({min_price})",
+                            competitor_price=min_competitor_price, our_position=our_position
+                        ))
+                        continue
 
                 if max_price and target_price > max_price:
                     target_price = max_price

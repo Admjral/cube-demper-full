@@ -611,7 +611,7 @@ async def sync_product(
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            SELECT p.id, p.kaspi_product_id, p.kaspi_sku, p.price, p.store_id,
+            SELECT p.id, p.kaspi_product_id, p.kaspi_sku, p.price, p.name, p.store_id,
                    p.pre_order_days, p.availabilities,
                    ks.store_points
             FROM products p
@@ -689,19 +689,20 @@ async def sync_product(
 
     body = {
         "merchantUid": merchant_uid,
-        "availabilities": availabilities,
         "sku": row["kaspi_sku"],
+        "model": row["name"],
+        "availabilities": availabilities,
     }
 
     # City-specific pricing vs global pricing
     if city_prices:
-        body["cityprices"] = [
-            {"cityId": cid, "price": cprice}
+        body["cityPrices"] = [
+            {"cityId": cid, "value": cprice}
             for cid, cprice in city_prices.items()
         ]
-        # Kaspi requires a base "price" even with cityprices — use min of city prices
+        # Kaspi requires a base "price" even with cityPrices — use min of city prices
         body["price"] = min(city_prices.values())
-        logger.info(f"Using cityprices for {len(city_prices)} cities, base price={body['price']}")
+        logger.info(f"Using cityPrices for {len(city_prices)} cities, base price={body['price']}")
     else:
         body["price"] = new_price
 

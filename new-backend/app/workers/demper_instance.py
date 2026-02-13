@@ -410,7 +410,7 @@ class DemperWorker:
                           products.last_check_time IS NULL
                           OR products.last_check_time < NOW() - (
                               CASE WHEN COALESCE(products.is_priority, false)
-                                  THEN ($3 || ' minutes')::interval
+                                  THEN ($3::text || ' minutes')::interval
                                   ELSE (COALESCE(ds.check_interval_minutes, 15) || ' minutes')::interval
                               END
                           )
@@ -420,7 +420,7 @@ class DemperWorker:
                     LIMIT 500
                 """
 
-                rows = await conn.fetch(query, self.instance_count, self.instance_index, settings.priority_check_interval_minutes)
+                rows = await conn.fetch(query, self.instance_count, self.instance_index, str(settings.priority_check_interval_minutes))
 
                 if rows:
                     logger.info(
@@ -822,10 +822,11 @@ class DemperWorker:
         merchant_id = product["merchant_id"]
         user_id = product.get("user_id")
 
-        min_price = Decimal(str(product.get("min_price") or product.get("min_profit") or 0))
-        max_price = product.get("max_price")
-        if max_price:
-            max_price = Decimal(str(max_price))
+        # Product-level fallback for min/max
+        product_min_price = Decimal(str(product.get("min_price") or product.get("min_profit") or 0))
+        product_max_price = product.get("max_price")
+        if product_max_price:
+            product_max_price = Decimal(str(product_max_price))
         price_step = Decimal(str(product.get("price_step_override") or product.get("store_price_step") or 1))
         strategy = product.get("demping_strategy") or "standard"
         strategy_params = product.get("strategy_params") or {}
@@ -835,7 +836,23 @@ class DemperWorker:
         delivery_filter = product.get("delivery_filter", "same_or_faster")
 
         KASPI_MIN_PRICE = Decimal("10")
-        effective_min_price = max(min_price, KASPI_MIN_PRICE) if min_price > 0 else KASPI_MIN_PRICE
+
+        # Load per-city min/max prices from product_city_prices table
+        city_price_overrides: Dict[str, Dict] = {}
+        try:
+            pool = await get_db_pool()
+            async with pool.acquire() as conn:
+                city_ids = [c["city_id"] for c in cities]
+                rows = await conn.fetch(
+                    """SELECT city_id, price, min_price, max_price, bot_active
+                       FROM product_city_prices
+                       WHERE product_id = $1 AND city_id = ANY($2)""",
+                    product_id, city_ids
+                )
+                for r in rows:
+                    city_price_overrides[r["city_id"]] = dict(r)
+        except Exception as e:
+            logger.warning(f"[{sku}] Could not load city price overrides: {e}")
 
         city_names = [c["city_name"] for c in cities]
         logger.info(f"[{sku}] Multi-city demping: {city_names}")
@@ -846,6 +863,22 @@ class DemperWorker:
         for city_info in cities:
             city_id = city_info["city_id"]
             city_name = city_info["city_name"]
+
+            # Per-city min/max from product_city_prices, fallback to product-level
+            city_override = city_price_overrides.get(city_id, {})
+
+            # Skip if city demping is explicitly disabled
+            if city_override and city_override.get("bot_active") is False:
+                continue
+
+            city_current_price = Decimal(str(city_override.get("price") or current_price))
+            city_min = Decimal(str(city_override.get("min_price") or product_min_price or 0))
+            city_max = city_override.get("max_price")
+            if city_max:
+                city_max = Decimal(str(city_max))
+            elif product_max_price:
+                city_max = product_max_price
+            effective_min = max(city_min, KASPI_MIN_PRICE) if city_min > 0 else KASPI_MIN_PRICE
 
             try:
                 # Fetch competitors for this city
@@ -918,7 +951,7 @@ class DemperWorker:
                 target_price = self._calculate_target_price(
                     strategy=strategy,
                     strategy_params=strategy_params,
-                    current_price=current_price,
+                    current_price=city_current_price,
                     min_competitor_price=min_competitor_price,
                     sorted_offers=sorted_offers,
                     our_position=our_position,
@@ -929,23 +962,24 @@ class DemperWorker:
                 if target_price is None:
                     continue
 
-                # Apply constraints
-                if target_price < effective_min_price:
-                    if current_price > effective_min_price:
-                        target_price = effective_min_price
+                # Apply per-city constraints
+                if target_price < effective_min:
+                    if city_current_price > effective_min:
+                        target_price = effective_min
                     else:
                         continue
 
-                if max_price and target_price > max_price:
-                    target_price = max_price
+                if city_max and target_price > city_max:
+                    target_price = city_max
 
                 city_target_prices[city_id] = int(target_price)
-                if int(target_price) != int(current_price):
+                if int(target_price) != int(city_current_price):
                     any_change = True
 
                 logger.info(
                     f"[{sku}] {city_name}: target={target_price}, "
-                    f"competitor={min_competitor_price}, pos={our_position}"
+                    f"competitor={min_competitor_price}, pos={our_position}, "
+                    f"min={effective_min}"
                 )
 
             except Exception as e:
