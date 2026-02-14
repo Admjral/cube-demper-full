@@ -82,7 +82,7 @@ async def relay_parse_url(
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
                 "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
             }
-            response = await client.get(validated_url, headers=headers, follow_redirects=True)
+            response = await client.get(validated_url, headers=headers, follow_redirects=False)
             return RelayParseUrlResponse(html=response.text, status_code=response.status_code)
     except httpx.TimeoutException:
         raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail="Upstream timeout")

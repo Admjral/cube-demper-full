@@ -16,7 +16,7 @@ from ..schemas.billing import (
     SubscriptionPlan,
 )
 from ..core.database import get_db_pool
-from ..dependencies import get_current_user
+from ..dependencies import get_current_user, get_current_admin_user
 from ..config import settings
 from ..services.proxy_allocator import proxy_allocator
 from ..services.proxy_provider import ensure_proxy_pool_sufficient
@@ -109,10 +109,10 @@ async def get_current_subscription(
 @router.post("/subscribe", response_model=SubscriptionResponse, status_code=status.HTTP_201_CREATED)
 async def create_subscription(
     subscription_request: CreateSubscriptionRequest,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, Depends(get_current_admin_user)],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
-    """Create new subscription (upgrade/downgrade)"""
+    """Create new subscription (admin only until payment integration)"""
     # Validate plan
     if subscription_request.plan not in ['basic', 'pro']:
         raise HTTPException(

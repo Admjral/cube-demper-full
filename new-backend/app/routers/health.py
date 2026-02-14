@@ -6,7 +6,7 @@ import asyncpg
 
 from ..core.database import get_db_pool
 from ..models.proxy import ProxyPoolStatus
-from ..dependencies import get_current_user
+from ..dependencies import get_current_user, get_current_admin_user
 
 router = APIRouter()
 
@@ -14,7 +14,7 @@ router = APIRouter()
 @router.get("/proxies", response_model=ProxyPoolStatus)
 async def get_proxy_pool_status(
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
-    current_user: Annotated[dict, Depends(get_current_user)] = None  # Optional auth
+    current_user: Annotated[dict, Depends(get_current_admin_user)],
 ):
     """
     Get proxy pool status

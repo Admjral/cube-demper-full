@@ -4,14 +4,11 @@ import uuid
 
 import jwt as pyjwt
 from jwt.exceptions import PyJWTError as JWTError
-from passlib.context import CryptContext
+import bcrypt
 from cryptography.fernet import Fernet
 import json
 
 from ..config import settings
-
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Session encryption - validate Fernet key
 def _get_cipher():
@@ -32,12 +29,12 @@ cipher = _get_cipher()
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify password against hash"""
-    return pwd_context.verify(plain_password, hashed_password)
+    return bcrypt.checkpw(plain_password.encode(), hashed_password.encode())
 
 
 def get_password_hash(password: str) -> str:
     """Hash password"""
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
 def create_access_token(user_id: uuid.UUID, role: str, expires_delta: Optional[timedelta] = None) -> str:

@@ -15,10 +15,8 @@ import os
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from passlib.context import CryptContext
+import bcrypt
 import asyncpg
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 async def create_admin(email: str, password: str, full_name: str = "Administrator"):
@@ -40,7 +38,7 @@ async def create_admin(email: str, password: str, full_name: str = "Administrato
         return False
 
     # Hash password
-    password_hash = pwd_context.hash(password)
+    password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
     try:
         conn = await asyncpg.connect(database_url)

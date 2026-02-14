@@ -10,6 +10,7 @@ Kaspi MC (Merchant Cabinet) Service - парсинг данных через Gra
 """
 import logging
 import asyncio
+import re
 import uuid as uuid_module
 from typing import Optional, Dict, Any, List
 from datetime import datetime
@@ -23,6 +24,15 @@ from ..core.rate_limiter import get_orders_rate_limiter
 from .kaspi_auth_service import get_active_session, get_active_session_with_refresh, KaspiAuthError
 
 logger = logging.getLogger(__name__)
+
+
+# Validate GraphQL identifiers to prevent injection
+_SAFE_GQL_ID = re.compile(r'^[a-zA-Z0-9_-]+$')
+
+def _validate_gql_id(value: str, name: str) -> str:
+    if not _SAFE_GQL_ID.match(value):
+        raise KaspiMCError(f"Invalid {name}: {value!r}")
+    return value
 
 
 class KaspiMCError(Exception):
@@ -117,6 +127,7 @@ class KaspiMCService:
         merchant_uid = session.get('merchant_uid')
         if not merchant_uid:
             raise KaspiMCError("Merchant UID not found in session")
+        _validate_gql_id(merchant_uid, "merchant_uid")
 
         cookies = session.get('cookies', [])
 
@@ -253,6 +264,7 @@ class KaspiMCService:
         merchant_uid = session.get('merchant_uid')
         if not merchant_uid:
             raise KaspiMCError("Merchant UID not found")
+        _validate_gql_id(merchant_uid, "merchant_uid")
 
         cookies = session.get('cookies', [])
         cookies_dict = self._cookies_to_dict(cookies)
@@ -347,6 +359,7 @@ class KaspiMCService:
         merchant_uid = session.get('merchant_uid')
         if not merchant_uid:
             raise KaspiMCError("Merchant UID not found in session")
+        _validate_gql_id(merchant_uid, "merchant_uid")
 
         cookies = session.get('cookies', [])
         cookies_dict = self._cookies_to_dict(cookies)
@@ -420,6 +433,7 @@ class KaspiMCService:
                 result = []
 
                 for code in all_order_codes[:limit]:
+                    _validate_gql_id(code, "order_code")
                     detail_query = """
                     {
                         merchant(id: "%s") {

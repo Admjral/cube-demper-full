@@ -1012,7 +1012,7 @@ async def websocket_endpoint(
 
     user_id = payload.get("sub")
     role = payload.get("role")
-    if not user_id:
+    if not user_id or role not in ("user", "admin", "support"):
         await websocket.close(code=4001)
         return
 
@@ -1027,6 +1027,14 @@ async def websocket_endpoint(
     from ..core.database import get_db_pool
     pool = await get_db_pool()
     async with pool.acquire() as conn:
+        # Check if user is blocked
+        is_blocked = await conn.fetchval(
+            "SELECT is_blocked FROM users WHERE id = $1", user_uuid
+        )
+        if is_blocked:
+            await websocket.close(code=4003)
+            return
+
         if role in ("admin", "support"):
             # Staff can access any chat
             chat_exists = await conn.fetchval(

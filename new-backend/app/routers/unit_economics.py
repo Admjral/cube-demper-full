@@ -539,7 +539,8 @@ def detect_category_from_text(text: str) -> tuple:
 
 @router.get("/parse-url", response_model=ProductParseResult)
 async def parse_kaspi_url(
-    url: str = Query(..., description="Kaspi product URL")
+    url: str = Query(..., description="Kaspi product URL"),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     Parse Kaspi product URL to extract product info and category

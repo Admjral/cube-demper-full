@@ -17,6 +17,7 @@ import {
 import { useAuth } from '@/hooks/use-auth'
 import { Send, Loader2, User, Scale, Trash2, ThumbsUp, ThumbsDown, ExternalLink } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
+import rehypeSanitize from 'rehype-sanitize'
 import { cn } from '@/lib/utils'
 import {
   Tooltip,
@@ -181,7 +182,7 @@ export function LawyerChat({ language }: LawyerChatProps) {
                       <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                     ) : (
                       <div className="text-sm prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-hr:my-2 prose-strong:text-foreground">
-                        <ReactMarkdown>{message.content}</ReactMarkdown>
+                        <ReactMarkdown rehypePlugins={[rehypeSanitize]}>{message.content}</ReactMarkdown>
                       </div>
                     )}
                   </div>

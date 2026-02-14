@@ -14,6 +14,7 @@ from typing import Annotated, List, Optional
 from pydantic import BaseModel
 import asyncpg
 import logging
+import hmac
 import base64
 from uuid import UUID
 from datetime import datetime
@@ -575,11 +576,12 @@ async def waha_webhook(
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     request: Request = None,
 ):
-    # Verify webhook secret if configured
-    if settings.waha_webhook_secret:
-        webhook_secret = request.headers.get("x-webhook-secret") if request else None
-        if webhook_secret != settings.waha_webhook_secret:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook secret")
+    # Verify webhook secret (mandatory)
+    webhook_secret = request.headers.get("x-webhook-secret") if request else None
+    if not settings.waha_webhook_secret:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Webhook secret not configured")
+    if not webhook_secret or not hmac.compare_digest(webhook_secret, settings.waha_webhook_secret):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook secret")
     """
     Webhook endpoint для получения событий от WAHA.
     

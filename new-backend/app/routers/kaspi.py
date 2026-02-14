@@ -372,7 +372,7 @@ async def _sync_store_products_task(store_id: str, merchant_id: str):
                 logger.info(f"Using plain encrypted_guid: {encrypted_guid[:50]}..." if encrypted_guid else "None")
 
             session = decrypt_session(encrypted_guid)
-            logger.info(f"Decrypted session type: {type(session)}, keys: {session.keys() if isinstance(session, dict) else 'NOT A DICT'}")
+            logger.debug(f"Decrypted session successfully, type: {type(session)}")
 
             # Fetch products from Kaspi API
             products = await get_products(merchant_id, session)
@@ -1386,10 +1386,11 @@ async def update_store_demping_settings(
 
         settings = await conn.fetchrow(query, *values)
 
-        # If no settings exist, create with provided values
+        # If no settings exist, create with provided values (use only whitelisted fields)
         if not settings:
-            columns = ['store_id'] + list(update_dict.keys())
-            placeholders = ['$1'] + [f'${i+2}' for i in range(len(update_dict))]
+            filtered_dict = {k: v for k, v in update_dict.items() if k in DEMPING_SETTINGS_FIELDS}
+            columns = ['store_id'] + list(filtered_dict.keys())
+            placeholders = ['$1'] + [f'${i+2}' for i in range(len(filtered_dict))]
 
             insert_query = f"""
                 INSERT INTO demping_settings ({', '.join(columns)})
@@ -1397,7 +1398,7 @@ async def update_store_demping_settings(
                 RETURNING *
             """
 
-            settings = await conn.fetchrow(insert_query, uuid.UUID(store_id), *update_dict.values())
+            settings = await conn.fetchrow(insert_query, uuid.UUID(store_id), *filtered_dict.values())
 
         return DempingSettings(
             id=str(settings['id']),

@@ -24,6 +24,11 @@ async def get_current_user(
     if not payload:
         raise AuthenticationError("Invalid or expired token")
 
+    # Reject non-auth tokens (e.g. password_reset)
+    token_role = payload.get("role")
+    if token_role not in ("user", "admin"):
+        raise AuthenticationError("Invalid token type")
+
     user_id = payload.get("sub")
     if not user_id:
         raise AuthenticationError("Invalid token payload")
@@ -37,12 +42,15 @@ async def get_current_user(
     # Fetch user from database
     async with pool.acquire() as conn:
         user = await conn.fetchrow(
-            "SELECT id, email, full_name, phone, phone_verified, company_name, bin, tax_type, role, created_at, updated_at FROM users WHERE id = $1",
+            "SELECT id, email, full_name, phone, phone_verified, company_name, bin, tax_type, role, created_at, updated_at, is_blocked FROM users WHERE id = $1",
             user_uuid
         )
 
     if not user:
         raise AuthenticationError("User not found")
+
+    if user.get("is_blocked"):
+        raise AuthenticationError("Account blocked")
 
     return dict(user)
 
