@@ -547,3 +547,210 @@ def get_ai_salesman() -> AISalesmanService:
         _ai_salesman = AISalesmanService()
 
     return _ai_salesman
+
+
+# ==================== INCOMING MESSAGE HANDLER ====================
+
+CHAT_SYSTEM_PROMPT = """Ты ИИ-продажник для магазина на маркетплейсе Kaspi.kz. Клиент написал тебе в WhatsApp. Твоя задача — помочь клиенту и при уместности предложить товары из каталога магазина.
+
+Правила:
+1. Отвечай на русском языке
+2. Будь вежливым, дружелюбным и полезным
+3. Если клиент спрашивает о товаре — дай информацию из каталога
+4. Если клиент жалуется — извинись и предложи решение
+5. Если уместно — порекомендуй 1-2 товара из каталога
+6. Максимум 3-5 предложений
+7. Не обещай того, чего нет
+8. Не давай скидок без разрешения магазина
+9. Обращайся на "вы"
+
+Формат ответа: только текст сообщения, без пояснений."""
+
+
+async def handle_incoming_message(
+    session_name: str,
+    from_number: str,
+    message_text: str,
+    pool: "asyncpg.Pool",
+) -> Optional[str]:
+    """
+    Обработать входящее сообщение от клиента и сгенерировать ответ.
+
+    Вызывается из webhook при event == "message".
+    Проверяет ai_enabled для магазина, дневной лимит, генерирует ответ через Gemini,
+    отправляет обратно через WAHA.
+
+    Args:
+        session_name: Имя WhatsApp сессии (привязана к user_id)
+        from_number: Номер телефона отправителя (без @c.us)
+        message_text: Текст входящего сообщения
+        pool: Пул соединений к БД
+
+    Returns:
+        Текст ответа или None если ответ не отправлен
+    """
+    if not message_text or not message_text.strip():
+        return None
+
+    async with pool.acquire() as conn:
+        # 1. Найти пользователя и магазин по сессии
+        session = await conn.fetchrow("""
+            SELECT ws.user_id, ws.session_name
+            FROM whatsapp_sessions ws
+            WHERE ws.session_name = $1 AND ws.status = 'WORKING'
+        """, session_name)
+
+        if not session:
+            logger.debug("No active session found for %s", session_name)
+            return None
+
+        user_id = session["user_id"]
+
+        # 2. Получить магазины пользователя с ai_enabled
+        stores = await conn.fetch("""
+            SELECT id, name, merchant_id,
+                   COALESCE(ai_enabled, false) as ai_enabled,
+                   ai_tone, ai_discount_percent, ai_promo_code,
+                   COALESCE(ai_max_messages_per_day, 50) as ai_max_messages_per_day
+            FROM kaspi_stores
+            WHERE user_id = $1 AND is_active = TRUE
+        """, user_id)
+
+        if not stores:
+            return None
+
+        # Берём первый магазин с ai_enabled=true
+        store = None
+        for s in stores:
+            if s["ai_enabled"]:
+                store = s
+                break
+
+        if not store:
+            logger.debug("AI Salesman disabled for all stores of user %s", user_id)
+            return None
+
+        store_id = store["id"]
+
+        # 3. Проверить дневной лимит
+        max_per_day = store["ai_max_messages_per_day"]
+        today_count = await conn.fetchval("""
+            SELECT COUNT(*) FROM ai_salesman_messages
+            WHERE store_id = $1 AND created_at >= CURRENT_DATE
+        """, store_id)
+
+        if today_count >= max_per_day:
+            logger.info("Daily AI limit (%d) reached for store %s", max_per_day, store_id)
+            return None
+
+        # 4. Загрузить последние сообщения для контекста (история чата)
+        recent_messages = await conn.fetch("""
+            SELECT message_text, 'assistant' as role, created_at
+            FROM ai_salesman_messages
+            WHERE store_id = $1 AND customer_phone = $2
+            ORDER BY created_at DESC
+            LIMIT 5
+        """, store_id, from_number)
+
+        # 5. Загрузить каталог магазина (top товары)
+        catalog = await conn.fetch("""
+            SELECT name, kaspi_sku, price
+            FROM products
+            WHERE store_id = $1
+            ORDER BY price DESC
+            LIMIT 20
+        """, store_id)
+
+        catalog_text = "\n".join([
+            f"- {p['name']} ({p['price']}₸)" for p in catalog
+        ]) if catalog else "Каталог недоступен"
+
+        # 6. Загрузить историю покупок клиента
+        purchase_history = await conn.fetch("""
+            SELECT o.total_price, o.status, oi.name
+            FROM orders o
+            LEFT JOIN order_items oi ON o.id = oi.order_id
+            WHERE o.store_id = $1 AND o.customer_phone = $2
+            ORDER BY o.created_at DESC
+            LIMIT 5
+        """, store_id, from_number)
+
+        history_text = ""
+        if purchase_history:
+            history_text = "\nИстория покупок клиента:\n" + "\n".join([
+                f"- {p['name'] or 'Товар'}" for p in purchase_history
+            ])
+
+        # 7. Собрать контекст чата
+        chat_context = ""
+        if recent_messages:
+            msgs = list(reversed(recent_messages))
+            chat_context = "\nПоследние сообщения ИИ этому клиенту:\n" + "\n".join([
+                f"- Ты: {m['message_text'][:100]}" for m in msgs
+            ])
+
+        # 8. Сформировать промпт
+        tone_instruction = ""
+        if store["ai_tone"]:
+            tone_instruction = f"\nТон общения: {store['ai_tone']}"
+
+        discount_instruction = ""
+        if store["ai_discount_percent"]:
+            discount_instruction = f"\nМожно предложить скидку до {store['ai_discount_percent']}%"
+        if store["ai_promo_code"]:
+            discount_instruction += f"\nПромокод: {store['ai_promo_code']}"
+
+        system_prompt = CHAT_SYSTEM_PROMPT + tone_instruction + discount_instruction
+
+        user_prompt = f"""Магазин: {store['name']}
+
+Каталог товаров:
+{catalog_text}
+{history_text}
+{chat_context}
+
+Клиент написал: "{message_text}"
+
+Составь ответ."""
+
+        # 9. Генерация через Gemini
+        try:
+            salesman = get_ai_salesman()
+            model = salesman._get_model(system_prompt)
+            response = await model.generate_content_async(
+                user_prompt,
+                generation_config=genai.GenerationConfig(
+                    max_output_tokens=500,
+                    temperature=0.7,
+                ),
+            )
+            reply_text = response.text.strip()
+        except Exception as e:
+            logger.error("Gemini failed for incoming message: %s", e)
+            reply_text = f"Здравствуйте! Спасибо за сообщение. Наш менеджер свяжется с вами в ближайшее время."
+
+        # 10. Отправить ответ через WAHA
+        try:
+            from .waha_service import get_waha_service
+            waha = get_waha_service()
+            await waha.send_text(
+                phone=from_number,
+                text=reply_text,
+                session=session_name,
+            )
+            logger.info("AI Salesman replied to %s: %s", from_number, reply_text[:80])
+        except Exception as e:
+            logger.error("Failed to send AI reply to %s: %s", from_number, e)
+            return None
+
+        # 11. Сохранить в историю
+        try:
+            await conn.execute("""
+                INSERT INTO ai_salesman_messages
+                (store_id, customer_phone, trigger_type, message_text, products_suggested, sent_at)
+                VALUES ($1, $2, 'incoming_reply', $3, $4, NOW())
+            """, store_id, from_number, reply_text, [])
+        except Exception as e:
+            logger.warning("Failed to save AI message to history: %s", e)
+
+        return reply_text

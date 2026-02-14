@@ -147,6 +147,7 @@ UPDATE kaspi_stores SET needs_reauth = FALSE WHERE guid IS NOT NULL;
 - `run-city-demping` принимает `{ city_ids: [...] }` как JSON body (`RunCityDempingRequest`)
 
 
+
 ### Notification System (2026-02-12)
 - **`notification_settings` JSONB** в `users` — `{"orders": true, "price_changes": true, "support": true}`
 - Всегда проверять `get_user_notification_settings()` перед отправкой

@@ -616,12 +616,26 @@ async def waha_webhook(
             message_data = data.get("message", {})
             from_number = data.get("from", "").replace("@c.us", "")
             body = message_data.get("body", "")
-            
-            logger.info(f"Incoming message from {from_number}: {body[:50]}...")
-            
-            # Можно сохранить в БД для истории
-            # Можно передать в AI для автоответа
-            # Пока просто логируем
+            is_from_me = data.get("fromMe", False)
+
+            logger.info(f"Incoming message from {from_number} (fromMe={is_from_me}): {body[:50]}...")
+
+            # Только входящие от клиентов (не наши исходящие)
+            if not is_from_me and body.strip():
+                try:
+                    from ..services.ai_salesman_service import handle_incoming_message
+                    import asyncio
+                    # Запускаем в фоне чтобы не блокировать webhook response
+                    asyncio.create_task(
+                        handle_incoming_message(
+                            session_name=session_name,
+                            from_number=from_number,
+                            message_text=body,
+                            pool=pool,
+                        )
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to process incoming message for AI Salesman: {e}")
             
         elif event == "message.ack":
             # Подтверждение доставки/прочтения
