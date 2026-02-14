@@ -1,10 +1,12 @@
 """Partner authentication router - вход в партнёрский кабинет."""
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request, HTTPException
 from typing import Annotated, Optional
 from pydantic import BaseModel, EmailStr, Field
 import asyncpg
 from datetime import timedelta, datetime
+from collections import defaultdict
+from time import time
 import uuid
 
 from ..core.database import get_db_pool
@@ -13,6 +15,18 @@ from ..core.exceptions import AuthenticationError
 from ..dependencies import get_current_partner
 
 router = APIRouter()
+
+# Rate limiting for partner login
+_partner_login_attempts: dict[str, list[float]] = defaultdict(list)
+
+
+def _check_rate_limit(store: dict, key: str, max_attempts: int, window: int):
+    """Check IP-based rate limit. Raises 429 if exceeded."""
+    now = time()
+    store[key] = [t for t in store[key] if now - t < window]
+    if len(store[key]) >= max_attempts:
+        raise HTTPException(status_code=429, detail="Too many attempts. Please try again later.")
+    store[key].append(now)
 
 
 class PartnerLoginRequest(BaseModel):
@@ -27,6 +41,7 @@ class PayoutRequest(BaseModel):
 
 @router.post("/login")
 async def partner_login(
+    request: Request,
     credentials: PartnerLoginRequest,
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
 ):
@@ -34,6 +49,7 @@ async def partner_login(
   Логин партнёра по email и паролю.
   Возвращает JWT-токен, который используется в partner-cabinet.
   """
+  _check_rate_limit(_partner_login_attempts, request.client.host, max_attempts=5, window=60)
   email = credentials.email
   password = credentials.password
 
@@ -266,43 +282,50 @@ async def request_payout(
     raise AuthenticationError("Минимальная сумма выплаты: 5000 тенге")
 
   async with pool.acquire() as conn:
-    # Проверяем доступный баланс
-    total_earned = await conn.fetchval(
-      """
-      SELECT COALESCE(SUM(amount), 0)
-      FROM partner_transactions
-      WHERE partner_id = $1 AND type = 'income'
-      """,
-      partner_id
-    ) or 0
+    async with conn.transaction():
+      # Lock partner row to prevent concurrent payouts
+      await conn.fetchrow(
+        "SELECT id FROM partners WHERE id = $1 FOR UPDATE",
+        partner_id
+      )
 
-    total_withdrawn = await conn.fetchval(
-      """
-      SELECT COALESCE(SUM(ABS(amount)), 0)
-      FROM partner_transactions
-      WHERE partner_id = $1 AND type = 'payout'
-      """,
-      partner_id
-    ) or 0
+      # Проверяем доступный баланс
+      total_earned = await conn.fetchval(
+        """
+        SELECT COALESCE(SUM(amount), 0)
+        FROM partner_transactions
+        WHERE partner_id = $1 AND type = 'income'
+        """,
+        partner_id
+      ) or 0
 
-    available = total_earned - total_withdrawn
+      total_withdrawn = await conn.fetchval(
+        """
+        SELECT COALESCE(SUM(ABS(amount)), 0)
+        FROM partner_transactions
+        WHERE partner_id = $1 AND type = 'payout'
+        """,
+        partner_id
+      ) or 0
 
-    if amount > available:
-      raise AuthenticationError(f"Недостаточно средств. Доступно: {available} тенге")
+      available = total_earned - total_withdrawn
 
-    # Создаём запрос на выплату
-    payout_id = await conn.fetchval(
-      """
-      INSERT INTO partner_transactions (id, partner_id, type, amount, description, status, requisites, created_at)
-      VALUES ($1, $2, 'payout', $3, $4, 'pending', $5, NOW())
-      RETURNING id
-      """,
-      uuid.uuid4(),
-      partner_id,
-      -amount,  # Отрицательная сумма для выплаты
-      f"Запрос на выплату: {requisites}",
-      requisites,
-    )
+      if amount > available:
+        raise AuthenticationError(f"Недостаточно средств. Доступно: {available} тенге")
+
+      # Создаём запрос на выплату
+      payout_id = await conn.fetchval(
+        """
+        INSERT INTO partner_transactions (id, partner_id, type, amount, description, status, requisites, created_at)
+        VALUES ($1, $2, 'payout', $3, $4, 'pending', $5, NOW())
+        RETURNING id
+        """,
+        uuid.uuid4(),
+        partner_id,
+        -amount,  # Отрицательная сумма для выплаты
+        f"Запрос на выплату: {requisites}",
+        requisites,
+      )
 
   return {
     "success": True,

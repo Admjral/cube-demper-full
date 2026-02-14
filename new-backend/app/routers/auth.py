@@ -241,15 +241,23 @@ async def update_user_profile(
     if not update_dict:
         raise HTTPException(status_code=400, detail="No fields to update")
 
+    # Whitelist of allowed profile fields to prevent column injection
+    ALLOWED_FIELDS = {"full_name", "company_name", "bin", "tax_type"}
+
     # Build SET clause dynamically
     set_clauses = []
     values = [current_user['id']]
     param_num = 2
 
     for field, value in update_dict.items():
+        if field not in ALLOWED_FIELDS:
+            continue
         set_clauses.append(f"{field} = ${param_num}")
         values.append(value)
         param_num += 1
+
+    if not set_clauses:
+        raise HTTPException(status_code=400, detail="No valid fields to update")
 
     query = f"""
         UPDATE users

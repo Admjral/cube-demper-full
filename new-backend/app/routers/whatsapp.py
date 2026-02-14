@@ -9,7 +9,7 @@ WhatsApp router - WAHA API integration for messaging
 - Шаблоны сообщений
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Response, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, Response, BackgroundTasks, Request
 from typing import Annotated, List, Optional
 from pydantic import BaseModel
 import asyncpg
@@ -528,6 +528,13 @@ async def send_bulk_messages(
     """
     session_name = await _get_active_session(current_user['id'], pool)
 
+    # Limit bulk recipients to prevent abuse
+    if len(phones) > 100:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Maximum 100 recipients per bulk send"
+        )
+
     results = []
     for phone in phones:
         try:
@@ -565,7 +572,13 @@ async def send_bulk_messages(
 async def waha_webhook(
     payload: WhatsAppWebhook,
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
+    request: Request = None,
 ):
+    # Verify webhook secret if configured
+    if settings.waha_webhook_secret:
+        webhook_secret = request.headers.get("x-webhook-secret") if request else None
+        if webhook_secret != settings.waha_webhook_secret:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook secret")
     """
     Webhook endpoint для получения событий от WAHA.
     

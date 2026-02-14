@@ -4,7 +4,7 @@
 Эндпоинты для склейки PDF-накладных на листах A4.
 """
 
-from fastapi import APIRouter, File, UploadFile, Query, HTTPException, status
+from fastapi import APIRouter, File, UploadFile, Query, HTTPException, status, Depends
 from fastapi.responses import StreamingResponse
 from typing import Annotated
 import io
@@ -17,6 +17,7 @@ from ..services.invoice_merger import (
     InvalidPDFError,
     EmptyArchiveError,
 )
+from ..dependencies import get_current_user
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -61,6 +62,7 @@ async def process_invoices(
         UploadFile,
         File(description="ZIP-архив с PDF-накладными")
     ],
+    current_user: Annotated[dict, Depends(get_current_user)],
     layout: Annotated[
         LayoutType,
         Query(description="Тип сетки для размещения накладных")
@@ -105,8 +107,14 @@ async def process_invoices(
     logger.info(f"Получен запрос на склейку накладных: {file.filename}, layout={layout.value}")
     
     try:
-        # Читаем содержимое файла
+        # Читаем содержимое файла с ограничением размера (50 MB)
+        MAX_FILE_SIZE = 50 * 1024 * 1024
         content = await file.read()
+        if len(content) > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"Файл слишком большой. Максимальный размер: 50 МБ"
+            )
         zip_buffer = io.BytesIO(content)
         
         # Обрабатываем архив

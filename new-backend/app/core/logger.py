@@ -1,8 +1,28 @@
 import logging
 import sys
+import re
 from pathlib import Path
 
 from ..config import settings
+
+# Patterns that may contain sensitive data
+_SENSITIVE_PATTERN = re.compile(
+    r'(password|passwd|secret|token|api_key|apikey|authorization|cookie|session_id|credit_card)'
+    r'\s*[=:]\s*\S+',
+    re.IGNORECASE
+)
+
+
+class SensitiveDataFilter(logging.Filter):
+    """Filter that redacts sensitive data from log messages."""
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.msg, str):
+            record.msg = _SENSITIVE_PATTERN.sub(
+                lambda m: m.group().split('=')[0].split(':')[0] + '=***REDACTED***'
+                if '=' in m.group() else m.group().split(':')[0] + ': ***REDACTED***',
+                record.msg
+            )
+        return True
 
 
 def setup_logging():
@@ -37,6 +57,11 @@ def setup_logging():
     root_logger.setLevel(logging.DEBUG)
     root_logger.addHandler(file_handler)
     root_logger.addHandler(console_handler)
+
+    # Add sensitive data filter to all handlers
+    sensitive_filter = SensitiveDataFilter()
+    file_handler.addFilter(sensitive_filter)
+    console_handler.addFilter(sensitive_filter)
 
     # Silence noisy loggers
     logging.getLogger("httpx").setLevel(logging.WARNING)

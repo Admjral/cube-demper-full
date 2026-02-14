@@ -206,42 +206,49 @@ async def request_payout(
         raise AuthenticationError("Укажите реквизиты для выплаты")
 
     async with pool.acquire() as conn:
-        # Проверяем доступный баланс
-        total_earned = await conn.fetchval(
-            """
-            SELECT COALESCE(SUM(amount), 0)
-            FROM referral_transactions
-            WHERE user_id = $1 AND type = 'income'
-            """,
-            user_id
-        ) or 0
+        async with conn.transaction():
+            # Lock user row to prevent concurrent payouts
+            await conn.fetchrow(
+                "SELECT id FROM users WHERE id = $1 FOR UPDATE",
+                user_id
+            )
 
-        total_withdrawn = await conn.fetchval(
-            """
-            SELECT COALESCE(SUM(ABS(amount)), 0)
-            FROM referral_transactions
-            WHERE user_id = $1 AND type = 'payout'
-            """,
-            user_id
-        ) or 0
+            # Проверяем доступный баланс
+            total_earned = await conn.fetchval(
+                """
+                SELECT COALESCE(SUM(amount), 0)
+                FROM referral_transactions
+                WHERE user_id = $1 AND type = 'income'
+                """,
+                user_id
+            ) or 0
 
-        available = total_earned - total_withdrawn
+            total_withdrawn = await conn.fetchval(
+                """
+                SELECT COALESCE(SUM(ABS(amount)), 0)
+                FROM referral_transactions
+                WHERE user_id = $1 AND type = 'payout'
+                """,
+                user_id
+            ) or 0
 
-        if amount > available:
-            raise AuthenticationError(f"Недостаточно средств. Доступно: {available / 100} ₸")
+            available = total_earned - total_withdrawn
 
-        # Создаём запрос на выплату
-        payout_id = await conn.fetchval(
-            """
-            INSERT INTO referral_transactions (id, user_id, type, amount, description, status, created_at)
-            VALUES ($1, $2, 'payout', $3, $4, 'pending', NOW())
-            RETURNING id
-            """,
-            uuid.uuid4(),
-            user_id,
-            -amount,  # Отрицательная сумма для выплаты
-            f"Запрос на выплату: {requisites}",
-        )
+            if amount > available:
+                raise AuthenticationError(f"Недостаточно средств. Доступно: {available / 100} ₸")
+
+            # Создаём запрос на выплату
+            payout_id = await conn.fetchval(
+                """
+                INSERT INTO referral_transactions (id, user_id, type, amount, description, status, created_at)
+                VALUES ($1, $2, 'payout', $3, $4, 'pending', NOW())
+                RETURNING id
+                """,
+                uuid.uuid4(),
+                user_id,
+                -amount,  # Отрицательная сумма для выплаты
+                f"Запрос на выплату: {requisites}",
+            )
 
     return {
         "success": True,

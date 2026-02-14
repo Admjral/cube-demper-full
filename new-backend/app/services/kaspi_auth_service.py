@@ -723,8 +723,20 @@ async def get_active_session_with_refresh(
             # We're the first — acquire lock and do the actual login
             async with lock:
                 # Get stored credentials - try separate columns first, then from session
-                email = row.get('kaspi_email') if row else None
-                password = row.get('kaspi_password') if row else None
+                # Credentials are now stored encrypted; try decrypt with plaintext fallback
+                raw_email = row.get('kaspi_email') if row else None
+                raw_password = row.get('kaspi_password') if row else None
+
+                email = None
+                password = None
+
+                if raw_email:
+                    decrypted = decrypt_session(raw_email)
+                    email = decrypted.get('email') if decrypted else raw_email  # fallback plaintext
+
+                if raw_password:
+                    decrypted = decrypt_session(raw_password)
+                    password = decrypted.get('password') if decrypted else raw_password  # fallback plaintext
 
                 # Fallback to credentials from session data if available
                 if (not email or not password) and session_data:

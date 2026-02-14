@@ -2,7 +2,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 import uuid
 
-from jose import JWTError, jwt
+import jwt as pyjwt
+from jwt.exceptions import PyJWTError as JWTError
 from passlib.context import CryptContext
 from cryptography.fernet import Fernet
 import json
@@ -54,14 +55,14 @@ def create_access_token(user_id: uuid.UUID, role: str, expires_delta: Optional[t
         "iat": now,
     }
 
-    encoded_jwt = jwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
+    encoded_jwt = pyjwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
     return encoded_jwt
 
 
 def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
     """Decode and verify JWT token"""
     try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
+        payload = pyjwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
         return payload
     except JWTError:
         return None

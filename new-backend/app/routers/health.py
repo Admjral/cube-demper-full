@@ -84,7 +84,7 @@ async def get_user_proxy_status(
     Returns detailed proxy allocation and health for a user.
     """
     # Verify user can only access their own proxy stats (unless admin)
-    if current_user['id'] != user_id:
+    if str(current_user['id']) != user_id:
         # TODO: Add admin check
         from fastapi import HTTPException, status
         raise HTTPException(

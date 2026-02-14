@@ -96,6 +96,7 @@ class Settings(BaseSettings):
     waha_url: str = "http://waha:3000"  # WAHA API URL inside Docker network
     waha_api_key: Optional[str] = None  # API key for WAHA (if set in WAHA config)
     waha_webhook_url: Optional[str] = None  # Will use {backend_url}/whatsapp/webhook if not set
+    waha_webhook_secret: Optional[str] = None  # Secret for verifying WAHA webhook requests
     waha_enabled: bool = True  # Enable WAHA by default for Docker deployment
     waha_plus: bool = True  # WAHA Plus activated (supports multiple sessions, NOWEB engine)
     waha_otp_session: str = "default"  # WAHA session for OTP codes (active session on WAHA Plus)

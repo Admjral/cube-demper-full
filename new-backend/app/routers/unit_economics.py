@@ -545,8 +545,18 @@ async def parse_kaspi_url(
 
     Example URL: https://kaspi.kz/shop/p/samsung-galaxy-a54-8-256gb-chernyj-111730405/
     """
-    # Validate URL
-    if not url or "kaspi.kz" not in url:
+    # Validate URL - strict hostname check to prevent SSRF
+    from urllib.parse import urlparse
+    try:
+        parsed = urlparse(url)
+        hostname = (parsed.hostname or "").lower()
+        if parsed.scheme not in ("http", "https") or not (hostname == "kaspi.kz" or hostname.endswith(".kaspi.kz")):
+            return ProductParseResult(
+                kaspi_url=url,
+                success=False,
+                error="Invalid Kaspi URL"
+            )
+    except Exception:
         return ProductParseResult(
             kaspi_url=url,
             success=False,

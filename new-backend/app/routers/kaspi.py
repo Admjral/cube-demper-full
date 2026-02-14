@@ -191,8 +191,8 @@ async def authenticate_store(
                     merchant_id,
                     shop_name,
                     json.dumps({'encrypted': encrypted_guid}),
-                    auth_data.email,
-                    auth_data.password,
+                    encrypt_session({'email': auth_data.email}),
+                    encrypt_session({'password': auth_data.password}),
                     json.dumps(store_points)
                 )
             except Exception as e:
@@ -210,8 +210,8 @@ async def authenticate_store(
                     merchant_id,
                     shop_name,
                     json.dumps({'encrypted': encrypted_guid}),
-                    auth_data.email,
-                    auth_data.password
+                    encrypt_session({'email': auth_data.email}),
+                    encrypt_session({'password': auth_data.password})
                 )
 
         # Auto-sync products after successful authentication
@@ -841,17 +841,26 @@ async def bulk_update_products(
                 detail="Some products do not belong to you"
             )
 
-        # Perform bulk update
+        # Perform bulk update with parameterized queries
         updates = []
+        params = [product_uuids]  # $1 = product IDs
+        param_idx = 2
+
         if bulk_data.bot_active is not None:
-            updates.append(f"bot_active = {bulk_data.bot_active}")
+            updates.append(f"bot_active = ${param_idx}")
+            params.append(bulk_data.bot_active)
+            param_idx += 1
 
         if bulk_data.price_change_percent is not None:
             updates.append(
-                f"price = ROUND(price * (1 + {bulk_data.price_change_percent / 100.0}))::INTEGER"
+                f"price = ROUND(price * (1 + ${param_idx}))::INTEGER"
             )
+            params.append(bulk_data.price_change_percent / 100.0)
+            param_idx += 1
         elif bulk_data.price_change_tiyns is not None:
-            updates.append(f"price = price + {bulk_data.price_change_tiyns}")
+            updates.append(f"price = price + ${param_idx}")
+            params.append(bulk_data.price_change_tiyns)
+            param_idx += 1
 
         if not updates:
             raise HTTPException(
@@ -865,7 +874,7 @@ async def bulk_update_products(
             SET {', '.join(updates)}, updated_at = NOW()
             WHERE id = ANY($1)
             """,
-            product_uuids
+            *params
         )
 
         updated_count = int(result.split()[-1])
