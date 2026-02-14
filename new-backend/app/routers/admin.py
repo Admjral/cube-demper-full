@@ -28,6 +28,7 @@ from ..core.redis import get_redis, get_online_users
 from ..core.security import get_password_hash
 from ..dependencies import get_current_admin_user
 from ..services.notification_service import notify_referral_paid
+from ..utils.security import clamp_page_size, SITE_SETTINGS_ALLOWED_KEYS
 
 import logging
 
@@ -44,6 +45,7 @@ async def list_users(
     page_size: int = 50
 ):
     """List all users (admin only)"""
+    page_size = clamp_page_size(page_size, max_size=100)
     offset = (page - 1) * page_size
 
     async with pool.acquire() as conn:
@@ -555,26 +557,14 @@ async def list_support_staff(
 
 @router.post("/support-staff", status_code=status.HTTP_201_CREATED)
 async def create_support_staff(
-    request: dict,
+    request: PartnerCreateRequest,
     current_admin: Annotated[dict, Depends(get_current_admin_user)],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Create a new support staff account (admin only)"""
-    email = request.get("email")
-    password = request.get("password")
-    full_name = request.get("full_name", "Support Staff")
-
-    if not email or not password:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email and password are required"
-        )
-
-    if len(password) < 6:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password must be at least 6 characters"
-        )
+    email = request.email
+    password = request.password
+    full_name = request.full_name or "Support Staff"
 
     async with pool.acquire() as conn:
         # Check if user already exists
@@ -621,6 +611,7 @@ async def list_stores(
     page_size: int = 50
 ):
     """List all stores with user information (admin only)"""
+    page_size = clamp_page_size(page_size, max_size=100)
     offset = (page - 1) * page_size
 
     async with pool.acquire() as conn:
@@ -675,6 +666,7 @@ async def list_payments(
     page_size: int = 50
 ):
     """List all payments with user information (admin only)"""
+    page_size = clamp_page_size(page_size, max_size=100)
     offset = (page - 1) * page_size
 
     async with pool.acquire() as conn:
@@ -1042,6 +1034,13 @@ async def update_site_setting(
 
     if not key or value is None:
         raise HTTPException(status_code=400, detail="key and value are required")
+
+    # Only allow known setting keys
+    if key not in SITE_SETTINGS_ALLOWED_KEYS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown setting key. Allowed: {', '.join(sorted(SITE_SETTINGS_ALLOWED_KEYS))}"
+        )
 
     async with pool.acquire() as conn:
         await conn.execute("""

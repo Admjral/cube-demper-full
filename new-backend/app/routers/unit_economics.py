@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, List, Annotated
 from decimal import Decimal
 from datetime import datetime
+from ..utils.security import escape_like
 import re
 import httpx
 import csv
@@ -954,7 +955,7 @@ async def list_saved_calculations(
 
         if search:
             where_clauses.append(f"(name ILIKE ${param_idx} OR category ILIKE ${param_idx})")
-            params.append(f"%{search}%")
+            params.append(f"%{escape_like(search)}%")
             param_idx += 1
 
         where_sql = " AND ".join(where_clauses)

@@ -38,6 +38,7 @@ router = APIRouter()
 # In-memory rate limiting for auth endpoints
 _login_attempts: dict[str, list[float]] = defaultdict(list)
 _register_attempts: dict[str, list[float]] = defaultdict(list)
+_password_reset_attempts: dict[str, list[float]] = defaultdict(list)
 
 
 def _check_rate_limit(store: dict, key: str, max_attempts: int, window: int):
@@ -374,10 +375,12 @@ async def verify_otp(
 
 @router.post("/forgot-password", status_code=status.HTTP_200_OK)
 async def forgot_password(
+    request_obj: Request,
     request: ForgotPasswordRequest,
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Request password reset (sends email in production)"""
+    _check_rate_limit(_password_reset_attempts, request_obj.client.host, max_attempts=3, window=300)
     async with pool.acquire() as conn:
         user = await conn.fetchrow(
             "SELECT id FROM users WHERE email = $1",

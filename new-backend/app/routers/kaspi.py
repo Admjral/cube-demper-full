@@ -43,6 +43,7 @@ from ..services.api_parser import (
     parse_product_by_sku,
 )
 from ..core.security import encrypt_session
+from ..utils.security import escape_like, clamp_page_size, DEMPING_SETTINGS_FIELDS, CITY_PRICE_FIELDS
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -479,7 +480,7 @@ async def list_products(
         if filters.search:
             param_count += 1
             conditions.append(f"p.name ILIKE ${param_count}")
-            params.append(f"%{filters.search}%")
+            params.append(f"%{escape_like(filters.search)}%")
 
         where_clause = " AND ".join(conditions)
 
@@ -1357,15 +1358,23 @@ async def update_store_demping_settings(
                 detail="No fields to update"
             )
 
-        # Build SET clause
+        # Build SET clause — only allow whitelisted fields
         set_clauses = []
         values = [uuid.UUID(store_id)]
         param_num = 2
 
         for field, value in update_dict.items():
+            if field not in DEMPING_SETTINGS_FIELDS:
+                continue
             set_clauses.append(f"{field} = ${param_num}")
             values.append(value)
             param_num += 1
+
+        if not set_clauses:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No valid fields to update"
+            )
 
         # Try to update existing settings
         query = f"""
@@ -1581,6 +1590,8 @@ async def get_top_products(
     limit: int = 10
 ):
     """Get top products by sales from orders"""
+    # Clamp limit
+    limit = clamp_page_size(limit, max_size=50)
     async with pool.acquire() as conn:
         # Verify ownership
         store = await conn.fetchrow(
@@ -1877,6 +1888,7 @@ async def get_product_price_history(
     limit: int = 50
 ):
     """Get price history for a product"""
+    limit = clamp_page_size(limit, max_size=200)
     async with pool.acquire() as conn:
         # Verify ownership
         product = await conn.fetchrow(
@@ -2378,7 +2390,7 @@ async def update_product_city_price(
                 detail="Product not found"
             )
 
-        # Build update query
+        # Build update query — only allow whitelisted fields
         update_dict = update_data.dict(exclude_unset=True)
         if not update_dict:
             raise HTTPException(
@@ -2391,9 +2403,17 @@ async def update_product_city_price(
         param_num = 3
 
         for field, value in update_dict.items():
+            if field not in CITY_PRICE_FIELDS:
+                continue
             set_clauses.append(f"{field} = ${param_num}")
             values.append(value)
             param_num += 1
+
+        if not set_clauses:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No valid fields to update"
+            )
 
         updated = await conn.fetchrow(
             f"""

@@ -9,6 +9,7 @@ import uuid
 from ..core.database import get_db_pool
 from ..dependencies import get_current_user
 from ..models.niche import NicheCategory, NicheProduct, NicheProductHistory
+from ..utils.security import escape_like
 
 router = APIRouter()
 
@@ -215,12 +216,12 @@ async def get_products(
 
         if brand:
             conditions.append(f"brand ILIKE ${param_idx}")
-            params.append(f"%{brand}%")
+            params.append(f"%{escape_like(brand)}%")
             param_idx += 1
 
         if search:
             conditions.append(f"name ILIKE ${param_idx}")
-            params.append(f"%{search}%")
+            params.append(f"%{escape_like(search)}%")
             param_idx += 1
 
         where_clause = " AND ".join(conditions) if conditions else "1=1"

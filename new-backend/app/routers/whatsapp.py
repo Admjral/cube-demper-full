@@ -55,6 +55,7 @@ from ..services.waha_service import (
     WahaSessionStatus,
 )
 from ..config import settings
+from ..utils.security import escape_like, clamp_page_size
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -878,7 +879,7 @@ async def get_message_history(
         if phone:
             param_count += 1
             conditions.append(f"m.recipient_phone LIKE ${param_count}")
-            params.append(f"%{phone}%")
+            params.append(f"%{escape_like(phone)}%")
 
         if date_from:
             param_count += 1
@@ -1566,8 +1567,9 @@ async def get_customer_contacts(
 
         if search:
             idx += 1
+            escaped = escape_like(search)
             conditions.append(f"(cc.phone LIKE ${idx} OR cc.name ILIKE ${idx})")
-            params.append(f"%{search}%")
+            params.append(f"%{escaped}%")
 
         where = " AND ".join(conditions)
         total = await conn.fetchval(

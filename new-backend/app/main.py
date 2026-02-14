@@ -30,6 +30,11 @@ class SecurityHeadersMiddleware:
                     (b"x-frame-options", b"DENY"),
                     (b"x-xss-protection", b"1; mode=block"),
                     (b"referrer-policy", b"strict-origin-when-cross-origin"),
+                    (b"permissions-policy", b"camera=(), microphone=(), geolocation=()"),
+                    (b"content-security-policy",
+                     b"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+                     b"img-src 'self' data: https:; font-src 'self' data:; "
+                     b"connect-src 'self' wss: ws:; frame-ancestors 'none'"),
                 ]
                 if not settings.debug:
                     extra_headers.append(
@@ -185,7 +190,7 @@ async def health_check():
             await conn.fetchval("SELECT 1")
         checks["database"] = "healthy"
     except Exception as e:
-        checks["database"] = f"unhealthy: {str(e)[:50]}"
+        checks["database"] = "unhealthy"
 
     # Check Redis
     try:
@@ -193,7 +198,7 @@ async def health_check():
         await redis.ping()
         checks["redis"] = "healthy"
     except Exception as e:
-        checks["redis"] = f"unhealthy: {str(e)[:50]}"
+        checks["redis"] = "unhealthy"
 
     # Overall status
     all_healthy = all(v == "healthy" for v in checks.values())

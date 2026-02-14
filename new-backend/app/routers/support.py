@@ -1,6 +1,6 @@
 """Support chat router - чат техподдержки."""
 
-from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect, Request
 from typing import Annotated, Optional
 import asyncpg
 from datetime import datetime
@@ -17,6 +17,20 @@ from ..services.notification_service import notify_support_message
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Rate limiting for support login
+from collections import defaultdict
+from time import time as _time
+_support_login_attempts: dict[str, list[float]] = defaultdict(list)
+
+def _check_rate_limit_support(key: str, max_attempts: int = 5, window: int = 300):
+    """Check IP-based rate limit for support login."""
+    from fastapi import HTTPException
+    now = _time()
+    _support_login_attempts[key] = [t for t in _support_login_attempts[key] if now - t < window]
+    if len(_support_login_attempts[key]) >= max_attempts:
+        raise HTTPException(status_code=429, detail="Too many attempts. Please try again later.")
+    _support_login_attempts[key].append(now)
 
 # WebSocket connections store: {chat_id: {user_id: websocket}}
 active_connections: dict[str, dict[str, WebSocket]] = {}
@@ -68,19 +82,26 @@ async def get_current_support_user(
 
 # === Auth endpoints for support staff ===
 
+from pydantic import BaseModel, EmailStr
+
+class SupportLoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
 @router.post("/login")
 async def support_login(
-    credentials: dict,
+    request: Request,
+    credentials: SupportLoginRequest,
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
 ):
     """
     Логин сотрудника поддержки (admin или support роль).
     """
-    email = credentials.get("email")
-    password = credentials.get("password")
+    _check_rate_limit_support(request.client.host if request.client else "unknown")
 
-    if not email or not password:
-        raise AuthenticationError("Email и пароль обязательны")
+    email = credentials.email
+    password = credentials.password
 
     async with pool.acquire() as conn:
         user = await conn.fetchrow(
@@ -990,8 +1011,36 @@ async def websocket_endpoint(
         return
 
     user_id = payload.get("sub")
+    role = payload.get("role")
     if not user_id:
         await websocket.close(code=4001)
+        return
+
+    # Verify chat ownership: user must own the chat OR be support/admin
+    try:
+        chat_uuid = uuid.UUID(chat_id)
+        user_uuid = uuid.UUID(user_id)
+    except (ValueError, TypeError):
+        await websocket.close(code=4001)
+        return
+
+    from ..core.database import get_db_pool
+    pool = await get_db_pool()
+    async with pool.acquire() as conn:
+        if role in ("admin", "support"):
+            # Staff can access any chat
+            chat_exists = await conn.fetchval(
+                "SELECT id FROM support_chats WHERE id = $1", chat_uuid
+            )
+        else:
+            # Regular user can only access their own chat
+            chat_exists = await conn.fetchval(
+                "SELECT id FROM support_chats WHERE id = $1 AND user_id = $2",
+                chat_uuid, user_uuid
+            )
+
+    if not chat_exists:
+        await websocket.close(code=4003)
         return
 
     await websocket.accept()

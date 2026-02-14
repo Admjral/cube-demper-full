@@ -3,8 +3,10 @@ Relay endpoints — used by VPS backend to proxy requests through Railway
 to bypass Kaspi IP blocks on datacenter IPs.
 """
 import re
+import hmac
 import httpx
 import logging
+from urllib.parse import urlparse
 from fastapi import APIRouter, HTTPException, Header, status
 from pydantic import BaseModel
 from typing import Optional
@@ -13,6 +15,42 @@ from ..config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Allowed hostnames for relay (prevents SSRF)
+_ALLOWED_RELAY_HOSTS = {"kaspi.kz", "www.kaspi.kz"}
+
+
+def _validate_relay_secret(authorization: str) -> None:
+    """Constant-time comparison of relay authorization secret."""
+    if not settings.offers_relay_secret:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Relay not configured")
+    expected = f"Bearer {settings.offers_relay_secret}"
+    if not hmac.compare_digest(authorization, expected):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid relay secret")
+
+
+def _validate_kaspi_url(url: str) -> str:
+    """Validate that URL points to kaspi.kz and uses HTTPS. Returns sanitized URL."""
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid URL")
+
+    if parsed.scheme not in ("https", "http"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only HTTP(S) URLs allowed")
+
+    hostname = (parsed.hostname or "").lower()
+    if hostname not in _ALLOWED_RELAY_HOSTS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only kaspi.kz URLs allowed"
+        )
+
+    # Force HTTPS
+    if parsed.scheme == "http":
+        url = "https" + url[4:]
+
+    return url
 
 
 class RelayParseUrlRequest(BaseModel):
@@ -34,14 +72,8 @@ async def relay_parse_url(
     Used by VPS backend for unit economics parsing.
     Protected by shared secret.
     """
-    # Verify shared secret
-    expected = f"Bearer {settings.offers_relay_secret}"
-    if not settings.offers_relay_secret or authorization != expected:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid relay secret")
-
-    # Validate URL is kaspi.kz
-    if "kaspi.kz" not in request.url:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only kaspi.kz URLs allowed")
+    _validate_relay_secret(authorization)
+    validated_url = _validate_kaspi_url(request.url)
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -50,13 +82,13 @@ async def relay_parse_url(
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
                 "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
             }
-            response = await client.get(request.url, headers=headers, follow_redirects=True)
+            response = await client.get(validated_url, headers=headers, follow_redirects=True)
             return RelayParseUrlResponse(html=response.text, status_code=response.status_code)
     except httpx.TimeoutException:
         raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail="Upstream timeout")
     except Exception as e:
         logger.error(f"Relay parse-url error: {e}")
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Upstream request failed")
 
 
 class RelayOffersRequest(BaseModel):
@@ -73,9 +105,7 @@ async def relay_offers(
     Relay endpoint: fetch Kaspi offers for a product.
     Used by VPS backend for demper worker.
     """
-    expected = f"Bearer {settings.offers_relay_secret}"
-    if not settings.offers_relay_secret or authorization != expected:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid relay secret")
+    _validate_relay_secret(authorization)
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -99,4 +129,4 @@ async def relay_offers(
         raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail="Upstream timeout")
     except Exception as e:
         logger.error(f"Relay offers error: {e}")
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Upstream request failed")
