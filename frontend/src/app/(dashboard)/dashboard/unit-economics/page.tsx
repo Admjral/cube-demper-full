@@ -46,7 +46,6 @@ import {
   Save,
   Star,
   Trash2,
-  Download,
   FileSpreadsheet,
   FileText,
   BookMarked,
@@ -270,7 +269,9 @@ export default function UnitEconomicsPage() {
   }
 
   const formatPercent = (value: number) => {
-    return value.toFixed(1) + "%"
+    // Show 2 decimals if needed (e.g. 0.95%), otherwise 1 (e.g. 10.9%)
+    const s = value % 1 === 0 ? value.toFixed(0) : (Math.round(value * 100) % 10 === 0 ? value.toFixed(1) : value.toFixed(2))
+    return s + "%"
   }
 
   const getMarginColor = (margin: number) => {
@@ -370,6 +371,11 @@ export default function UnitEconomicsPage() {
                             {t("unit.categoryLabel")} {parsedProduct.category}
                           </p>
                         )}
+                        {parsedProduct.weight_kg && (
+                          <p className="text-muted-foreground">
+                            Вес: {parsedProduct.weight_kg} кг
+                          </p>
+                        )}
                       </div>
                     </div>
                   ) : (
@@ -404,9 +410,10 @@ export default function UnitEconomicsPage() {
                     <Input
                       id="sellingPrice"
                       type="number"
-                      value={values.sellingPrice}
+                      value={values.sellingPrice || ""}
+                      onFocus={(e) => { if (e.target.value === "0") e.target.value = "" }}
                       onChange={(e) =>
-                        setValues({ ...values, sellingPrice: Number(e.target.value) })
+                        setValues({ ...values, sellingPrice: Number(e.target.value) || 0 })
                       }
                     />
                   </div>
@@ -420,9 +427,10 @@ export default function UnitEconomicsPage() {
                     <Input
                       id="purchasePrice"
                       type="number"
-                      value={values.purchasePrice}
+                      value={values.purchasePrice || ""}
+                      onFocus={(e) => { if (e.target.value === "0") e.target.value = "" }}
                       onChange={(e) =>
-                        setValues({ ...values, purchasePrice: Number(e.target.value) })
+                        setValues({ ...values, purchasePrice: Number(e.target.value) || 0 })
                       }
                     />
                   </div>
@@ -454,9 +462,7 @@ export default function UnitEconomicsPage() {
                       {t("unit.kaspiCommission")}{" "}
                       <span className="font-medium">
                         {formatPercent(result.commission_rate)}
-                        {!values.useVat && ` + НДС = ${formatPercent(result.commission_effective_rate)}`}
                       </span>
-                      {values.useVat ? ` ${t("unit.withVAT")}` : ` ${t("unit.withoutVAT")}`}
                     </p>
                   )}
                 </div>
@@ -529,9 +535,10 @@ export default function UnitEconomicsPage() {
                       <Input
                         id="packagingCost"
                         type="number"
-                        value={values.packagingCost}
+                        value={values.packagingCost || ""}
+                        onFocus={(e) => { if (e.target.value === "0") e.target.value = "" }}
                         onChange={(e) =>
-                          setValues({ ...values, packagingCost: Number(e.target.value) })
+                          setValues({ ...values, packagingCost: Number(e.target.value) || 0 })
                         }
                       />
                     </div>
@@ -544,9 +551,10 @@ export default function UnitEconomicsPage() {
                       <Input
                         id="otherCosts"
                         type="number"
-                        value={values.otherCosts}
+                        value={values.otherCosts || ""}
+                        onFocus={(e) => { if (e.target.value === "0") e.target.value = "" }}
                         onChange={(e) =>
-                          setValues({ ...values, otherCosts: Number(e.target.value) })
+                          setValues({ ...values, otherCosts: Number(e.target.value) || 0 })
                         }
                       />
                     </div>
@@ -699,7 +707,7 @@ export default function UnitEconomicsPage() {
                     <div className="flex justify-between items-center">
                       <span className="text-muted-foreground">
                         {t("unit.kaspiCommission")} (
-                        {formatPercent(result.commission_effective_rate)})
+                        {formatPercent(result.commission_rate)})
                       </span>
                       <span className="text-red-500">-{formatPrice(result.commission_amount)}</span>
                     </div>

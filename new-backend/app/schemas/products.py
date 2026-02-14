@@ -16,6 +16,7 @@ class ProductResponse(BaseModel):
     price: int = Field(..., description="Price in tiyns (1 KZT = 100 tiyns)")
     min_profit: int = Field(..., description="Minimum profit in tiyns")
     bot_active: bool
+    delivery_demping_enabled: bool = False
     pre_order_days: int = 0
     is_priority: bool = False
     last_check_time: Optional[datetime]

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { cn } from "@/lib/utils"
 import { SubscriptionGate } from "@/components/shared/subscription-gate"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -96,7 +97,13 @@ export default function AILawyerPage() {
   if (activeTab) {
     return (
       <SubscriptionGate>
-      <div className="h-[calc(100vh-7rem)] lg:h-[calc(100vh-5rem)] flex flex-col">
+      <div className={cn(
+        "flex flex-col",
+        // Chat and analysis need fixed height for scroll + sticky input
+        (activeTab === 'consultation' || activeTab === 'analysis')
+          ? "h-[calc(100vh-8rem)] lg:h-[calc(100vh-5.5rem)]"
+          : ""
+      )}>
         {/* Minimal header — just back arrow */}
         <div className="mb-2 flex items-center">
           <Button
@@ -109,7 +116,12 @@ export default function AILawyerPage() {
         </div>
 
         {/* Content */}
-        <Card className="glass-card flex-1 flex flex-col overflow-hidden">
+        <Card className={cn(
+          "glass-card flex flex-col",
+          (activeTab === 'consultation' || activeTab === 'analysis')
+            ? "flex-1 min-h-0 overflow-hidden"
+            : ""
+        )}>
           {activeTab === 'consultation' && <LawyerChat language={language} />}
           {activeTab === 'documents' && <DocumentGenerator language={language} />}
           {activeTab === 'analysis' && <ContractAnalyzer language={language} />}

@@ -107,34 +107,29 @@ ALL_CATEGORIES = [
 # =============================================================================
 
 # Delivery tariffs for Kaspi Доставка (seller delivery to Kaspi points)
+# НДС 16% added on top of base tariffs (Kaspi Guide shows prices without НДС)
+DELIVERY_VAT_RATE = 0.16
+
+# Tariffs from Kaspi Guide (с 1 января 2026, без НДС)
+# For orders < 10,000 ₸ — flat rate by price (same for all delivery types)
+# For orders >= 10,000 ₸ — by weight only (no price sub-ranges)
 DELIVERY_TARIFFS = {
     "kaspi_city": {
         "name": "Kaspi Доставка (город)",
         "name_en": "Kaspi Delivery (city)",
         "description": "Доставка в пределах города",
-        # Tariff depends on order value and weight
         "tariffs": [
             {"min_price": 0, "max_price": 999, "cost": 49},
             {"min_price": 1000, "max_price": 2999, "cost": 149},
-            {"min_price": 3000, "max_price": 4999, "cost": 249},
-            {"min_price": 5000, "max_price": 9999, "cost": 499},
-            {"min_price": 10000, "max_price": 19999, "weight_tariffs": [
+            {"min_price": 3000, "max_price": 4999, "cost": 199},
+            {"min_price": 5000, "max_price": 9999, "cost": 699},
+            {"min_price": 10000, "max_price": float('inf'), "weight_tariffs": [
                 {"max_weight": 5, "cost": 1099},
-                {"max_weight": 10, "cost": 1599},
-                {"max_weight": 20, "cost": 2099},
-                {"max_weight": 31, "cost": 2599}
-            ]},
-            {"min_price": 20000, "max_price": 49999, "weight_tariffs": [
-                {"max_weight": 5, "cost": 1599},
-                {"max_weight": 10, "cost": 2099},
-                {"max_weight": 20, "cost": 2599},
-                {"max_weight": 31, "cost": 3099}
-            ]},
-            {"min_price": 50000, "max_price": float('inf'), "weight_tariffs": [
-                {"max_weight": 5, "cost": 2099},
-                {"max_weight": 10, "cost": 2599},
-                {"max_weight": 20, "cost": 3099},
-                {"max_weight": 31, "cost": 3599}
+                {"max_weight": 15, "cost": 1349},
+                {"max_weight": 30, "cost": 2299},
+                {"max_weight": 60, "cost": 2899},
+                {"max_weight": 100, "cost": 4149},
+                {"max_weight": 9999, "cost": 6449}
             ]}
         ]
     },
@@ -143,27 +138,17 @@ DELIVERY_TARIFFS = {
         "name_en": "Kaspi Delivery (nationwide)",
         "description": "Доставка по всему Казахстану",
         "tariffs": [
-            {"min_price": 0, "max_price": 999, "cost": 199},
-            {"min_price": 1000, "max_price": 2999, "cost": 399},
-            {"min_price": 3000, "max_price": 4999, "cost": 599},
+            {"min_price": 0, "max_price": 999, "cost": 49},
+            {"min_price": 1000, "max_price": 2999, "cost": 149},
+            {"min_price": 3000, "max_price": 4999, "cost": 199},
             {"min_price": 5000, "max_price": 9999, "cost": 799},
-            {"min_price": 10000, "max_price": 19999, "weight_tariffs": [
-                {"max_weight": 5, "cost": 2599},
-                {"max_weight": 10, "cost": 3599},
-                {"max_weight": 20, "cost": 5099},
-                {"max_weight": 31, "cost": 6599}
-            ]},
-            {"min_price": 20000, "max_price": 49999, "weight_tariffs": [
-                {"max_weight": 5, "cost": 3599},
-                {"max_weight": 10, "cost": 4599},
-                {"max_weight": 20, "cost": 6099},
-                {"max_weight": 31, "cost": 7599}
-            ]},
-            {"min_price": 50000, "max_price": float('inf'), "weight_tariffs": [
-                {"max_weight": 5, "cost": 4599},
-                {"max_weight": 10, "cost": 5599},
-                {"max_weight": 20, "cost": 7099},
-                {"max_weight": 31, "cost": 8599}
+            {"min_price": 10000, "max_price": float('inf'), "weight_tariffs": [
+                {"max_weight": 5, "cost": 1299},
+                {"max_weight": 15, "cost": 1699},
+                {"max_weight": 30, "cost": 3599},
+                {"max_weight": 60, "cost": 5649},
+                {"max_weight": 100, "cost": 8549},
+                {"max_weight": 9999, "cost": 11999}
             ]}
         ]
     },
@@ -172,21 +157,17 @@ DELIVERY_TARIFFS = {
         "name_en": "Kaspi Express",
         "description": "Экспресс-доставка в течение дня",
         "tariffs": [
-            {"min_price": 0, "max_price": 9999, "cost": 999},
-            {"min_price": 10000, "max_price": 19999, "weight_tariffs": [
-                {"max_weight": 5, "cost": 2999},
-                {"max_weight": 10, "cost": 3999},
-                {"max_weight": 20, "cost": 5499}
-            ]},
-            {"min_price": 20000, "max_price": 49999, "weight_tariffs": [
-                {"max_weight": 5, "cost": 3999},
-                {"max_weight": 10, "cost": 4999},
-                {"max_weight": 20, "cost": 6499}
-            ]},
-            {"min_price": 50000, "max_price": float('inf'), "weight_tariffs": [
-                {"max_weight": 5, "cost": 4999},
-                {"max_weight": 10, "cost": 5999},
-                {"max_weight": 20, "cost": 7499}
+            {"min_price": 0, "max_price": 999, "cost": 49},
+            {"min_price": 1000, "max_price": 2999, "cost": 149},
+            {"min_price": 3000, "max_price": 4999, "cost": 199},
+            {"min_price": 5000, "max_price": 9999, "cost": 799},
+            {"min_price": 10000, "max_price": float('inf'), "weight_tariffs": [
+                {"max_weight": 5, "cost": 1699},
+                {"max_weight": 15, "cost": 1849},
+                {"max_weight": 30, "cost": 3149},
+                {"max_weight": 60, "cost": 3599},
+                {"max_weight": 100, "cost": 5599},
+                {"max_weight": 9999, "cost": 8449}
             ]}
         ]
     },
@@ -351,24 +332,31 @@ def get_commission_rate(category: str, subcategory: Optional[str] = None, use_va
 
 
 def get_delivery_cost(delivery_type: str, price: float, weight_kg: float) -> float:
-    """Calculate delivery cost based on type, price, and weight"""
+    """Calculate delivery cost based on type, price, and weight.
+    Tariffs from Kaspi Guide are without НДС, we add 16% НДС on top.
+    """
     if delivery_type not in DELIVERY_TARIFFS:
         return 0.0
 
     tariffs = DELIVERY_TARIFFS[delivery_type]["tariffs"]
+    base_cost = 0.0
 
     for tariff in tariffs:
         if tariff["min_price"] <= price <= tariff.get("max_price", float('inf')):
             if "cost" in tariff:
-                return tariff["cost"]
+                base_cost = tariff["cost"]
             elif "weight_tariffs" in tariff:
                 for wt in tariff["weight_tariffs"]:
                     if weight_kg <= wt["max_weight"]:
-                        return wt["cost"]
-                # If weight exceeds all tiers, use highest
-                return tariff["weight_tariffs"][-1]["cost"]
+                        base_cost = wt["cost"]
+                        break
+                else:
+                    # If weight exceeds all tiers, use highest
+                    base_cost = tariff["weight_tariffs"][-1]["cost"]
+            break
 
-    return 0.0
+    # Add НДС 16% on top (Kaspi Guide prices are without НДС)
+    return round(base_cost * (1 + DELIVERY_VAT_RATE))
 
 
 # =============================================================================
@@ -441,16 +429,10 @@ async def calculate_unit_economics(request: CalculationRequest):
         request.use_vat
     )
 
-    # Kaspi ALWAYS adds 12% НДС on top of the commission.
-    # - For non-VAT payers (use_vat=False): base rate + 12% НДС = effective rate
-    #   (seller cannot reclaim НДС, so it's a real cost)
-    # - For VAT payers (use_vat=True): commission_with_vat already includes НДС
-    if request.use_vat:
-        # VAT payer: rate already includes НДС
-        effective_commission_rate = base_commission_rate
-    else:
-        # Non-VAT payer: Kaspi adds 12% НДС on top
-        effective_commission_rate = round(base_commission_rate * (1 + VAT_RATE / 100), 2)
+    # Show base commission rate as-is (like AlgaTop).
+    # Kaspi charges the base rate (e.g. 10.9%) from the selling price.
+    # НДС handling is a separate accounting concern, not added on top.
+    effective_commission_rate = no_vat_rate
 
     commission_amount = request.selling_price * (effective_commission_rate / 100)
 
@@ -528,12 +510,12 @@ CATEGORY_KEYWORDS = {
     "ТВ, Аудио, Видео": ["телевизор", "tv", "проектор", "колонк", "саундбар", "наушник", "микрофон", "видеокамер", "фотоаппарат"],
     "Красота": ["косметик", "парфюм", "духи", "шампун", "крем", "маска", "помад", "тушь", "тени", "пудр", "фен", "выпрямитель", "плойк", "эпилятор", "бритв", "триммер"],
     "Детские товары": ["детск", "коляск", "игрушк", "подгузник", "памперс", "кроватк", "манеж", "автокресл", "соск", "бутылочк"],
-    "Одежда": ["платье", "рубашк", "футболк", "джинс", "брюк", "куртк", "пальто", "шуб", "костюм", "пиджак", "свитер", "кардиган"],
+    "Одежда": ["платье", "рубашк", "футболк", "джинс", "брюк", "куртк", "пальто", "шуб", "костюм", "пиджак", "свитер", "кардиган", "боксер", "трусы", "белье", "нижне", "шорты", "леггинс", "носки", "майк", "толстовк", "худи"],
     "Обувь": ["кроссовк", "ботинк", "туфл", "сапог", "босоножк", "сандал", "кед", "слипон", "балетк"],
     "Спорт, туризм": ["велосипед", "тренажер", "гантел", "коврик", "палатк", "спальн", "рюкзак", "самокат", "скейт", "ролик", "лыж", "сноуборд", "бассейн"],
     "Мебель": ["диван", "кресл", "стол", "стул", "шкаф", "кровать", "матрас", "комод", "полк", "тумб"],
     "Товары для дома": ["посуд", "кастрюл", "сковород", "постельн", "полотенц", "шторы", "ковер", "светильник", "люстр", "лампа"],
-    "Строительство, ремонт": ["дрель", "шуруповерт", "болгарк", "перфоратор", "краск", "обо", "плитк", "ламинат", "смесител"],
+    "Строительство, ремонт": ["дрель", "шуруповерт", "болгарк", "перфоратор", "краск", "обои", "плитк", "ламинат", "смесител"],
     "Автотовары": ["автомобил", "машин", "шин", "диск", "аккумулятор", "масл", "фильтр", "видеорегистратор", "навигатор"],
     "Аптека": ["витамин", "лекарств", "таблетк", "медицин", "тонометр", "ингалятор", "термометр", "бандаж"],
     "Продукты питания": ["продукт", "еда", "кофе", "чай", "шоколад", "конфет", "печень", "крупа", "макарон"],
@@ -655,6 +637,14 @@ async def parse_kaspi_url(
                     if cat in ALL_CATEGORIES:
                         category = cat
                         break
+                # If no exact match, try keyword detection on structured category values
+                if not category:
+                    for cat in cat_matches:
+                        detected, sub = detect_category_from_text(cat)
+                        if detected:
+                            category = detected
+                            subcategory = sub
+                            break
                 if category:
                     break
 
@@ -880,7 +870,7 @@ async def create_saved_calculation(
             )
             RETURNING *
             """,
-            uuid.UUID(user_id),
+            user_id,
             request.name,
             request.kaspi_url,
             request.image_url,
@@ -946,7 +936,7 @@ async def list_saved_calculations(
     async with pool.acquire() as conn:
         # Build query
         where_clauses = ["user_id = $1"]
-        params = [uuid.UUID(user_id)]
+        params = [user_id]
         param_idx = 2
 
         if favorites_only:
@@ -1026,7 +1016,7 @@ async def get_saved_calculation(
         row = await conn.fetchrow(
             "SELECT * FROM saved_calculations WHERE id = $1 AND user_id = $2",
             uuid.UUID(calculation_id),
-            uuid.UUID(user_id)
+            user_id
         )
 
     if not row:
@@ -1097,7 +1087,7 @@ async def update_saved_calculation(
             RETURNING *
             """,
             uuid.UUID(calculation_id),
-            uuid.UUID(user_id),
+            user_id,
             request.name,
             request.kaspi_url,
             request.image_url,
@@ -1168,7 +1158,7 @@ async def toggle_favorite(
             RETURNING id, is_favorite
             """,
             uuid.UUID(calculation_id),
-            uuid.UUID(user_id)
+            user_id
         )
 
     if not row:
@@ -1190,7 +1180,7 @@ async def delete_saved_calculation(
         result = await conn.execute(
             "DELETE FROM saved_calculations WHERE id = $1 AND user_id = $2",
             uuid.UUID(calculation_id),
-            uuid.UUID(user_id)
+            user_id
         )
 
     if result == "DELETE 0":
@@ -1223,7 +1213,7 @@ async def export_to_csv(
             WHERE {where_clause}
             ORDER BY created_at DESC
             """,
-            uuid.UUID(user_id)
+            user_id
         )
 
     # Create CSV in memory
@@ -1309,7 +1299,7 @@ async def export_to_excel(
             WHERE {where_clause}
             ORDER BY created_at DESC
             """,
-            uuid.UUID(user_id)
+            user_id
         )
 
     # Create workbook

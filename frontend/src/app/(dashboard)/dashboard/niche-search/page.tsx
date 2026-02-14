@@ -165,7 +165,7 @@ export default function NicheSearchPage() {
                 <p className="text-sm text-muted-foreground">
                   {t("niche.products")}
                 </p>
-                <p className="text-xl font-semibold">156,250</p>
+                <p className="text-xl font-semibold">11,284,710</p>
               </div>
             </div>
           </CardContent>
@@ -324,11 +324,8 @@ export default function NicheSearchPage() {
       {/* Products Table */}
       <Card className="glass-card">
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center justify-between">
-            <span>{t("niche.productsTable")}</span>
-            <span className="text-sm font-normal text-muted-foreground">
-              {`${t("niche.found")} ${totalProducts}`}
-            </span>
+          <CardTitle className="text-lg">
+            {t("niche.productsTable")}
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
@@ -510,10 +507,7 @@ export default function NicheSearchPage() {
       </Card>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {`${t("niche.page")} ${searchParams.page} / ${Math.ceil(totalProducts / (searchParams.limit || 20))}`}
-        </p>
+      <div className="flex items-center justify-end">
         <div className="flex gap-2">
           <Button
             variant="outline"

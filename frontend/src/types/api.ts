@@ -200,6 +200,7 @@ export interface KaspiProduct {
   price: number // in tiyns
   min_profit: number
   bot_active: boolean
+  delivery_demping_enabled: boolean
   pre_order_days: number
   is_priority: boolean
   last_check_time: string | null
@@ -220,6 +221,7 @@ export interface ProductUpdateRequest {
   price?: number
   min_profit?: number
   bot_active?: boolean
+  delivery_demping_enabled?: boolean
 }
 
 export interface PriceUpdateRequest {
@@ -429,25 +431,7 @@ export interface ProductCityPricesRequest {
   apply_to_all_cities?: boolean
   auto_from_store_points?: boolean
   cities: ProductCityPriceCreate[]
-}
-
-export interface CityDempingResult {
-  city_id: string
-  city_name: string
-  status: 'success' | 'no_change' | 'waiting' | 'error' | 'no_competitors' | 'no_data' | 'no_offers' | 'sync_failed'
-  message: string
-  old_price?: number
-  new_price?: number
-  competitor_price?: number
-  our_position?: number
-}
-
-export interface MultiCityDempingResult {
-  product_id: string
-  product_name: string
-  results: CityDempingResult[]
-  total_cities: number
-  successful_updates: number
+  run_demping?: boolean
 }
 
 // =============================================

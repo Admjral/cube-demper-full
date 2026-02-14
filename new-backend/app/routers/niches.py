@@ -173,8 +173,19 @@ async def get_products(
         param_idx = 1
 
         if category_id:
-            conditions.append(f"category_id = ${param_idx}")
-            params.append(uuid.UUID(category_id))
+            # Check if this is a parent category (has subcategories)
+            cat_uuid = uuid.UUID(category_id)
+            has_children = await conn.fetchval(
+                "SELECT EXISTS(SELECT 1 FROM niche_categories WHERE parent_id = $1)",
+                cat_uuid
+            )
+            if has_children:
+                # Parent category — search in all subcategories
+                conditions.append(f"np.category_id IN (SELECT id FROM niche_categories WHERE parent_id = ${param_idx})")
+            else:
+                # Subcategory — direct match
+                conditions.append(f"np.category_id = ${param_idx}")
+            params.append(cat_uuid)
             param_idx += 1
 
         if min_revenue:
@@ -232,7 +243,7 @@ async def get_products(
 
         # Подсчёт общего количества
         count_query = f"""
-            SELECT COUNT(*) FROM niche_products WHERE {where_clause}
+            SELECT COUNT(*) FROM niche_products np WHERE {where_clause}
         """
         total = await conn.fetchval(count_query, *params[:-2]) if params[:-2] else await conn.fetchval(count_query)
 

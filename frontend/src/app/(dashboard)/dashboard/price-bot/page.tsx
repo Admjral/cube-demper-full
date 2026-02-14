@@ -185,13 +185,16 @@ export default function PriceBotPage() {
   }
 
   const toggleDemping = async (product: KaspiProduct) => {
+    const isAnyActive = product.bot_active || product.delivery_demping_enabled
     try {
       await updateProduct.mutateAsync({
         productId: product.id,
-        data: { bot_active: !product.bot_active },
+        data: isAnyActive
+          ? { bot_active: false, delivery_demping_enabled: false }
+          : { bot_active: true },
       })
       toast.success(
-        product.bot_active
+        isAnyActive
           ? t("priceBot.disableDemping")
           : t("priceBot.enableDemping")
       )
@@ -251,7 +254,7 @@ export default function PriceBotPage() {
     setShowSettingsDialog(true)
   }
 
-  const activeBotsCount = products?.filter((p) => p.bot_active).length || 0
+  const activeBotsCount = products?.filter((p) => p.bot_active || p.delivery_demping_enabled).length || 0
   const totalProducts = products?.length || 0
   const checkInterval = dempingSettings?.check_interval_minutes || 15
   const PRIORITY_INTERVAL = 3
@@ -559,7 +562,7 @@ export default function PriceBotPage() {
                         </div>
                         <div className="p-2 -m-2" onClick={(e) => e.stopPropagation()}>
                           <Switch
-                            checked={product.bot_active}
+                            checked={product.bot_active || product.delivery_demping_enabled}
                             onCheckedChange={() => toggleDemping(product)}
                             disabled={updateProduct.isPending}
                           />
@@ -579,7 +582,7 @@ export default function PriceBotPage() {
                           <p className="text-sm">{formatPrice(product.min_profit)}</p>
                         </div>
                       </div>
-                      {product.bot_active && (
+                      {(product.bot_active || product.delivery_demping_enabled) && (
                         <p className="mt-2 text-xs text-muted-foreground">
                           {t("priceBot.lastCheck")}: {formatTimeAgo(product.last_check_time)}
                           {" \u00B7 "}
@@ -587,8 +590,10 @@ export default function PriceBotPage() {
                         </p>
                       )}
                       <div className="mt-3 flex items-center justify-between">
-                        <Badge variant={product.bot_active ? "default" : "secondary"}>
-                          {product.bot_active
+                        <Badge variant={product.bot_active || product.delivery_demping_enabled ? "default" : "secondary"}>
+                          {product.delivery_demping_enabled
+                            ? 'По доставке'
+                            : product.bot_active
                             ? t("priceBot.dempingOn")
                             : t("priceBot.dempingOff")}
                         </Badge>
@@ -676,16 +681,18 @@ export default function PriceBotPage() {
                             </td>
                             <td className="p-4 text-center" onClick={(e) => e.stopPropagation()}>
                               <Switch
-                                checked={product.bot_active}
+                                checked={product.bot_active || product.delivery_demping_enabled}
                                 onCheckedChange={() => toggleDemping(product)}
                                 disabled={updateProduct.isPending}
                               />
                             </td>
                             <td className="p-4 text-center" onClick={() => setSelectedProductId(product.id)}>
-                              {product.bot_active ? (
+                              {(product.bot_active || product.delivery_demping_enabled) ? (
                                 <div className="text-xs space-y-0.5">
                                   <p className="text-muted-foreground">{formatTimeAgo(product.last_check_time)}</p>
-                                  <p className="text-green-600 dark:text-green-400">{formatNextCheck(product.last_check_time, product.is_priority)}</p>
+                                  <p className="text-green-600 dark:text-green-400">
+                                    {product.delivery_demping_enabled ? 'По доставке' : formatNextCheck(product.last_check_time, product.is_priority)}
+                                  </p>
                                 </div>
                               ) : (
                                 <span className="text-xs text-muted-foreground">-</span>

@@ -10,12 +10,12 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useProductDempingDetails, useUpdateProductDemping, usePriceHistory, useCheckProductDemping, useRunProductDemping } from '@/hooks/api/use-products'
+import { useProductDempingDetails, useUpdateProductDemping, usePriceHistory } from '@/hooks/api/use-products'
 import { formatPrice } from '@/lib/utils'
 import { PriceHistoryView } from './price-history-view'
 import { CityPricesDialog } from './city-prices-dialog'
 import { useT } from '@/lib/i18n'
-import { RefreshCw, Loader2, CheckCircle, AlertCircle, Play, MapPin, Package, Zap, Timer, Clock, Truck } from 'lucide-react'
+import { CheckCircle, MapPin, Package, Zap, Timer, Clock, Truck } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
 
@@ -29,8 +29,6 @@ export function ProductDempingDialog({ productId, open, onOpenChange }: ProductD
   const { data: details, isLoading } = useProductDempingDetails(productId || undefined)
   const { data: history } = usePriceHistory(productId || undefined)
   const updateDemping = useUpdateProductDemping()
-  const checkDemping = useCheckProductDemping()
-  const runDemping = useRunProductDemping()
 
   const [strategy, setStrategy] = useState<string>('standard')
   const [topPosition, setTopPosition] = useState(3)
@@ -86,65 +84,6 @@ export function ProductDempingDialog({ productId, open, onOpenChange }: ProductD
     onOpenChange(false)
   }
 
-  const handleCheckDemping = async () => {
-    if (!productId) return
-
-    try {
-      const result = await checkDemping.mutateAsync(productId)
-      toast.success(
-        <div className="space-y-1">
-          <p className="font-medium">Проверка выполнена</p>
-          <p className="text-sm text-muted-foreground">
-            Текущая цена: {formatPrice(result.current_price)}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Стратегия: {result.strategy === 'standard' ? 'Стандартная' :
-                        result.strategy === 'always_first' ? 'Всегда первым' : 'Топ N'}
-          </p>
-        </div>
-      )
-    } catch (error) {
-      toast.error('Ошибка проверки демпинга')
-    }
-  }
-
-  const handleRunDemping = async () => {
-    if (!productId) return
-
-    try {
-      const result = await runDemping.mutateAsync(productId)
-
-      if (result.status === 'success') {
-        toast.success(
-          <div className="space-y-1">
-            <p className="font-medium">Демпинг выполнен!</p>
-            <p className="text-sm text-muted-foreground">
-              {formatPrice(result.old_price)} → {formatPrice(result.new_price)}
-            </p>
-            {result.min_competitor_price && (
-              <p className="text-sm text-muted-foreground">
-                Мин. цена конкурента: {formatPrice(result.min_competitor_price)}
-              </p>
-            )}
-          </div>
-        )
-      } else if (result.status === 'no_change') {
-        toast.info(
-          <div className="space-y-1">
-            <p className="font-medium">Изменение не требуется</p>
-            <p className="text-sm text-muted-foreground">{result.message}</p>
-          </div>
-        )
-      } else if (result.status === 'error') {
-        toast.error(result.message)
-      } else {
-        toast.info(result.message)
-      }
-    } catch (error) {
-      toast.error('Ошибка запуска демпинга')
-    }
-  }
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -167,56 +106,6 @@ export function ProductDempingDialog({ productId, open, onOpenChange }: ProductD
             </TabsList>
 
             <TabsContent value="settings" className="space-y-6 mt-4">
-              {/* Кнопки управления демпингом */}
-              <Card className="border-dashed">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="flex-1">
-                      <p className="font-medium">Ручное управление</p>
-                      <p className="text-sm text-muted-foreground">
-                        Запустить демпинг вручную или проверить настройки
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        onClick={handleCheckDemping}
-                        disabled={checkDemping.isPending || runDemping.isPending}
-                      >
-                        {checkDemping.isPending ? (
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        ) : (
-                          <RefreshCw className="h-4 w-4 mr-2" />
-                        )}
-                        Проверить
-                      </Button>
-                      <Button
-                        onClick={handleRunDemping}
-                        disabled={runDemping.isPending || checkDemping.isPending}
-                      >
-                        {runDemping.isPending ? (
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        ) : (
-                          <Play className="h-4 w-4 mr-2" />
-                        )}
-                        Запустить демпинг
-                      </Button>
-                    </div>
-                  </div>
-                  {details?.bot_active ? (
-                    <div className="flex items-center gap-2 mt-3 text-sm text-green-600">
-                      <CheckCircle className="h-4 w-4" />
-                      <span>Демпинг активен для этого товара</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 mt-3 text-sm text-orange-600">
-                      <AlertCircle className="h-4 w-4" />
-                      <span>Демпинг отключен для этого товара</span>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
               {/* Демпинг по городам */}
               <Card className="border-primary/50 bg-primary/5">
                 <CardContent className="p-4">
@@ -274,8 +163,8 @@ export function ProductDempingDialog({ productId, open, onOpenChange }: ProductD
                   {deliveryDempingEnabled && (
                     <div className="mt-4 space-y-3">
                       {details?.bot_active && (
-                        <p className="text-xs text-orange-600">
-                          При сохранении обычный демпинг будет отключён
+                        <p className="text-xs text-blue-600">
+                          Демпинг переключится в режим &laquo;по доставке&raquo;
                         </p>
                       )}
                       <div className="space-y-2">

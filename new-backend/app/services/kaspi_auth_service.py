@@ -23,12 +23,8 @@ from ..core.security import encrypt_session, decrypt_session
 from ..core.database import get_db_pool
 from ..core.http_client import get_http_client
 from ..core.circuit_breaker import get_kaspi_auth_circuit_breaker, CircuitOpenError
-from ..schemas.kaspi import KASPI_CITIES
 
 logger = logging.getLogger(__name__)
-
-# Reverse lookup: city_name → public API city_id
-_CITY_NAME_TO_ID = {name: cid for cid, name in KASPI_CITIES.items()}
 
 # Per-merchant login locks to prevent concurrent Playwright logins for the same account
 _merchant_login_locks: dict[str, asyncio.Lock] = {}
@@ -193,25 +189,21 @@ def _format_cookies(cookies: list) -> dict:
 
 
 def _build_store_points(points_data: list) -> dict:
-    """Convert MC GraphQL points data to PP→city mapping with public API city IDs.
+    """Convert MC GraphQL points data to PP→city mapping.
 
-    MC uses internal city IDs that differ from the public offers API.
-    We map by city_name to get the correct public API city_id.
-    Falls back to MC city_id for cities not in KASPI_CITIES.
+    MC GraphQL city IDs are the same as public offers API city IDs,
+    so we use them directly without remapping.
     """
     store_points = {}
     for pt in points_data:
         pp_name = pt.get("name", "")
         city = pt.get("city") or {}
-        mc_city_id = city.get("id", "")
+        city_id = city.get("id", "")
         city_name = city.get("name", "")
         enabled = pt.get("enabled", False)
 
-        # Map MC city name to public API city_id
-        public_city_id = _CITY_NAME_TO_ID.get(city_name, mc_city_id)
-
         store_points[pp_name] = {
-            "city_id": public_city_id,
+            "city_id": city_id,
             "city_name": city_name,
             "enabled": enabled,
         }

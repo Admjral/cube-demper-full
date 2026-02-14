@@ -190,6 +190,19 @@
     border-top: 1px solid var(--glass-border);
   }
 
+  /* Glass Popover / Dropdown / Select — fully opaque */
+  .glass-popover {
+    background: oklch(0.98 0 0) !important;
+    border: 1px solid oklch(0 0 0 / 10%) !important;
+    box-shadow: 0 8px 32px oklch(0 0 0 / 12%);
+  }
+
+  .dark .glass-popover {
+    background: oklch(0.14 0 0) !important;
+    border: 1px solid oklch(1 0 0 / 12%) !important;
+    box-shadow: 0 8px 32px oklch(0 0 0 / 50%);
+  }
+
   /* Touch-friendly targets */
   .touch-target {
     min-height: 44px;

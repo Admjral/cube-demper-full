@@ -680,7 +680,7 @@ async def sync_product(
             "stockEnabled": False,
         }
         if effective_pre_order and effective_pre_order > 0:
-            avail["preorder"] = effective_pre_order
+            avail["preOrder"] = effective_pre_order
         availabilities.append(avail)
 
     if len(availabilities) > 1:
@@ -695,6 +695,10 @@ async def sync_product(
     # Only include availabilities if we have PP data
     if availabilities:
         body["availabilities"] = availabilities
+
+    # Pre-order: set at top level (Kaspi requires camelCase "preOrder", not "preorder")
+    if effective_pre_order and effective_pre_order > 0:
+        body["preOrder"] = effective_pre_order
 
     # City-specific pricing: add cityprices alongside the default price
     if city_prices:
@@ -721,6 +725,9 @@ async def sync_product(
     breaker = get_kaspi_circuit_breaker()
 
     try:
+        # Log the pricefeed request body for debugging
+        logger.info(f"Pricefeed request body: {json.dumps(body, ensure_ascii=False, default=str)}")
+
         # Use circuit breaker to prevent cascading failures
         async with breaker:
             response = await client.post(
@@ -729,6 +736,9 @@ async def sync_product(
                 headers=headers,
                 cookies=cookies
             )
+
+        # Log the pricefeed response for debugging
+        logger.info(f"Pricefeed response: status={response.status_code}, body={response.text[:500]}")
 
         if response.status_code == 401:
             raise KaspiAuthError("Authentication failed - session expired")

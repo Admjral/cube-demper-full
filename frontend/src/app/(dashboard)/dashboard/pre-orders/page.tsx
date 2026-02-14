@@ -172,8 +172,10 @@ export default function PreOrdersPage() {
                         <p className="text-xs text-muted-foreground">
                           {t("priceBot.demping")}
                         </p>
-                        <Badge variant={product.bot_active ? "default" : "secondary"} className="mt-1">
-                          {product.bot_active ? t("priceBot.dempingOn") : t("priceBot.dempingOff")}
+                        <Badge variant={product.bot_active || product.delivery_demping_enabled ? "default" : "secondary"} className="mt-1">
+                          {product.delivery_demping_enabled
+                            ? 'По доставке'
+                            : product.bot_active ? t("priceBot.dempingOn") : t("priceBot.dempingOff")}
                         </Badge>
                       </div>
                     </div>

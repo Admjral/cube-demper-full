@@ -469,9 +469,12 @@ async def list_products(
             params.append(uuid.UUID(filters.store_id))
 
         if filters.bot_active is not None:
-            param_count += 1
-            conditions.append(f"p.bot_active = ${param_count}")
-            params.append(filters.bot_active)
+            if filters.bot_active:
+                # "Active" means either regular demping OR delivery demping is on
+                conditions.append("(p.bot_active = true OR p.delivery_demping_enabled = true)")
+            else:
+                # "Inactive" means both are off
+                conditions.append("(p.bot_active = false AND COALESCE(p.delivery_demping_enabled, false) = false)")
 
         if filters.search:
             param_count += 1
@@ -499,7 +502,8 @@ async def list_products(
                    p.name, p.price, p.min_profit, p.bot_active, p.last_check_time,
                    p.availabilities, p.created_at, p.updated_at,
                    COALESCE(p.pre_order_days, 0) as pre_order_days,
-                   COALESCE(p.is_priority, false) as is_priority
+                   COALESCE(p.is_priority, false) as is_priority,
+                   COALESCE(p.delivery_demping_enabled, false) as delivery_demping_enabled
             FROM products p
             JOIN kaspi_stores k ON k.id = p.store_id
             WHERE {where_clause}
@@ -520,6 +524,7 @@ async def list_products(
                 price=p['price'],
                 min_profit=p['min_profit'],
                 bot_active=p['bot_active'],
+                delivery_demping_enabled=p.get('delivery_demping_enabled', False) or False,
                 pre_order_days=p.get('pre_order_days', 0) or 0,
                 is_priority=p.get('is_priority', False) or False,
                 last_check_time=p['last_check_time'],
@@ -654,7 +659,8 @@ async def update_product(
                 updates.append("preorder_requested_at = NULL")
 
         # Delivery demping (mutually exclusive with regular demping)
-        if update_data.delivery_demping_enabled is not None:
+        # Skip explicit delivery_demping_enabled if preorder already set it to false
+        if update_data.delivery_demping_enabled is not None and not (update_data.pre_order_days is not None and update_data.pre_order_days > 0):
             param_count += 1
             updates.append(f"delivery_demping_enabled = ${param_count}")
             params.append(update_data.delivery_demping_enabled)
@@ -2082,7 +2088,7 @@ async def set_product_city_prices(
         # Verify ownership and get product + store_points
         product = await conn.fetchrow(
             """
-            SELECT p.*, k.store_points FROM products p
+            SELECT p.*, k.store_points, k.merchant_id FROM products p
             JOIN kaspi_stores k ON k.id = p.store_id
             WHERE p.id = $1 AND k.user_id = $2
             """,
@@ -2226,6 +2232,95 @@ async def set_product_city_prices(
                     city_price.bot_active
                 )
                 created_prices.append(row)
+
+        # Sync city prices to Kaspi pricefeed
+        # Build city_prices dict from saved data (only active cities with prices)
+        city_prices_for_sync = {}
+        for cp in created_prices:
+            if cp['bot_active'] and cp['price'] is not None:
+                city_prices_for_sync[cp['city_id']] = cp['price']
+
+        if city_prices_for_sync:
+            try:
+                merchant_id = product['merchant_id']
+                session = await get_active_session_with_refresh(merchant_id)
+                if session:
+                    if request.run_demping:
+                        # Run demping: fetch competitors and adjust prices before syncing
+                        external_id = product['external_kaspi_id']
+                        price_step = product['price_step_override'] or 1
+                        excluded_ids = set()
+                        excluded_ids.add(merchant_id)
+
+                        for cp in created_prices:
+                            if not cp['bot_active']:
+                                continue
+                            city_id = cp['city_id']
+                            current_price = cp['price'] or product['price']
+                            KASPI_MIN_PRICE = 10
+                            min_price = max(cp['min_price'] or 0, KASPI_MIN_PRICE)
+
+                            try:
+                                product_data = await parse_product_by_sku(str(external_id), session, city_id=city_id)
+                                if not product_data:
+                                    continue
+
+                                offers = product_data.get("offers", [])
+                                min_competitor = None
+                                our_pos = None
+                                for i, offer in enumerate(offers):
+                                    mid = offer.get("merchantId")
+                                    op = offer.get("price")
+                                    if mid == merchant_id:
+                                        our_pos = i + 1
+                                    elif mid not in excluded_ids and op is not None:
+                                        if min_competitor is None or op < min_competitor:
+                                            min_competitor = op
+
+                                # Update competitor info
+                                await conn.execute(
+                                    "UPDATE product_city_prices SET our_position = $1, competitor_price = $2, last_check_time = NOW() WHERE product_id = $3 AND city_id = $4",
+                                    our_pos, min_competitor, uuid.UUID(product_id), city_id
+                                )
+
+                                if min_competitor is not None:
+                                    target = min_competitor - price_step
+                                    if target < min_price:
+                                        target = min_price
+                                    max_p = cp['max_price']
+                                    if max_p and target > max_p:
+                                        target = max_p
+                                    city_prices_for_sync[city_id] = int(target)
+                                    if int(target) != int(current_price):
+                                        await conn.execute(
+                                            "UPDATE product_city_prices SET price = $1, updated_at = NOW() WHERE product_id = $2 AND city_id = $3",
+                                            int(target), uuid.UUID(product_id), city_id
+                                        )
+                            except Exception as e:
+                                logger.error(f"Demping error for city {city_id}: {e}")
+
+                        logger.info(f"Demping completed for product {product_id}: {city_prices_for_sync}")
+
+                    # Sync all city prices to Kaspi (both with and without demping)
+                    sync_result = await sync_product(
+                        product_id=product_id,
+                        new_price=product['price'],
+                        session=session,
+                        city_prices=city_prices_for_sync,
+                    )
+                    if sync_result and sync_result.get("success"):
+                        logger.info(f"City prices synced to Kaspi for product {product_id}: {city_prices_for_sync}")
+                    else:
+                        logger.warning(f"Failed to sync city prices to Kaspi for product {product_id}: {sync_result}")
+            except Exception as e:
+                logger.error(f"Error syncing city prices to Kaspi for product {product_id}: {e}")
+
+        # Re-read updated prices if demping ran
+        if request.run_demping and city_prices_for_sync:
+            created_prices = await conn.fetch(
+                "SELECT * FROM product_city_prices WHERE product_id = $1 ORDER BY city_name",
+                uuid.UUID(product_id)
+            )
 
         return [
             ProductCityPriceResponse(
@@ -2468,6 +2563,8 @@ async def run_product_city_demping(
                 product_data = await parse_product_by_sku(str(external_id), session, city_id=city_id)
 
                 if not product_data:
+                    # Still include current price to avoid overwriting by other cities
+                    city_target_prices[city_id] = int(current_price)
                     results.append(CityDempingResult(
                         city_id=city_id, city_name=city_name,
                         status="no_data", message="Не удалось получить данные от Kaspi"
@@ -2476,6 +2573,7 @@ async def run_product_city_demping(
 
                 offers = product_data.get("offers", [])
                 if not offers:
+                    city_target_prices[city_id] = int(current_price)
                     results.append(CityDempingResult(
                         city_id=city_id, city_name=city_name,
                         status="no_offers", message="Нет предложений"
@@ -2506,6 +2604,7 @@ async def run_product_city_demping(
                 )
 
                 if min_competitor_price is None:
+                    city_target_prices[city_id] = int(current_price)
                     results.append(CityDempingResult(
                         city_id=city_id, city_name=city_name,
                         status="no_competitors",
@@ -2521,7 +2620,8 @@ async def run_product_city_demping(
                         # Competitor below our min — set price to our min (floor)
                         target_price = min_price
                     else:
-                        # Already at or below min, nothing to do
+                        # Already at or below min, keep current price to avoid overwriting
+                        city_target_prices[city_id] = int(current_price)
                         results.append(CityDempingResult(
                             city_id=city_id, city_name=city_name,
                             status="waiting",
@@ -2563,6 +2663,7 @@ async def run_product_city_demping(
 
         # Phase 2: Single batched sync call with all city prices
         if city_target_prices:
+            logger.info(f"Successfully synced product {product_id} with {len(city_target_prices)} city prices: {city_target_prices}")
             sync_result = await sync_product(
                 product_id=str(product['id']),
                 new_price=product['price'],  # fallback, not used when city_prices set
