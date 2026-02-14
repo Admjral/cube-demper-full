@@ -74,15 +74,32 @@ rsync -av --exclude='.git' --exclude='node_modules' --exclude='.next' frontend/ 
 ## Key Files
 
 ### Backend
-- `app/main.py` — FastAPI entry point
+- `app/main.py` — FastAPI entry point, background tasks startup
 - `app/config.py` — Все конфиги и env vars
-- `app/workers/demper_instance.py` — Worker демпинга цен
-- `app/services/api_parser.py` — Kaspi API: offers, sync_orders_to_db, parse_product_by_sku
+- `app/workers/demper_instance.py` — Worker демпинга цен (1457 строк)
+- `app/services/api_parser.py` — Kaspi API: offers, sync_orders_to_db, parse_product_by_sku, sync_product
+- `app/services/ai_salesman_service.py` — ИИ Продажник (handle_incoming_message + process_order_for_upsell)
+- `app/services/ai_lawyer_service.py` — ИИ-Юрист (RAG + Gemini chat)
 - `app/services/notification_service.py` — Уведомления (price, orders, support)
-- `app/services/orders_sync_service.py` — Фоновый sync заказов (каждые 60 мин)
+- `app/services/orders_sync_service.py` — Фоновый sync заказов (каждые 8 мин)
+- `app/services/preorder_checker.py` — Фоновая проверка предзаказов (каждые 5 мин)
 - `app/services/kaspi_orders_api.py` — Kaspi REST API (X-Auth-Token, реальные телефоны)
 - `app/services/kaspi_mc_service.py` — MC GraphQL (заказы, телефоны замаскированы)
+- `app/services/kaspi_auth_service.py` — Playwright авторизация Kaspi MC
+- `app/services/waha_service.py` — WAHA WhatsApp API client (singleton)
+- `app/services/invoice_merger.py` — Склейка PDF-накладных
+- `app/routers/kaspi.py` — Магазины, товары, демпинг, аналитика, city-prices (1700+ строк)
+- `app/routers/whatsapp.py` — WhatsApp: сессии, рассылки, шаблоны, контакты, webhook (30 endpoints)
+- `app/routers/ai.py` — ИИ Продажник endpoints (settings, stats, history, process-order)
+- `app/routers/lawyer.py` — ИИ-Юрист (chat, calculators, document generation)
+- `app/routers/unit_economics.py` — Юнит-экономика (calculate, parse-url, saved calculations)
+- `app/routers/niches.py` — Поиск ниш (categories, products, stats)
+- `app/routers/preorders.py` — CRUD предзаказов
+- `app/routers/invoices.py` — Склейка накладных
 - `app/routers/support.py` — Техподдержка (WebSocket + HTTP)
+- `app/routers/billing.py` — Тарифы, подписки, аддоны
+- `app/routers/admin.py` — Админка (users, stats, partners, stores)
+- `app/routers/auth.py` — Регистрация, логин, OTP, сброс пароля
 - `app/routers/notifications.py` — CRUD уведомлений + settings
 
 ### Frontend
@@ -139,14 +156,12 @@ UPDATE kaspi_stores SET needs_reauth = FALSE WHERE guid IS NOT NULL;
 - **Pricefeed API**: работает напрямую с VPS (KZ IP нужен)
 - **REST API** (`kaspi.kz/shop/api/v2/orders`): `X-Auth-Token` header, KZ IP required, `User-Agent` обязателен
 - **MC GraphQL**: `mc.shop.kaspi.kz/mc/facade/graphql`, cookies dict + `x-auth-version: 3`, НЕ Relay-схема, телефоны замаскированы
-- **Orders Sync**: Фоновая задача в бэкенде (НЕ в воркерах), каждые 60 мин, MC GraphQL → только активные заказы
+- **Orders Sync**: Фоновая задача в бэкенде (НЕ в воркерах), каждые 8 мин (480s), REST API first → MC GraphQL fallback
 
 ### City Prices (2026-02-13)
 - `KASPI_CITIES` в `schemas/kaspi.py` — НЕ полный список, ~28 городов
 - Если city_id не в словаре → fallback на city_name из `store_points` магазина (не 400 ошибка)
 - `run-city-demping` принимает `{ city_ids: [...] }` как JSON body (`RunCityDempingRequest`)
-
-
 
 ### Notification System (2026-02-12)
 - **`notification_settings` JSONB** в `users` — `{"orders": true, "price_changes": true, "support": true}`
@@ -170,8 +185,40 @@ UPDATE kaspi_stores SET needs_reauth = FALSE WHERE guid IS NOT NULL;
 - OTP сессия: `config.py:waha_otp_session = "default"` (77027410732, Cube Development)
 - Регистрация возвращает JWT (автологин) → OTP в WhatsApp → `/verify-phone`
 - `get_current_user()` SQL обязан включать `phone, phone_verified`
+- **AI Salesman auto-reply**: Webhook `POST /whatsapp/webhook` → `handle_incoming_message()` → Gemini → WAHA send. Только входящие (`fromMe=false`), `asyncio.create_task()` чтобы не блокировать webhook
+- Legacy эндпоинты `/session/create` (singular) остались, фронтенд использует `/sessions` (plural)
+- WAHA статус в webhook сохраняется как `WORKING` (raw), а `normalize_waha_status()` маппит в `connected` — несоответствие в разных местах
 
 ### DB
 - `products.kaspi_sku` (НЕ `sku`). `kaspi_stores` ON CONFLICT НЕ обновляет `user_id`
 - FK: `phone_verifications.user_id` ON DELETE CASCADE, `subscriptions.assigned_by` ON DELETE SET NULL
 - Alembic: `ba10cb14a230` и `6ce6a0fa5853` оба `down_revision = None` — не трогать
+
+### Full Module Audit (2026-02-14)
+
+**12 модулей — статус:**
+
+| # | Модуль | Роутер | Статус | Ключевые проблемы |
+|---|--------|--------|--------|-------------------|
+| 1 | Демпинг цен | `workers/demper_instance.py` | ✅ 94% | `sync_store_sessions()` = TODO placeholder; `_process_city_prices` и `_process_product_cities` могут конфликтовать |
+| 2 | Аналитика | `routers/kaspi.py` | ✅ 90% | N+1 subquery в `get_store_analytics()`; UTC вместо KZ timezone |
+| 3 | Поиск ниш | `routers/niches.py` | ⚠️ 75% | Данные статичные (нет sync с Kaspi); комиссия hardcoded 12% (неточно); медленные запросы |
+| 4 | Юнит-экономика | `routers/unit_economics.py` | ✅ 93% | Relay работает; VAT toggle не влияет на комиссию; subcategory matching через substring |
+| 5 | Предзаказы | `routers/preorders.py` | ✅ OK | Background checker каждые 5 мин; нет отдельного endpoint для `pre_order_days` |
+| 6 | WhatsApp | `routers/whatsapp.py` | ✅ OK | 30 эндпоинтов; broadcasts с anti-spam delay 15-30с; legacy /session/create рядом с /sessions |
+| 7 | ИИ Продажник | `services/ai_salesman_service.py` + `routers/ai.py` | ✅ OK | `handle_incoming_message()` для входящих; `process_order_for_upsell()` для заказов (ручной); нет dedup входящих |
+| 8 | Заказы | `services/orders_sync_service.py` | ✅ OK | Sync каждые 8 мин; REST API first → MC GraphQL fallback; нет GET /orders endpoint |
+| 9 | Склейка накладных | `routers/invoices.py` | ✅ 100% | Чисто, без проблем |
+| 10 | Интеграции Kaspi | `routers/kaspi.py` + `services/kaspi_auth_service.py` | ⚠️ | Race condition в SMS verify (store limit не перепроверяется); ON CONFLICT не обновляет user_id |
+| 11 | ИИ-Юрист | `routers/lawyer.py` + `services/ai_lawyer_service.py` | ✅ OK | RAG через Gemini + legal_docs; pgvector нет → text search fallback |
+| 12 | Техподдержка | `routers/support.py` | ⚠️ | WebSocket + HTTP; 3 определения `/me` (dead code); нет ownership check при отправке сообщений |
+
+**Доп. модули:**
+- **Auth** (`routers/auth.py`): ✅ OK. OTP 6 цифр, 5 мин expiry, 60с cooldown. Password reset = TODO (email не отправляется)
+- **Billing** (`routers/billing.py`): ⚠️ TipTopPay не интегрирован (подписки без оплаты). `plan_id = NULL` для free плана
+- **Admin** (`routers/admin.py`): ✅ OK. Workers status = TODO (всегда `running_workers: 0`)
+
+**Dead code найден:**
+- `services/kaspi_auth_complete_example.py`, `kaspi_auth_usage_example.py`, `test_kaspi_auth.py` — example/test файлы
+- `services/railway_waha_service.py` — не используется (WAHA в Docker, не Railway)
+- `routers/support.py` строки 134-156 — два пустых определения `/me` перед реальным

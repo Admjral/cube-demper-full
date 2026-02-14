@@ -688,7 +688,9 @@ const translations: Record<Locale, Record<string, string>> = {
 
     // === Лимит магазинов ===
     "integrations.storeLimit": "Лимит: 1 магазин на аккаунт",
-    "integrations.storeLimitDesc": "Для подключения нового магазина обратитесь в поддержку",
+    "integrations.storeLimitDesc": "Удаление магазина невозможно. Для подключения другого магазина обратитесь в техподдержку.",
+    "integrations.contactSupport": "Написать в техподдержку",
+    "integrations.contactSupportHint": "Наша команда поддержки поможет вам с подключением другого магазина.",
 
     // === API Токен ===
     "integrations.apiToken": "API Токен",
@@ -1409,7 +1411,9 @@ const translations: Record<Locale, Record<string, string>> = {
 
     // === Дүкен лимиті ===
     "integrations.storeLimit": "Лимит: аккаунтқа 1 дүкен",
-    "integrations.storeLimitDesc": "Жаңа дүкен қосу үшін қолдау қызметіне хабарласыңыз",
+    "integrations.storeLimitDesc": "Дүкенді жою мүмкін емес. Басқа дүкен қосу үшін қолдау қызметіне хабарласыңыз.",
+    "integrations.contactSupport": "Қолдау қызметіне жазу",
+    "integrations.contactSupportHint": "Біздің қолдау тобы басқа дүкен қосуға көмектеседі.",
 
     // === API Токен ===
     "integrations.apiToken": "API Токен",

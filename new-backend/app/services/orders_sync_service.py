@@ -22,6 +22,7 @@ from .kaspi_mc_service import get_kaspi_mc_service, KaspiMCError
 from .kaspi_orders_api import get_kaspi_orders_api, KaspiOrdersAPI, KaspiTokenInvalidError, KaspiOrdersAPIError
 from .api_parser import sync_orders_to_db
 from .kaspi_auth_service import KaspiAuthError
+from ..core.security import decrypt_session
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +104,9 @@ async def _run_sync_cycle(pool: asyncpg.Pool):
         user_id = str(store['user_id'])
         merchant_id = store['merchant_id']
         store_name = store['name'] or merchant_id
-        api_key = store.get('api_key')
+        # api_key может быть None, строкой или dict (asyncpg quirk)
+        api_key_raw = store.get('api_key')
+        api_key = str(api_key_raw) if api_key_raw else None
         api_key_valid = store.get('api_key_valid', True)
 
         async with sem:
@@ -114,10 +117,14 @@ async def _run_sync_cycle(pool: asyncpg.Pool):
                 # Prefer REST API (returns real customer phones)
                 if api_key and api_key_valid:
                     try:
+                        # Decrypt API key (stored encrypted in DB)
+                        decrypted_token = decrypt_session(api_key)
+                        logger.debug(f"[ORDERS_SYNC] {store_name}: using decrypted API token")
+
                         rest_api = get_kaspi_orders_api()
                         now = datetime.utcnow()
                         orders = await rest_api.fetch_orders(
-                            api_token=api_key,
+                            api_token=decrypted_token,
                             date_from=now - timedelta(days=14),
                             date_to=now,
                             states=[

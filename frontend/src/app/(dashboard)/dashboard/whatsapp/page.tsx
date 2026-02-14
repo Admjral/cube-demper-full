@@ -110,6 +110,17 @@ export default function WhatsAppPage() {
   const activeSession = sessions?.find((s) => s.status === "connected")
   const isConnected = !!activeSession
 
+  // Auto-close QR dialog when session connects
+  useEffect(() => {
+    if (qrData?.status === "connected" && showQRDialog) {
+      setShowQRDialog(false)
+      setPairingCode(null)
+      setPairingPhone("")
+      setPairingTab("qr")
+      toast.success(t("wa.connectedBang"))
+    }
+  }, [qrData?.status])
+
   // Session handlers
   const handleCreateSession = async () => {
     if (!newSessionName.trim()) {

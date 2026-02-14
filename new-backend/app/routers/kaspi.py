@@ -141,7 +141,7 @@ async def authenticate_store(
     # Check store limit: 1 store per account
     async with pool.acquire() as conn:
         store_count = await conn.fetchval(
-            "SELECT COUNT(*) FROM kaspi_stores WHERE user_id = $1 AND is_active = TRUE",
+            "SELECT COUNT(*) FROM kaspi_stores WHERE user_id = $1",
             current_user['id']
         )
         if store_count >= 1:
@@ -1668,24 +1668,11 @@ async def delete_store(
     current_user: Annotated[dict, Depends(get_current_user)],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
-    """Delete a Kaspi store"""
-    async with pool.acquire() as conn:
-        result = await conn.execute(
-            """
-            DELETE FROM kaspi_stores
-            WHERE id = $1 AND user_id = $2
-            """,
-            uuid.UUID(store_id),
-            current_user['id']
-        )
-
-        if result == "DELETE 0":
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Store not found"
-            )
-
-    return None
+    """Store deletion is not allowed - one store per account policy"""
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Удаление магазина запрещено. Один магазин на аккаунт. Обратитесь в техподдержку."
+    )
 
 
 @router.post("/stores/{store_id}/sync", status_code=status.HTTP_202_ACCEPTED)

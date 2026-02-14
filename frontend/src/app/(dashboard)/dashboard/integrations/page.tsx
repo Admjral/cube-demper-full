@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { useT } from "@/lib/i18n"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -11,6 +12,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -31,19 +33,22 @@ import {
   EyeOff,
   AlertTriangle,
   ChevronDown,
+  Headphones,
+  Info,
 } from "lucide-react"
 import { toast } from "sonner"
 import {
   useStores,
   useKaspiAuth,
-  useDeleteStore,
   useSyncStore,
   useUpdateStoreApiToken,
 } from "@/hooks/api/use-stores"
 
 export default function IntegrationsPage() {
   const t = useT()
+  const router = useRouter()
   const [showAddDialog, setShowAddDialog] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [kaspiEmail, setKaspiEmail] = useState("")
   const [kaspiPassword, setKaspiPassword] = useState("")
   const [apiTokenInputs, setApiTokenInputs] = useState<Record<string, string>>({})
@@ -52,7 +57,6 @@ export default function IntegrationsPage() {
   // API hooks
   const { data: stores, isLoading: storesLoading } = useStores()
   const kaspiAuth = useKaspiAuth()
-  const deleteStore = useDeleteStore()
   const syncStore = useSyncStore()
   const updateApiToken = useUpdateStoreApiToken()
 
@@ -78,23 +82,6 @@ export default function IntegrationsPage() {
       toast.error(
         error?.message || t("integrations.connectError")
       )
-    }
-  }
-
-  const handleDeleteStore = async (storeId: string, storeName: string) => {
-    if (
-      !confirm(
-        `${t("integrations.deleteStore")} "${storeName}"?`
-      )
-    ) {
-      return
-    }
-
-    try {
-      await deleteStore.mutateAsync(storeId)
-      toast.success(t("integrations.storeDeleted"))
-    } catch {
-      toast.error(t("integrations.deleteError"))
     }
   }
 
@@ -144,70 +131,80 @@ export default function IntegrationsPage() {
             {t("integrations.subtitle")}
           </p>
         </div>
-        <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              {t("integrations.addStore")}
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>
-                {t("integrations.connectStore")}
-              </DialogTitle>
-              <DialogDescription>
-                {t("integrations.connectDesc")}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 pt-4">
-              <div className="space-y-2">
-                <Label htmlFor="kaspi-email">Email</Label>
-                <Input
-                  id="kaspi-email"
-                  type="email"
-                  placeholder="seller@example.com"
-                  value={kaspiEmail}
-                  onChange={(e) => setKaspiEmail(e.target.value)}
-                  disabled={kaspiAuth.isPending}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="kaspi-password">
-                  {t("integrations.password")}
-                </Label>
-                <Input
-                  id="kaspi-password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={kaspiPassword}
-                  onChange={(e) => setKaspiPassword(e.target.value)}
-                  disabled={kaspiAuth.isPending}
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {t("integrations.securityNote")}
-              </p>
-              <Button
-                onClick={handleConnectKaspi}
-                disabled={kaspiAuth.isPending}
-                className="w-full"
-              >
-                {kaspiAuth.isPending ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    {t("integrations.connecting")}
-                  </>
-                ) : (
-                  <>
-                    <Store className="h-4 w-4 mr-2" />
-                    {t("integrations.connect")}
-                  </>
-                )}
+        {(!stores || stores.length === 0) && (
+          <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="h-4 w-4 mr-2" />
+                {t("integrations.addStore")}
               </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>
+                  {t("integrations.connectStore")}
+                </DialogTitle>
+                <DialogDescription>
+                  {t("integrations.connectDesc")}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="rounded-lg border border-blue-500/50 bg-blue-500/10 p-3">
+                <div className="flex items-start gap-2">
+                  <Info className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+                  <p className="text-xs text-blue-700 dark:text-blue-400">
+                    {t("integrations.storeLimit")}
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-4 pt-2">
+                <div className="space-y-2">
+                  <Label htmlFor="kaspi-email">Email</Label>
+                  <Input
+                    id="kaspi-email"
+                    type="email"
+                    placeholder="seller@example.com"
+                    value={kaspiEmail}
+                    onChange={(e) => setKaspiEmail(e.target.value)}
+                    disabled={kaspiAuth.isPending}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="kaspi-password">
+                    {t("integrations.password")}
+                  </Label>
+                  <Input
+                    id="kaspi-password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={kaspiPassword}
+                    onChange={(e) => setKaspiPassword(e.target.value)}
+                    disabled={kaspiAuth.isPending}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {t("integrations.securityNote")}
+                </p>
+                <Button
+                  onClick={handleConnectKaspi}
+                  disabled={kaspiAuth.isPending}
+                  className="w-full"
+                >
+                  {kaspiAuth.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      {t("integrations.connecting")}
+                    </>
+                  ) : (
+                    <>
+                      <Store className="h-4 w-4 mr-2" />
+                      {t("integrations.connect")}
+                    </>
+                  )}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       {/* Stats */}
@@ -341,7 +338,7 @@ export default function IntegrationsPage() {
                       variant="ghost"
                       size="icon"
                       className="text-destructive"
-                      onClick={() => handleDeleteStore(store.id, store.name)}
+                      onClick={() => setShowDeleteDialog(true)}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -457,6 +454,38 @@ export default function IntegrationsPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Delete store blocked dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("integrations.storeLimit")}</DialogTitle>
+            <DialogDescription>
+              {t("integrations.storeLimitDesc")}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-lg border border-blue-500/50 bg-blue-500/10 p-4">
+            <div className="flex items-start gap-2">
+              <Headphones className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+              <p className="text-sm text-blue-700 dark:text-blue-400">
+                {t("integrations.contactSupportHint")}
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+              {t("common.close")}
+            </Button>
+            <Button onClick={() => {
+              setShowDeleteDialog(false)
+              router.push("/dashboard/support")
+            }}>
+              <Headphones className="h-4 w-4 mr-2" />
+              {t("integrations.contactSupport")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

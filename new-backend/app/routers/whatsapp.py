@@ -1265,6 +1265,37 @@ async def create_session_new(
         )
 
 
+async def _ensure_session_ready(waha: WahaService, session_name: str) -> None:
+    """
+    Check WAHA session status and restart if FAILED.
+    After restart, wait up to 10s for SCAN_QR_CODE status.
+    """
+    try:
+        status_info = await waha.get_session(session_name)
+        waha_status = status_info.get('status', '')
+        if waha_status == 'FAILED':
+            logger.info(f"Session {session_name} is FAILED, restarting...")
+            try:
+                await waha.delete_session(session_name)
+            except Exception:
+                pass
+            await waha.create_session(session_name)
+            # Wait for session to reach SCAN_QR_CODE
+            import asyncio
+            for _ in range(10):
+                await asyncio.sleep(1)
+                try:
+                    info = await waha.get_session(session_name)
+                    if info.get('status') == 'SCAN_QR_CODE':
+                        logger.info(f"Session {session_name} ready (SCAN_QR_CODE)")
+                        return
+                except Exception:
+                    pass
+            logger.warning(f"Session {session_name} did not reach SCAN_QR_CODE after restart")
+    except WahaError:
+        pass
+
+
 @router.get("/sessions/{session_id}/qr")
 async def get_session_qr_by_id(
     session_id: str,
@@ -1290,6 +1321,9 @@ async def get_session_qr_by_id(
             raise HTTPException(status_code=404, detail="Session not found")
 
         session_name = session['session_name'] or 'default'
+
+        # Auto-restart FAILED sessions
+        await _ensure_session_ready(waha, session_name)
 
         try:
             # Get QR code from WAHA - returns JSON with mimetype and data fields
@@ -1360,6 +1394,9 @@ async def pair_by_phone(
             raise HTTPException(status_code=404, detail="Session not found")
 
         session_name = session['session_name'] or 'default'
+
+        # Auto-restart FAILED sessions
+        await _ensure_session_ready(waha, session_name)
 
         try:
             code = await waha.request_pairing_code(session_name, request.phone_number)

@@ -108,7 +108,11 @@ class KaspiOrdersAPI:
                         )
 
                     if response.status_code != 200:
-                        logger.warning(f"Kaspi REST API error: {response.status_code}")
+                        error_body = response.text[:500] if response.text else "No response body"
+                        logger.warning(
+                            f"Kaspi REST API error: {response.status_code}, "
+                            f"URL: {response.url}, body: {error_body}"
+                        )
                         raise KaspiOrdersAPIError(f"HTTP {response.status_code}")
 
                     data = response.json()
