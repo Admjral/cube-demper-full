@@ -35,6 +35,7 @@ import {
   RefreshCw,
   XCircle,
   Headphones,
+  MessageSquareOff,
 } from 'lucide-react'
 
 const iconMap: Record<string, React.ElementType> = {
@@ -52,6 +53,7 @@ const iconMap: Record<string, React.ElementType> = {
   RefreshCw,
   XCircle,
   Headphones,
+  MessageSquareOff,
   Bell,
 }
 

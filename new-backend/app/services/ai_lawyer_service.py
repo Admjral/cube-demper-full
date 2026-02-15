@@ -92,21 +92,21 @@ CONTRACT_ANALYSIS_PROMPT = """Проанализируй следующий до
 - Низкий: рекомендации по улучшению
 
 Ответь в формате JSON:
-{
+{{
     "summary": "краткое описание договора",
     "key_conditions": ["условие 1", "условие 2"],
     "risks": [
-        {
+        {{
             "level": "critical|high|medium|low",
             "title": "название риска",
             "description": "описание проблемы",
             "clause": "цитата из договора (если есть)",
             "recommendation": "рекомендация"
-        }
+        }}
     ],
     "recommendations": ["общая рекомендация 1", "общая рекомендация 2"],
     "overall_risk_level": "critical|high|medium|low"
-}
+}}
 
 ТЕКСТ ДОГОВОРА:
 {contract_text}"""
@@ -501,6 +501,381 @@ ___________________ / {claimant_name} /
 
 Дата: {date}
 """,
+
+    DocumentType.RENT_CONTRACT: """# ДОГОВОР АРЕНДЫ № {number}
+
+г. {city}                                                              «{date}»
+
+{landlord_type} «{landlord_name}»{landlord_bin_text}, в лице {landlord_representative}, действующего на основании {landlord_basis}, именуемый в дальнейшем «Арендодатель», с одной стороны, и
+
+{tenant_type} «{tenant_name}»{tenant_bin_text}, в лице {tenant_representative}, действующего на основании {tenant_basis}, именуемый в дальнейшем «Арендатор», с другой стороны,
+
+совместно именуемые «Стороны», заключили настоящий Договор о нижеследующем:
+
+## 1. ПРЕДМЕТ ДОГОВОРА
+
+1.1. Арендодатель передаёт, а Арендатор принимает во временное владение и пользование следующее имущество:
+{property_description}
+
+1.2. Имущество принадлежит Арендодателю на праве собственности.
+1.3. Цель аренды: {rental_purpose}
+
+## 2. АРЕНДНАЯ ПЛАТА
+
+2.1. Арендная плата составляет: {rent_amount} ({rent_amount_words}) тенге в месяц.
+2.2. Оплата производится до {payment_day}-го числа каждого месяца.
+2.3. Коммунальные услуги оплачиваются {utilities_payment}.
+
+## 3. СРОК АРЕНДЫ
+
+3.1. Договор заключён на срок с {start_date} по {end_date}.
+3.2. Арендатор имеет преимущественное право на заключение договора на новый срок.
+
+## 4. ПРАВА И ОБЯЗАННОСТИ СТОРОН
+
+4.1. Арендодатель обязан передать имущество в состоянии, пригодном для использования.
+4.2. Арендатор обязан использовать имущество по назначению, своевременно вносить арендную плату, содержать имущество в исправном состоянии.
+4.3. Арендатор не вправе сдавать имущество в субаренду без письменного согласия Арендодателя.
+
+## 5. ОТВЕТСТВЕННОСТЬ СТОРОН
+
+5.1. За просрочку арендной платы Арендатор уплачивает пеню в размере 0,1% от суммы задолженности за каждый день просрочки.
+
+## 6. РАСТОРЖЕНИЕ ДОГОВОРА
+
+6.1. Каждая из Сторон вправе расторгнуть Договор, предупредив другую Сторону за 30 календарных дней.
+6.2. Договор может быть расторгнут досрочно по решению суда в случаях, предусмотренных ГК РК.
+
+## 7. РЕКВИЗИТЫ И ПОДПИСИ СТОРОН
+
+**АРЕНДОДАТЕЛЬ:**
+{landlord_type} «{landlord_name}»
+{landlord_address}
+{landlord_bin_line}
+
+___________________ / {landlord_representative} /
+
+
+**АРЕНДАТОР:**
+{tenant_type} «{tenant_name}»
+{tenant_address}
+{tenant_bin_line}
+
+___________________ / {tenant_representative} /
+""",
+
+    DocumentType.COMPLAINT_TO_AUTHORITY: """# ЖАЛОБА
+
+{city}                                                                 {date}
+
+**В:** {authority_name}
+{authority_address}
+
+**От:** {applicant_name}
+{applicant_address}
+Тел.: {applicant_contacts}
+{applicant_iin_text}
+
+## ЖАЛОБА
+на {complaint_subject}
+
+Я, {applicant_name}, обращаюсь с жалобой на следующие нарушения:
+
+{complaint_description}
+
+Указанные действия (бездействие) нарушают мои права, предусмотренные:
+{legal_basis}
+
+На основании Закона Республики Казахстан «О порядке рассмотрения обращений физических и юридических лиц» от 12 января 2007 года,
+
+**ПРОШУ:**
+
+{requirements}
+
+Приложения:
+1. Копии подтверждающих документов
+2. Иные доказательства
+
+С уважением,
+
+___________________ / {applicant_name} /
+
+Дата: {date}
+""",
+
+    DocumentType.IP_REGISTRATION: """# ЗАЯВЛЕНИЕ
+## о государственной регистрации индивидуального предпринимателя
+
+В Департамент государственных доходов
+{tax_office}
+
+**От:** {applicant_name}
+ИИН: {applicant_iin}
+Адрес: {applicant_address}
+Тел.: {applicant_phone}
+
+Прошу произвести государственную регистрацию в качестве индивидуального предпринимателя.
+
+**1. Сведения о заявителе:**
+- ФИО: {applicant_name}
+- ИИН: {applicant_iin}
+- Дата рождения: {birth_date}
+- Адрес регистрации: {applicant_address}
+- Адрес осуществления деятельности: {business_address}
+
+**2. Вид деятельности (ОКЭД):**
+{activity_type}
+
+**3. Режим налогообложения:**
+{tax_regime}
+
+**4. Наименование ИП:**
+ИП «{business_name}»
+
+**5. Форма осуществления предпринимательской деятельности:**
+{business_form}
+
+Настоящим подтверждаю, что не являюсь государственным служащим, депутатом, судьей и не имею ограничений для осуществления предпринимательской деятельности.
+
+Приложения:
+1. Копия удостоверения личности
+2. Фото 3x4
+
+Дата: {date}
+
+___________________ / {applicant_name} /
+""",
+
+    DocumentType.TOO_REGISTRATION: """# ЗАЯВЛЕНИЕ
+## о государственной регистрации юридического лица
+
+В Департамент юстиции
+{justice_department}
+
+**Учредитель(и):**
+{founders_info}
+
+Прошу произвести государственную регистрацию Товарищества с ограниченной ответственностью.
+
+**1. Наименование ТОО:**
+Товарищество с ограниченной ответственностью «{company_name}»
+
+**2. Юридический адрес:**
+{legal_address}
+
+**3. Уставный капитал:**
+{charter_capital} ({charter_capital_words}) тенге
+
+**4. Состав учредителей и их доли:**
+{founders_shares}
+
+**5. Исполнительный орган:**
+Директор: {director_name}
+ИИН: {director_iin}
+
+**6. Основные виды деятельности (ОКЭД):**
+{activity_types}
+
+**7. Режим налогообложения:**
+{tax_regime}
+
+Приложения:
+1. Устав ТОО — 2 экз.
+2. Копии удостоверений личности учредителей
+3. Квитанция об оплате регистрационного сбора
+
+Дата: {date}
+
+Подписи учредителей:
+
+{founders_signatures}
+""",
+
+    DocumentType.LICENSE_APPLICATION: """# ЗАЯВЛЕНИЕ
+## на получение лицензии
+
+В {licensing_authority}
+{authority_address}
+
+**От:** {applicant_type} «{applicant_name}»
+БИН/ИИН: {applicant_bin}
+Адрес: {applicant_address}
+Тел.: {applicant_phone}
+
+Прошу выдать лицензию на осуществление следующего вида деятельности:
+
+**Вид деятельности:**
+{license_type}
+
+**Подвид деятельности:**
+{license_subtype}
+
+**Квалификационные требования:**
+{qualifications}
+
+**Сведения о заявителе:**
+- Наименование: {applicant_type} «{applicant_name}»
+- БИН/ИИН: {applicant_bin}
+- Юридический адрес: {applicant_address}
+- Фактический адрес деятельности: {business_address}
+- Телефон: {applicant_phone}
+
+Настоящим подтверждаю соответствие всем квалификационным требованиям, предъявляемым к данному виду деятельности.
+
+Приложения:
+1. Копии учредительных документов
+2. Документы, подтверждающие квалификацию
+3. Квитанция об оплате лицензионного сбора
+
+Дата: {date}
+
+___________________ / {applicant_representative} /
+М.П.
+""",
+
+    DocumentType.TAX_APPLICATION: """# ЗАЯВЛЕНИЕ
+
+В Департамент государственных доходов
+{tax_office}
+
+**От:** {taxpayer_type} «{taxpayer_name}»
+БИН/ИИН: {taxpayer_bin}
+Адрес: {taxpayer_address}
+Тел.: {taxpayer_phone}
+РНН: {taxpayer_rnn}
+
+## {application_type}
+
+{application_body}
+
+На основании Кодекса Республики Казахстан «О налогах и других обязательных платежах в бюджет» (Налоговый кодекс),
+
+**ПРОШУ:**
+
+{request_text}
+
+Приложения:
+{attachments}
+
+Дата: {date}
+
+___________________ / {taxpayer_representative} /
+М.П.
+""",
+
+    DocumentType.ACCEPTANCE_ACT: """# АКТ ПРИЁМА-ПЕРЕДАЧИ № {number}
+
+г. {city}                                                              «{date}»
+
+{sender_type} «{sender_name}», в лице {sender_representative}, действующего на основании {sender_basis}, именуемый в дальнейшем «Передающая сторона», с одной стороны, и
+
+{receiver_type} «{receiver_name}», в лице {receiver_representative}, действующего на основании {receiver_basis}, именуемый в дальнейшем «Принимающая сторона», с другой стороны,
+
+составили настоящий акт о нижеследующем:
+
+## 1. Передающая сторона передала, а Принимающая сторона приняла следующее имущество:
+
+{items_table}
+
+## 2. Общая стоимость переданного имущества: {total_amount} ({total_amount_words}) тенге.
+
+## 3. Состояние имущества: {condition}
+
+## 4. Претензии Принимающей стороны по количеству и качеству: {claims}
+
+## 5. Настоящий акт составлен в двух экземплярах, по одному для каждой стороны.
+
+**ПЕРЕДАЛ:**
+{sender_type} «{sender_name}»
+
+___________________ / {sender_representative} /
+
+
+**ПРИНЯЛ:**
+{receiver_type} «{receiver_name}»
+
+___________________ / {receiver_representative} /
+""",
+
+    DocumentType.WORK_COMPLETION_ACT: """# АКТ ВЫПОЛНЕННЫХ РАБОТ (ОКАЗАННЫХ УСЛУГ) № {number}
+
+г. {city}                                                              «{date}»
+
+К Договору № {contract_number} от {contract_date}
+
+{executor_type} «{executor_name}», в лице {executor_representative}, действующего на основании {executor_basis}, именуемый в дальнейшем «Исполнитель», с одной стороны, и
+
+{customer_type} «{customer_name}», в лице {customer_representative}, действующего на основании {customer_basis}, именуемый в дальнейшем «Заказчик», с другой стороны,
+
+составили настоящий акт о нижеследующем:
+
+## 1. Исполнитель выполнил следующие работы (оказал услуги):
+
+{works_table}
+
+## 2. Общая стоимость выполненных работ (оказанных услуг): {total_amount} ({total_amount_words}) тенге, {vat_text}.
+
+## 3. Работы выполнены в полном объёме в установленные сроки. Качество работ соответствует условиям Договора.
+
+## 4. Заказчик претензий по объёму, качеству и срокам выполнения работ не имеет.
+
+## 5. Настоящий акт является основанием для оплаты выполненных работ.
+
+**ИСПОЛНИТЕЛЬ:**
+{executor_type} «{executor_name}»
+
+___________________ / {executor_representative} /
+М.П.
+
+
+**ЗАКАЗЧИК:**
+{customer_type} «{customer_name}»
+
+___________________ / {customer_representative} /
+М.П.
+""",
+
+    DocumentType.RECONCILIATION_ACT: """# АКТ СВЕРКИ ВЗАИМОРАСЧЁТОВ № {number}
+
+г. {city}                                                              «{date}»
+
+за период с {period_start} по {period_end}
+
+между {party1_type} «{party1_name}» и {party2_type} «{party2_name}»
+
+К Договору № {contract_number} от {contract_date}
+
+## Данные {party1_type} «{party1_name}»:
+
+| Дата | Документ | Дебет | Кредит |
+|------|----------|-------|--------|
+{party1_operations}
+| **Итого:** | | **{party1_debit_total}** | **{party1_credit_total}** |
+
+## Данные {party2_type} «{party2_name}»:
+
+| Дата | Документ | Дебет | Кредит |
+|------|----------|-------|--------|
+{party2_operations}
+| **Итого:** | | **{party2_debit_total}** | **{party2_credit_total}** |
+
+## Результат сверки:
+
+{reconciliation_result}
+
+Настоящий акт составлен в двух экземплярах, по одному для каждой стороны.
+
+**{party1_type} «{party1_name}»**
+
+___________________ / {party1_representative} /
+М.П.
+
+
+**{party2_type} «{party2_name}»**
+
+___________________ / {party2_representative} /
+М.П.
+""",
 }
 
 
@@ -762,8 +1137,8 @@ class AILawyerService:
         
         Returns structured analysis.
         """
-        prompt = CONTRACT_ANALYSIS_PROMPT.format(contract_text=contract_text[:15000])
-        
+        prompt = CONTRACT_ANALYSIS_PROMPT.format(contract_text=contract_text[:50000])
+
         breaker = get_gemini_circuit_breaker()
         try:
             async with breaker:
@@ -772,36 +1147,58 @@ class AILawyerService:
                     model.generate_content_async(
                         prompt,
                         generation_config=genai.GenerationConfig(
-                            max_output_tokens=4000,
+                            max_output_tokens=8000,
                             temperature=0.3,
                             response_mime_type="application/json"
                         )
                     ),
-                    timeout=GEMINI_TIMEOUT,
+                    timeout=60,
                 )
 
-            # Parse JSON response
-            result = json.loads(response.text)
-            return result
+            raw_text = response.text.strip()
+            logger.info(f"Gemini contract analysis response length: {len(raw_text)}")
+
+            # Try direct JSON parse
+            try:
+                return json.loads(raw_text)
+            except json.JSONDecodeError:
+                pass
+
+            # Try extracting JSON from markdown code block
+            import re
+            json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', raw_text, re.DOTALL)
+            if json_match:
+                try:
+                    return json.loads(json_match.group(1))
+                except json.JSONDecodeError:
+                    pass
+
+            # Try finding first { ... } block
+            brace_start = raw_text.find('{')
+            brace_end = raw_text.rfind('}')
+            if brace_start != -1 and brace_end > brace_start:
+                try:
+                    return json.loads(raw_text[brace_start:brace_end + 1])
+                except json.JSONDecodeError:
+                    pass
+
+            logger.error(f"Failed to parse contract analysis JSON. Raw response: {raw_text[:500]}")
+            return {
+                "summary": "Не удалось проанализировать договор. Попробуйте ещё раз.",
+                "key_conditions": [],
+                "risks": [],
+                "recommendations": ["Повторите попытку"],
+                "overall_risk_level": "medium"
+            }
 
         except CircuitOpenError:
             logger.warning("Gemini circuit breaker is open, rejecting contract analysis")
             raise Exception("AI service temporarily unavailable. Please try again later.")
         except asyncio.TimeoutError:
-            logger.error(f"Gemini contract analysis timeout after {GEMINI_TIMEOUT}s")
+            logger.error(f"Gemini contract analysis timeout after 60s")
             raise Exception("AI service response timed out. Please try again.")
-        except json.JSONDecodeError:
-            # If JSON parsing fails, return basic structure
-            logger.error("Failed to parse contract analysis JSON")
-            return {
-                "summary": "Не удалось проанализировать договор",
-                "key_conditions": [],
-                "risks": [],
-                "recommendations": ["Повторите попытку или загрузите договор в другом формате"],
-                "overall_risk_level": "medium"
-            }
         except Exception as e:
-            logger.error(f"Contract analysis error: {e}")
+            logger.error(f"Contract analysis error: {e}", exc_info=True)
             raise
     
     def generate_document(
@@ -834,7 +1231,6 @@ class AILawyerService:
             data = self._prepare_claim_data(data)
             if document_type == DocumentType.CLAIM_TO_MARKETPLACE:
                 data.setdefault('marketplace_name', 'Kaspi.kz')
-                # Set address based on marketplace
                 marketplace_addresses = {
                     'Kaspi.kz': 'г. Алматы, пр. Аль-Фараби 77/7',
                     'Wildberries': 'г. Алматы, ул. Тимирязева 28В, БЦ "Atakent Park"',
@@ -842,6 +1238,16 @@ class AILawyerService:
                     'Uzum Market': 'г. Ташкент, ул. Мустакиллик 75',
                 }
                 data.setdefault('marketplace_address', marketplace_addresses.get(data.get('marketplace_name', ''), 'г. Алматы'))
+        elif document_type == DocumentType.RENT_CONTRACT:
+            data = self._prepare_rent_contract_data(data)
+        elif document_type == DocumentType.COMPLAINT_TO_AUTHORITY:
+            data = self._prepare_complaint_data(data)
+        elif document_type in (DocumentType.IP_REGISTRATION, DocumentType.TOO_REGISTRATION,
+                               DocumentType.LICENSE_APPLICATION, DocumentType.TAX_APPLICATION):
+            data = self._prepare_application_data(data, document_type)
+        elif document_type in (DocumentType.ACCEPTANCE_ACT, DocumentType.WORK_COMPLETION_ACT,
+                               DocumentType.RECONCILIATION_ACT):
+            data = self._prepare_act_data(data, document_type)
 
         # Fill template
         content = template.format(**data)
@@ -851,10 +1257,19 @@ class AILawyerService:
             DocumentType.SUPPLY_CONTRACT: f"Договор поставки № {data['number']}",
             DocumentType.SALE_CONTRACT: f"Договор купли-продажи № {data['number']}",
             DocumentType.SERVICE_CONTRACT: f"Договор оказания услуг № {data['number']}",
+            DocumentType.RENT_CONTRACT: f"Договор аренды № {data['number']}",
             DocumentType.EMPLOYMENT_CONTRACT: f"Трудовой договор № {data['number']}",
             DocumentType.CLAIM_TO_SUPPLIER: f"Претензия поставщику от {data['date']}",
             DocumentType.CLAIM_TO_BUYER: f"Претензия покупателю от {data['date']}",
             DocumentType.CLAIM_TO_MARKETPLACE: f"Претензия маркетплейсу от {data['date']}",
+            DocumentType.COMPLAINT_TO_AUTHORITY: f"Жалоба от {data['date']}",
+            DocumentType.IP_REGISTRATION: f"Заявление на регистрацию ИП от {data['date']}",
+            DocumentType.TOO_REGISTRATION: f"Заявление на регистрацию ТОО от {data['date']}",
+            DocumentType.LICENSE_APPLICATION: f"Заявление на лицензию от {data['date']}",
+            DocumentType.TAX_APPLICATION: f"Заявление в налоговую от {data['date']}",
+            DocumentType.ACCEPTANCE_ACT: f"Акт приёма-передачи № {data['number']}",
+            DocumentType.WORK_COMPLETION_ACT: f"Акт выполненных работ № {data['number']}",
+            DocumentType.RECONCILIATION_ACT: f"Акт сверки № {data['number']}",
         }
         title = titles.get(document_type, f"Документ № {data['number']}")
         
@@ -923,6 +1338,133 @@ class AILawyerService:
         
         return data
     
+    def _prepare_rent_contract_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Prepare data for rent contract template"""
+        data.setdefault('landlord_type', 'ИП')
+        data.setdefault('tenant_type', 'ИП')
+        data.setdefault('landlord_representative', 'Директора')
+        data.setdefault('tenant_representative', 'Директора')
+        data.setdefault('landlord_basis', 'Устава')
+        data.setdefault('tenant_basis', 'Устава')
+        data.setdefault('landlord_address', '')
+        data.setdefault('tenant_address', '')
+        data.setdefault('rental_purpose', 'коммерческая деятельность')
+        data.setdefault('payment_day', '5')
+        data.setdefault('utilities_payment', 'Арендатором отдельно по показаниям счётчиков')
+
+        data['landlord_bin_text'] = f", БИН {data['landlord_bin']}" if data.get('landlord_bin') else ""
+        data['tenant_bin_text'] = f", БИН {data['tenant_bin']}" if data.get('tenant_bin') else ""
+        data['landlord_bin_line'] = f"БИН: {data['landlord_bin']}" if data.get('landlord_bin') else ""
+        data['tenant_bin_line'] = f"БИН: {data['tenant_bin']}" if data.get('tenant_bin') else ""
+
+        data['rent_amount_words'] = self._amount_to_words(data.get('rent_amount', 0))
+
+        for field in ('start_date', 'end_date'):
+            if isinstance(data.get(field), date):
+                data[field] = data[field].strftime("%d.%m.%Y")
+
+        return data
+
+    def _prepare_complaint_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Prepare data for complaint to authority template"""
+        data.setdefault('applicant_address', '')
+        data.setdefault('applicant_contacts', '')
+        data.setdefault('authority_address', '')
+        data.setdefault('complaint_subject', 'нарушение прав')
+        data.setdefault('legal_basis', 'Гражданского кодекса РК, Закона о защите прав потребителей')
+        data['applicant_iin_text'] = f"ИИН: {data['applicant_iin']}" if data.get('applicant_iin') else ""
+        return data
+
+    def _prepare_application_data(self, data: Dict[str, Any], doc_type: DocumentType) -> Dict[str, Any]:
+        """Prepare data for registration/license/tax application templates"""
+        if doc_type == DocumentType.IP_REGISTRATION:
+            data.setdefault('tax_office', 'по месту жительства')
+            data.setdefault('applicant_phone', '')
+            data.setdefault('birth_date', '')
+            data.setdefault('business_address', data.get('applicant_address', ''))
+            data.setdefault('business_name', data.get('applicant_name', ''))
+            data.setdefault('business_form', 'Личное предпринимательство')
+            data.setdefault('tax_regime', 'Упрощённая декларация (спецрежим)')
+        elif doc_type == DocumentType.TOO_REGISTRATION:
+            data.setdefault('justice_department', 'по месту нахождения юридического лица')
+            data.setdefault('founders_info', '')
+            data.setdefault('legal_address', '')
+            data.setdefault('charter_capital', '100000')
+            data['charter_capital_words'] = self._amount_to_words(int(data.get('charter_capital', 100000)))
+            data.setdefault('founders_shares', '')
+            data.setdefault('director_iin', '')
+            data.setdefault('activity_types', '')
+            data.setdefault('tax_regime', 'Общеустановленный режим')
+            data.setdefault('founders_signatures', '')
+        elif doc_type == DocumentType.LICENSE_APPLICATION:
+            data.setdefault('licensing_authority', 'уполномоченный орган')
+            data.setdefault('authority_address', '')
+            data.setdefault('applicant_type', 'ТОО')
+            data.setdefault('applicant_bin', '')
+            data.setdefault('applicant_address', '')
+            data.setdefault('applicant_phone', '')
+            data.setdefault('business_address', data.get('applicant_address', ''))
+            data.setdefault('license_subtype', '')
+            data.setdefault('qualifications', '')
+            data.setdefault('applicant_representative', 'Директора')
+        elif doc_type == DocumentType.TAX_APPLICATION:
+            data.setdefault('tax_office', 'по месту регистрации')
+            data.setdefault('taxpayer_type', 'ИП')
+            data.setdefault('taxpayer_bin', '')
+            data.setdefault('taxpayer_address', '')
+            data.setdefault('taxpayer_phone', '')
+            data.setdefault('taxpayer_rnn', '')
+            data.setdefault('application_type', 'ЗАЯВЛЕНИЕ')
+            data.setdefault('application_body', '')
+            data.setdefault('request_text', '')
+            data.setdefault('attachments', '1. Копии подтверждающих документов')
+            data.setdefault('taxpayer_representative', 'Директора')
+        return data
+
+    def _prepare_act_data(self, data: Dict[str, Any], doc_type: DocumentType) -> Dict[str, Any]:
+        """Prepare data for act templates (acceptance, work completion, reconciliation)"""
+        if doc_type == DocumentType.ACCEPTANCE_ACT:
+            data.setdefault('sender_type', 'ТОО')
+            data.setdefault('receiver_type', 'ТОО')
+            data.setdefault('sender_representative', 'Директора')
+            data.setdefault('receiver_representative', 'Директора')
+            data.setdefault('sender_basis', 'Устава')
+            data.setdefault('receiver_basis', 'Устава')
+            data.setdefault('condition', 'Имущество передано в исправном состоянии, без видимых повреждений')
+            data.setdefault('claims', 'Не имеются')
+            data['total_amount_words'] = self._amount_to_words(data.get('total_amount', 0))
+        elif doc_type == DocumentType.WORK_COMPLETION_ACT:
+            data.setdefault('executor_type', 'ТОО')
+            data.setdefault('customer_type', 'ТОО')
+            data.setdefault('executor_representative', 'Директора')
+            data.setdefault('customer_representative', 'Директора')
+            data.setdefault('executor_basis', 'Устава')
+            data.setdefault('customer_basis', 'Устава')
+            data.setdefault('contract_number', '')
+            data.setdefault('contract_date', '')
+            data.setdefault('vat_text', 'включая НДС 12%')
+            if isinstance(data.get('contract_date'), date):
+                data['contract_date'] = data['contract_date'].strftime("%d.%m.%Y")
+            data['total_amount_words'] = self._amount_to_words(data.get('total_amount', 0))
+        elif doc_type == DocumentType.RECONCILIATION_ACT:
+            data.setdefault('party1_type', 'ТОО')
+            data.setdefault('party2_type', 'ТОО')
+            data.setdefault('party1_representative', 'Директора')
+            data.setdefault('party2_representative', 'Директора')
+            data.setdefault('contract_number', '')
+            data.setdefault('contract_date', '')
+            data.setdefault('party1_operations', '')
+            data.setdefault('party2_operations', '')
+            data.setdefault('party1_debit_total', '0')
+            data.setdefault('party1_credit_total', '0')
+            data.setdefault('party2_debit_total', '0')
+            data.setdefault('party2_credit_total', '0')
+            data.setdefault('reconciliation_result', 'Расхождений не обнаружено.')
+            for field in ('period_start', 'period_end', 'contract_date'):
+                if isinstance(data.get(field), date):
+                    data[field] = data[field].strftime("%d.%m.%Y")
+        return data
+
     def _amount_to_words(self, amount: int) -> str:
         """Convert amount to words in Russian"""
         # Simplified version - in production use a proper library
@@ -941,6 +1483,90 @@ class AILawyerService:
                 return f"{millions} миллион(ов) {remainder // 1000} тысяч тенге"
             return f"{millions} миллион(ов) тенге"
     
+    # ==================== PDF GENERATION ====================
+
+    def generate_pdf(self, content: str, title: str) -> bytes:
+        """
+        Generate PDF from document content (markdown-like text).
+        Returns PDF as bytes (in-memory, no disk files).
+        Uses DejaVu Sans for Cyrillic support.
+        """
+        from fpdf import FPDF
+        import os
+        import re
+
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=20)
+        pdf.add_page()
+
+        # Try to load DejaVu Sans for Cyrillic, fall back to Helvetica
+        font_dir = os.path.join(os.path.dirname(__file__), '..', 'fonts')
+        dejavu_path = os.path.join(font_dir, 'DejaVuSans.ttf')
+        dejavu_bold_path = os.path.join(font_dir, 'DejaVuSans-Bold.ttf')
+
+        if os.path.exists(dejavu_path):
+            pdf.add_font('DejaVu', '', dejavu_path, uni=True)
+            pdf.add_font('DejaVu', 'B', dejavu_bold_path if os.path.exists(dejavu_bold_path) else dejavu_path, uni=True)
+            font_name = 'DejaVu'
+        else:
+            font_name = 'Helvetica'
+
+        # Available width for content
+        content_w = pdf.w - pdf.l_margin - pdf.r_margin
+
+        # Render content line by line
+        for line in content.split('\n'):
+            stripped = line.strip()
+
+            # Skip empty lines
+            if not stripped:
+                pdf.ln(4)
+                continue
+
+            # Reset X to left margin before each block
+            pdf.x = pdf.l_margin
+
+            # H1 headers
+            if stripped.startswith('# ') and not stripped.startswith('## '):
+                pdf.set_font(font_name, 'B', 16)
+                pdf.multi_cell(content_w, 8, stripped[2:].strip())
+                pdf.ln(4)
+            # H2 headers
+            elif stripped.startswith('## '):
+                pdf.set_font(font_name, 'B', 13)
+                pdf.multi_cell(content_w, 7, stripped[3:].strip())
+                pdf.ln(3)
+            # Bold text (**text**)
+            elif stripped.startswith('**') and stripped.endswith('**'):
+                pdf.set_font(font_name, 'B', 11)
+                pdf.multi_cell(content_w, 6, stripped[2:-2])
+                pdf.ln(2)
+            # Table rows
+            elif stripped.startswith('|') and stripped.endswith('|'):
+                # Skip separator rows
+                if re.match(r'^\|[-\s|]+\|$', stripped):
+                    continue
+                cells = [c.strip() for c in stripped.split('|')[1:-1]]
+                pdf.set_font(font_name, '', 9)
+                col_w = content_w / max(len(cells), 1)
+                for cell in cells:
+                    text = re.sub(r'\*\*(.*?)\*\*', r'\1', cell)
+                    pdf.cell(col_w, 6, text, border=1)
+                pdf.ln()
+            # Signature lines
+            elif '___' in stripped:
+                pdf.set_font(font_name, '', 11)
+                text = stripped.replace('___________________', '_________________')
+                pdf.multi_cell(content_w, 6, text)
+                pdf.ln(2)
+            # Regular text (handle inline bold)
+            else:
+                pdf.set_font(font_name, '', 11)
+                clean = re.sub(r'\*\*(.*?)\*\*', r'\1', stripped)
+                pdf.multi_cell(content_w, 6, clean)
+
+        return pdf.output()
+
     # ==================== CALCULATORS ====================
     
     def calculate_penalty(

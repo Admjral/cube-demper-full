@@ -27,7 +27,7 @@ from ..schemas.kaspi import (
 )
 from ..schemas.products import ProductResponse, ProductListResponse, ProductFilters, ProductAnalytics
 from ..core.database import get_db_pool
-from ..dependencies import get_current_user
+from ..dependencies import require_feature
 from ..services.kaspi_auth_service import (
     authenticate_kaspi,
     verify_sms_code,
@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 
 @router.get("/stores", response_model=List[KaspiStoreResponse])
 async def list_stores(
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("demping")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """List all Kaspi stores for current user"""
@@ -67,8 +67,19 @@ async def list_stores(
             current_user['id']
         )
 
-        return [
-            KaspiStoreResponse(
+        result = []
+        for store in stores:
+            api_key_raw = store.get('api_key')
+            api_key_str = str(api_key_raw) if api_key_raw else None
+
+            # Generate masked API key for display (e.g., "eIBx...Ay8=")
+            api_key_masked = None
+            if api_key_str and len(api_key_str) > 8:
+                api_key_masked = f"{api_key_str[:4]}...{api_key_str[-4:]}"
+            elif api_key_str:
+                api_key_masked = f"{api_key_str[:2]}***"
+
+            result.append(KaspiStoreResponse(
                 id=str(store['id']),
                 user_id=str(store['user_id']),
                 merchant_id=store['merchant_id'],
@@ -76,23 +87,29 @@ async def list_stores(
                 products_count=store['products_count'],
                 last_sync=store['last_sync'],
                 is_active=store['is_active'],
-                api_key_set=bool(store.get('api_key')),
-                api_key_valid=store.get('api_key_valid', True) if store.get('api_key') else True,
+                api_key_set=bool(api_key_str),
+                api_key_valid=store.get('api_key_valid', True) if api_key_str else True,
+                api_key_masked=api_key_masked,
                 created_at=store['created_at'],
                 updated_at=store['updated_at']
-            )
-            for store in stores
-        ]
+            ))
+
+        return result
 
 
 @router.patch("/stores/{store_id}/api-token")
 async def update_store_api_token(
     store_id: str,
     body: ApiTokenUpdate,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("demping")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
-    """Save Kaspi REST API token for a store. Token is generated in Kaspi MC → Settings → API."""
+    """
+    Save Kaspi REST API token for a store with validation.
+
+    Token is generated in Kaspi MC → Settings → API.
+    The token will be validated by making a test API call before saving.
+    """
     async with pool.acquire() as conn:
         store = await conn.fetchrow(
             "SELECT id FROM kaspi_stores WHERE id = $1 AND user_id = $2",
@@ -101,17 +118,62 @@ async def update_store_api_token(
         if not store:
             raise HTTPException(status_code=404, detail="Магазин не найден")
 
+    # Validate token by making a test API call
+    from ..services.kaspi_orders_api import get_kaspi_orders_api, KaspiTokenInvalidError, KaspiOrdersAPIError
+
+    orders_api = get_kaspi_orders_api()
+    is_valid = False
+    error_message = None
+
+    try:
+        # Test the token with a minimal API call
+        now = datetime.utcnow()
+        test_orders = await orders_api.fetch_orders(
+            api_token=body.api_token,
+            date_from=now - timedelta(days=1),
+            date_to=now,
+            states=["APPROVED"],
+            page=0,
+            size=1,
+        )
+        is_valid = True
+        logger.info(f"API token validated successfully for store {store_id}")
+    except KaspiTokenInvalidError as e:
+        error_message = f"Токен недействителен: {str(e)}"
+        logger.warning(f"Invalid API token for store {store_id}: {e}")
+    except KaspiOrdersAPIError as e:
+        error_message = f"Ошибка валидации токена: {str(e)}"
+        logger.error(f"Error validating token for store {store_id}: {e}")
+    except Exception as e:
+        error_message = f"Неожиданная ошибка при валидации: {str(e)}"
+        logger.error(f"Unexpected error validating token for store {store_id}: {e}")
+
+    # Save token with validity flag
+    async with pool.acquire() as conn:
         await conn.execute(
-            "UPDATE kaspi_stores SET api_key = $1, api_key_valid = TRUE, updated_at = NOW() WHERE id = $2",
-            body.api_token, uuid.UUID(store_id)
+            "UPDATE kaspi_stores SET api_key = $1, api_key_valid = $2, updated_at = NOW() WHERE id = $3",
+            body.api_token, is_valid, uuid.UUID(store_id)
         )
 
-    return {"status": "ok", "message": "API токен сохранён"}
+    # Return result with validation status
+    if is_valid:
+        return {
+            "status": "ok",
+            "message": "API токен сохранён и проверен",
+            "api_key_valid": True
+        }
+    else:
+        return {
+            "status": "warning",
+            "message": f"Токен сохранён, но может быть недействителен: {error_message}",
+            "api_key_valid": False,
+            "error": error_message
+        }
 
 
 @router.get("/stores/token-alerts")
 async def get_token_alerts(
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("demping")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Get stores with invalid API tokens that need renewal."""
@@ -124,10 +186,89 @@ async def get_token_alerts(
     return [{"store_id": str(s['id']), "name": s['name'], "merchant_id": s['merchant_id']} for s in stores]
 
 
+@router.post("/stores/{store_id}/test-api-token")
+async def test_store_api_token(
+    store_id: str,
+    current_user: Annotated[dict, require_feature("demping")],
+    pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
+):
+    """
+    Test if stored API token is valid by making a test request to Kaspi API.
+
+    Returns:
+        - valid: bool - whether token works
+        - error: Optional[str] - error message if invalid
+        - orders_count: Optional[int] - number of recent orders found (if valid)
+        - message: str - human-readable message
+    """
+    async with pool.acquire() as conn:
+        store = await conn.fetchrow(
+            "SELECT id, api_key FROM kaspi_stores WHERE id = $1 AND user_id = $2",
+            uuid.UUID(store_id), current_user['id']
+        )
+        if not store:
+            raise HTTPException(status_code=404, detail="Магазин не найден")
+
+        api_key = store.get('api_key')
+        if not api_key:
+            raise HTTPException(status_code=400, detail="API токен не установлен")
+
+    # Test the token with a real API call
+    from ..services.kaspi_orders_api import get_kaspi_orders_api, KaspiTokenInvalidError, KaspiOrdersAPIError
+
+    orders_api = get_kaspi_orders_api()
+
+    try:
+        now = datetime.utcnow()
+        orders = await orders_api.fetch_orders(
+            api_token=api_key,
+            date_from=now - timedelta(days=7),
+            date_to=now,
+            states=["APPROVED", "ACCEPTED_BY_MERCHANT"],
+            page=0,
+            size=10,
+        )
+
+        # Token is valid - update flag in DB
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE kaspi_stores SET api_key_valid = TRUE WHERE id = $1",
+                uuid.UUID(store_id)
+            )
+
+        return {
+            "valid": True,
+            "orders_count": len(orders),
+            "message": f"Токен действителен. Найдено заказов: {len(orders)}"
+        }
+
+    except KaspiTokenInvalidError as e:
+        # Token is invalid - update flag
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE kaspi_stores SET api_key_valid = FALSE WHERE id = $1",
+                uuid.UUID(store_id)
+            )
+
+        return {
+            "valid": False,
+            "error": str(e),
+            "message": "Токен недействителен или истёк"
+        }
+
+    except (KaspiOrdersAPIError, Exception) as e:
+        logger.error(f"Error testing API token for store {store_id}: {e}")
+        return {
+            "valid": False,
+            "error": str(e),
+            "message": "Ошибка при проверке токена"
+        }
+
+
 @router.post("/auth", status_code=status.HTTP_200_OK)
 async def authenticate_store(
     auth_data: KaspiAuthRequest,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("demping")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     background_tasks: BackgroundTasks
 ):
@@ -254,7 +395,7 @@ async def authenticate_store(
 @router.post("/auth/verify-sms", status_code=status.HTTP_200_OK)
 async def verify_sms(
     sms_data: KaspiAuthSMSRequest,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("demping")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     background_tasks: BackgroundTasks
 ):
@@ -453,7 +594,7 @@ async def _sync_store_products_task(store_id: str, merchant_id: str):
 
 @router.get("/products", response_model=ProductListResponse)
 async def list_products(
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("demping")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     filters: ProductFilters = Depends()
 ):
@@ -549,7 +690,7 @@ async def list_products(
 async def update_product(
     product_id: str,
     update_data: ProductUpdateRequest,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("demping")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Update product settings"""
@@ -588,6 +729,23 @@ async def update_product(
 
         # Skip explicit bot_active if preorder will override it
         if update_data.bot_active is not None and not (update_data.pre_order_days is not None and update_data.pre_order_days > 0):
+            # Check demping limit when enabling
+            if update_data.bot_active and not product['bot_active']:
+                from ..services.feature_access import feature_access_service
+                active_count = await conn.fetchval(
+                    """
+                    SELECT COUNT(*) FROM products p
+                    JOIN kaspi_stores k ON k.id = p.store_id
+                    WHERE k.user_id = $1 AND p.bot_active = true
+                    """,
+                    current_user['id']
+                )
+                within_limit, max_limit, msg = await feature_access_service.check_limit(pool, current_user['id'], 'demping', active_count)
+                if not within_limit:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail={"error": "limit_exceeded", "feature": "demping", "current": active_count, "limit": max_limit, "message": msg}
+                    )
             param_count += 1
             updates.append(f"bot_active = ${param_count}")
             params.append(update_data.bot_active)
@@ -627,6 +785,15 @@ async def update_product(
             params.append(update_data.pre_order_days)
 
         if update_data.is_priority is not None:
+            # Check feature access: priority_products is Premium only
+            if update_data.is_priority:
+                from ..services.feature_access import feature_access_service
+                has_access, msg = await feature_access_service.check_feature_access(pool, current_user['id'], 'priority_products')
+                if not has_access:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail={"error": "feature_not_available", "feature": "priority_products", "message": msg}
+                    )
             # Enforce limit: max 10 priority products per store
             if update_data.is_priority:
                 priority_count = await conn.fetchval(
@@ -662,6 +829,16 @@ async def update_product(
         # Delivery demping (mutually exclusive with regular demping)
         # Skip explicit delivery_demping_enabled if preorder already set it to false
         if update_data.delivery_demping_enabled is not None and not (update_data.pre_order_days is not None and update_data.pre_order_days > 0):
+            # Check feature access: delivery_demping is Premium only
+            if update_data.delivery_demping_enabled:
+                from ..services.feature_access import feature_access_service
+                has_access, msg = await feature_access_service.check_feature_access(pool, current_user['id'], 'delivery_demping')
+                if not has_access:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail={"error": "feature_not_available", "feature": "delivery_demping", "message": msg}
+                    )
+
             param_count += 1
             updates.append(f"delivery_demping_enabled = ${param_count}")
             params.append(update_data.delivery_demping_enabled)
@@ -741,7 +918,7 @@ async def update_product(
 @router.get("/products/{product_id}/demping-details", response_model=ProductDempingDetails)
 async def get_product_demping_details(
     product_id: str,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("demping")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Get detailed demping information for a product"""
@@ -817,7 +994,7 @@ async def get_product_demping_details(
 @router.post("/products/bulk-update", status_code=status.HTTP_200_OK)
 async def bulk_update_products(
     bulk_data: BulkPriceUpdateRequest,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("demping")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Bulk update product prices or settings"""
@@ -848,6 +1025,24 @@ async def bulk_update_products(
         param_idx = 2
 
         if bulk_data.bot_active is not None:
+            # Check demping limit when bulk-enabling
+            if bulk_data.bot_active:
+                from ..services.feature_access import feature_access_service
+                active_count = await conn.fetchval(
+                    """
+                    SELECT COUNT(*) FROM products p
+                    JOIN kaspi_stores k ON k.id = p.store_id
+                    WHERE k.user_id = $1 AND p.bot_active = true AND p.id != ALL($2)
+                    """,
+                    current_user['id'], product_uuids
+                )
+                new_total = active_count + len(bulk_data.product_ids)
+                within_limit, max_limit, msg = await feature_access_service.check_limit(pool, current_user['id'], 'demping', new_total - 1)
+                if not within_limit:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail={"error": "limit_exceeded", "feature": "demping", "current": active_count, "adding": len(bulk_data.product_ids), "limit": max_limit, "message": msg}
+                    )
             updates.append(f"bot_active = ${param_idx}")
             params.append(bulk_data.bot_active)
             param_idx += 1
@@ -889,7 +1084,7 @@ async def bulk_update_products(
 @router.post("/products/{product_id}/check-demping")
 async def check_product_demping(
     product_id: str,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("demping")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """
@@ -943,7 +1138,7 @@ async def check_product_demping(
 @router.post("/products/{product_id}/run-demping")
 async def run_product_demping(
     product_id: str,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("demping")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """
@@ -1209,7 +1404,7 @@ async def run_product_demping(
 
 @router.get("/analytics", response_model=ProductAnalytics)
 async def get_analytics(
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("analytics")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Get product analytics for user"""
@@ -1250,7 +1445,7 @@ async def get_analytics(
 @router.get("/stores/{store_id}/products", response_model=ProductListResponse)
 async def list_store_products(
     store_id: str,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("demping")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     filters: ProductFilters = Depends()
 ):
@@ -1276,7 +1471,7 @@ async def list_store_products(
 @router.get("/stores/{store_id}/demping", response_model=DempingSettings)
 async def get_store_demping_settings(
     store_id: str,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("demping")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Get demping settings for store"""
@@ -1332,7 +1527,7 @@ async def get_store_demping_settings(
 async def update_store_demping_settings(
     store_id: str,
     settings_update: DempingSettingsUpdate,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("demping")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Update demping settings for store"""
@@ -1421,7 +1616,7 @@ async def update_store_demping_settings(
 @router.get("/stores/{store_id}/stats", response_model=StoreStats)
 async def get_store_stats(
     store_id: str,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("analytics")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Get store statistics"""
@@ -1494,7 +1689,7 @@ async def get_store_stats(
 @router.get("/stores/{store_id}/analytics", response_model=SalesAnalytics)
 async def get_store_analytics(
     store_id: str,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("analytics")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     period: str = '7d'
 ):
@@ -1586,7 +1781,7 @@ async def get_store_analytics(
 @router.get("/stores/{store_id}/top-products", response_model=List[TopProduct])
 async def get_top_products(
     store_id: str,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("analytics")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     limit: int = 10
 ):
@@ -1665,7 +1860,7 @@ async def get_top_products(
 @router.delete("/stores/{store_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_store(
     store_id: str,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("demping")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Store deletion is not allowed - one store per account policy"""
@@ -1675,18 +1870,107 @@ async def delete_store(
     )
 
 
+async def _sync_products_to_db(
+    pool: asyncpg.Pool,
+    store_id: str,
+    products: List[dict],
+    source: str = "rest_api"
+) -> int:
+    """
+    Sync products from REST API to database with FULL data.
+
+    REST API returns COMPLETE product data:
+    - attributes.name (название) ✅
+    - attributes.price (цена) ✅
+    - attributes.sku (артикул) ✅
+    - attributes.description (описание) - not saved yet (column doesn't exist)
+    - attributes.images (изображения) - not saved yet
+
+    Unlike GraphQL which returns only IDs/SKUs without names.
+
+    Args:
+        pool: Database connection pool
+        store_id: Store UUID
+        products: List of product data from REST API (JSON:API format)
+        source: Data source ("rest_api" or "graphql") - not used currently
+
+    Returns:
+        Number of products synced
+    """
+    synced_count = 0
+
+    async with pool.acquire() as conn:
+        for product_data in products:
+            try:
+                product_id = product_data.get("id")
+                if not product_id:
+                    continue
+
+                attributes = product_data.get("attributes", {})
+
+                # Extract FULL data from REST API
+                name = attributes.get("name") or "Товар без названия"  # name is NOT NULL
+                price = attributes.get("price") or 0  # price is NOT NULL
+                sku = attributes.get("sku") or attributes.get("code")
+
+                # Note: description column doesn't exist in current schema
+                # Only saving: name, price, kaspi_sku, external_kaspi_id
+
+                # Save with full data (UPSERT)
+                await conn.execute("""
+                    INSERT INTO products (
+                        store_id, external_kaspi_id, kaspi_sku, name,
+                        price, updated_at
+                    )
+                    VALUES ($1, $2, $3, $4, $5, NOW())
+                    ON CONFLICT (store_id, external_kaspi_id)
+                    DO UPDATE SET
+                        name = EXCLUDED.name,
+                        price = EXCLUDED.price,
+                        kaspi_sku = EXCLUDED.kaspi_sku,
+                        updated_at = NOW()
+                """,
+                    uuid.UUID(store_id),
+                    product_id,
+                    sku,
+                    name,
+                    price
+                )
+
+                synced_count += 1
+
+            except Exception as e:
+                logger.error(f"Error syncing product {product_data.get('id')}: {e}")
+                continue
+
+        # Update store's last_sync timestamp
+        await conn.execute(
+            "UPDATE kaspi_stores SET last_sync = NOW() WHERE id = $1",
+            uuid.UUID(store_id)
+        )
+
+    logger.info(f"Synced {synced_count}/{len(products)} products to DB with full data (source: {source})")
+    return synced_count
+
+
 @router.post("/stores/{store_id}/sync", status_code=status.HTTP_202_ACCEPTED)
 async def sync_store_products_by_id(
     store_id: str,
     background_tasks: BackgroundTasks,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("demping")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
-    """Sync products for a specific store (REST-style endpoint)"""
+    """
+    Sync products for a specific store.
+
+    Priority:
+    1. REST API (if api_key available) - returns FULL product data (name, description, price, images)
+    2. MC GraphQL (fallback) - returns basic data only (ID/SKU)
+    """
     async with pool.acquire() as conn:
-        # Verify store ownership and get merchant_id
+        # Verify store ownership and get merchant_id + api_key
         store = await conn.fetchrow(
-            "SELECT id, merchant_id FROM kaspi_stores WHERE id = $1 AND user_id = $2",
+            "SELECT id, merchant_id, api_key, api_key_valid FROM kaspi_stores WHERE id = $1 AND user_id = $2",
             uuid.UUID(store_id),
             current_user['id']
         )
@@ -1697,7 +1981,46 @@ async def sync_store_products_by_id(
                 detail="Store not found"
             )
 
-    # Add background task to sync products using existing function
+    api_key = store.get('api_key')
+    api_key_valid = store.get('api_key_valid', True)
+
+    # PRIORITY 1: REST API (full product data)
+    if api_key and api_key_valid:
+        try:
+            from ..services.kaspi_products_api import get_kaspi_products_api, KaspiTokenInvalidError, KaspiProductsAPIError
+
+            products_api = get_kaspi_products_api()
+            products = await products_api.fetch_products(api_token=api_key)
+
+            # Sync to database with FULL data
+            synced_count = await _sync_products_to_db(pool, store_id, products, source="rest_api")
+
+            logger.info(f"Synced {synced_count} products via REST API for store {store_id}")
+
+            return {
+                "status": "completed",
+                "message": "Product sync completed via REST API",
+                "store_id": store_id,
+                "products_count": synced_count,
+                "source": "rest_api"
+            }
+
+        except KaspiTokenInvalidError:
+            # Mark token invalid, fallback to GraphQL
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    "UPDATE kaspi_stores SET api_key_valid = FALSE WHERE id = $1",
+                    uuid.UUID(store_id)
+                )
+            logger.warning(f"REST API token invalid for store {store_id}, falling back to GraphQL")
+
+        except KaspiProductsAPIError as e:
+            logger.error(f"Error syncing products via REST API for store {store_id}: {e}")
+
+        except Exception as e:
+            logger.error(f"Unexpected error syncing products via REST API for store {store_id}: {e}")
+
+    # PRIORITY 2: MC GraphQL fallback (basic data only)
     background_tasks.add_task(
         _sync_store_products_task,
         store_id=store_id,
@@ -1706,8 +2029,9 @@ async def sync_store_products_by_id(
 
     return {
         "status": "accepted",
-        "message": "Product sync started in background",
-        "store_id": store_id
+        "message": "Product sync started in background (GraphQL fallback)",
+        "store_id": store_id,
+        "source": "graphql"
     }
 
 
@@ -1715,7 +2039,7 @@ async def sync_store_products_by_id(
 async def sync_store_prices(
     store_id: str,
     background_tasks: BackgroundTasks,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("demping")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Sync product prices from Kaspi Offers API into our DB"""
@@ -1805,7 +2129,7 @@ async def _sync_prices_task(products: list, merchant_uid: str, store_id: str):
 async def sync_store_orders(
     store_id: str,
     background_tasks: BackgroundTasks,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("orders_view")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     days_back: int = 30
 ):
@@ -1871,7 +2195,7 @@ async def _sync_store_orders_task(store_id: str, merchant_id: str, days_back: in
 @router.get("/products/{product_id}/price-history")
 async def get_product_price_history(
     product_id: str,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("demping")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     limit: int = 50
 ):
@@ -1929,7 +2253,7 @@ async def get_product_price_history(
 async def update_product_price(
     product_id: str,
     price_update: dict,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("demping")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Update product price (frontend compatibility endpoint)"""
@@ -2033,7 +2357,7 @@ async def list_cities():
 @router.get("/products/{product_id}/city-prices", response_model=List[ProductCityPriceResponse])
 async def get_product_city_prices(
     product_id: str,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("city_demping")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Get all city prices for a product"""
@@ -2089,7 +2413,7 @@ async def get_product_city_prices(
 async def set_product_city_prices(
     product_id: str,
     request: ProductCityPricesRequest,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("city_demping")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Set city prices for a product. Can apply to all cities, specific ones, or auto from store points."""
@@ -2356,7 +2680,7 @@ async def update_product_city_price(
     product_id: str,
     city_id: str,
     update_data: ProductCityPriceUpdate,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("city_demping")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Update city price settings for a product"""
@@ -2440,7 +2764,7 @@ async def update_product_city_price(
 async def delete_product_city_price(
     product_id: str,
     city_id: str,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("city_demping")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Delete city price for a product"""
@@ -2487,7 +2811,7 @@ class RunCityDempingRequest(BaseModel):
 @router.post("/products/{product_id}/run-city-demping", response_model=MultiCityDempingResult)
 async def run_product_city_demping(
     product_id: str,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("city_demping")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     request: RunCityDempingRequest = Body(default=RunCityDempingRequest())
 ):
@@ -2783,54 +3107,91 @@ class OrderEventResponse(BaseModel):
 async def get_order_customer(
     store_id: str,
     order_code: str,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("orders_view")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ) -> OrderCustomerResponse:
     """
     Получить данные покупателя по коду заказа.
 
-    Парсит данные из Kaspi MC через GraphQL API.
-    Требуется активная сессия авторизации.
+    Приоритет:
+    1. REST API (если есть api_key) - возвращает РЕАЛЬНЫЙ телефон через Base64 декодирование customer.id
+    2. MC GraphQL (fallback) - возвращает маскированный телефон, требует активную сессию
     """
-    # Verify store belongs to user
+    # Verify store belongs to user and get api_key
     async with pool.acquire() as conn:
         store = await conn.fetchrow(
-            "SELECT id FROM kaspi_stores WHERE id = $1 AND user_id = $2",
+            "SELECT id, api_key, api_key_valid FROM kaspi_stores WHERE id = $1 AND user_id = $2",
             uuid.UUID(store_id), current_user['id']
         )
         if not store:
             raise HTTPException(status_code=404, detail="Store not found")
 
-    try:
-        mc_service = get_kaspi_mc_service()
-        customer_data = await mc_service.get_order_customer_phone(
-            user_id=str(current_user['id']),
-            store_id=store_id,
-            order_code=order_code,
-            pool=pool,
-        )
+    api_key = store.get('api_key')
+    api_key_valid = store.get('api_key_valid', True)
+    customer_data = None
 
-        if not customer_data:
-            raise HTTPException(status_code=404, detail="Order not found")
+    # PRIORITY 1: REST API (real phone via Base64 decoding of customer.id)
+    if api_key and api_key_valid:
+        try:
+            from ..services.kaspi_orders_api import get_kaspi_orders_api, KaspiTokenInvalidError
 
-        return OrderCustomerResponse(
-            phone=customer_data.get('phone'),
-            first_name=customer_data.get('first_name'),
-            last_name=customer_data.get('last_name'),
-            full_name=customer_data.get('full_name'),
-            order_state=customer_data.get('order_state'),
-            order_total=customer_data.get('order_total'),
-            items=customer_data.get('items', []),
-        )
+            orders_api = get_kaspi_orders_api()
+            customer_data = await orders_api.get_customer_phone(
+                api_token=api_key,
+                order_code=order_code,
+                pool=pool,
+            )
 
-    except KaspiMCError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+            if customer_data:
+                logger.info(f"Got customer phone via REST API for order {order_code}")
+
+        except KaspiTokenInvalidError:
+            # Token is invalid - mark it and fallback to GraphQL
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    "UPDATE kaspi_stores SET api_key_valid = FALSE WHERE id = $1",
+                    uuid.UUID(store_id)
+                )
+            logger.warning(f"API token invalid for store {store_id}, falling back to GraphQL")
+
+        except Exception as e:
+            logger.error(f"Error getting phone via REST API: {e}")
+
+    # PRIORITY 2: MC GraphQL (fallback - masked phone)
+    if not customer_data:
+        try:
+            mc_service = get_kaspi_mc_service()
+            customer_data = await mc_service.get_order_customer_phone(
+                user_id=str(current_user['id']),
+                store_id=store_id,
+                order_code=order_code,
+                pool=pool,
+            )
+
+            if customer_data:
+                logger.info(f"Got customer phone via MC GraphQL for order {order_code} (phone may be masked)")
+
+        except KaspiMCError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    if not customer_data:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    return OrderCustomerResponse(
+        phone=customer_data.get('phone'),
+        first_name=customer_data.get('first_name'),
+        last_name=customer_data.get('last_name'),
+        full_name=customer_data.get('full_name'),
+        order_state=customer_data.get('order_state'),
+        order_total=customer_data.get('order_total'),
+        items=customer_data.get('items', []),
+    )
 
 
 @router.post("/orders/event")
 async def process_order_event(
     request: OrderEventRequest,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("orders_view")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ) -> OrderEventResponse:
     """
@@ -2881,7 +3242,7 @@ async def process_order_event(
 @router.get("/orders/{store_id}/recent")
 async def get_recent_orders(
     store_id: str,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("orders_view")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     limit: int = 50,
     state: Optional[str] = None,
@@ -2945,7 +3306,7 @@ class OrdersPollingStatus(BaseModel):
 @router.get("/stores/{store_id}/orders-polling", response_model=OrdersPollingStatus)
 async def get_orders_polling_status(
     store_id: str,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("orders_view")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Получить статус мониторинга заказов для магазина"""
@@ -2971,7 +3332,7 @@ async def get_orders_polling_status(
 async def toggle_orders_polling(
     store_id: str,
     data: OrdersPollingToggle,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("orders_view")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Включить/выключить мониторинг заказов для магазина"""
@@ -2999,7 +3360,7 @@ async def toggle_orders_polling(
 @router.post("/products/{product_id}/test-preorder")
 async def test_preorder(
     product_id: str,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("demping")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """

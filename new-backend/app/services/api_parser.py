@@ -12,6 +12,7 @@ All functions use async patterns with httpx.AsyncClient and BrowserFarmSharded.
 """
 
 import asyncio
+import base64
 import json
 import logging
 import random
@@ -45,6 +46,48 @@ from .notification_service import create_notification, NotificationType, get_use
 from .order_event_processor import process_new_kaspi_order
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# Phone Number Utilities
+# ============================================================================
+
+def decode_customer_id_to_phone(customer_id_base64: str) -> Optional[str]:
+    """
+    Decode Kaspi customer.id (Base64) to get real phone number.
+
+    Args:
+        customer_id_base64: Base64-encoded customer ID (e.g., "NzAyMzU2NTA3Nw")
+
+    Returns:
+        Formatted phone with +7 prefix (e.g., "+77023565077") or None if decode fails
+
+    Example:
+        >>> decode_customer_id_to_phone("NzAyMzU2NTA3Nw")
+        "+77023565077"
+    """
+    if not customer_id_base64:
+        return None
+
+    try:
+        phone_digits = base64.b64decode(customer_id_base64).decode('utf-8')
+
+        # Валидация: только цифры
+        if not phone_digits.isdigit():
+            logger.warning(f"Decoded customer.id is not digits: {phone_digits}")
+            return None
+
+        # Форматирование
+        if len(phone_digits) == 10:
+            return f"+7{phone_digits}"
+        elif len(phone_digits) == 11 and phone_digits.startswith('7'):
+            return f"+{phone_digits}"
+        else:
+            return f"+7{phone_digits}"
+
+    except Exception as e:
+        logger.warning(f"Failed to decode customer.id '{customer_id_base64}': {e}")
+        return None
 
 
 # ============================================================================
@@ -1081,6 +1124,11 @@ async def parse_order_details(order_data: dict) -> dict:
 
     # Parse customer info
     customer = attributes.get("customer", {})
+    customer_phone = customer.get("cellPhone", "")
+
+    # Debug logging for phone numbers
+    if customer_phone:
+        logger.debug(f"Order {attributes.get('code')}: customer_phone = {customer_phone}")
 
     return {
         "kaspi_order_id": order_data.get("id", ""),
@@ -1089,7 +1137,7 @@ async def parse_order_details(order_data: dict) -> dict:
         "total_price": int(attributes.get("totalPrice", 0)),
         "delivery_cost": int(attributes.get("deliveryCost", 0)),
         "customer_name": f"{customer.get('firstName', '')} {customer.get('lastName', '')}".strip(),
-        "customer_phone": customer.get("cellPhone", ""),
+        "customer_phone": customer_phone,
         "delivery_address": attributes.get("deliveryAddress", {}).get("formattedAddress", ""),
         "delivery_mode": attributes.get("deliveryMode", ""),
         "payment_mode": attributes.get("paymentMode", ""),
@@ -1164,6 +1212,13 @@ async def sync_orders_to_db(
                     # Parse order details
                     parsed = await parse_order_details(order)
 
+                    # Get old status for change detection
+                    old_status = await conn.fetchval(
+                        "SELECT status FROM orders WHERE store_id = $1 AND kaspi_order_id = $2",
+                        uuid_module.UUID(store_id),
+                        parsed["kaspi_order_id"]
+                    )
+
                     # Upsert order
                     result = await conn.fetchrow(
                         """
@@ -1234,6 +1289,34 @@ async def sync_orders_to_db(
                             logger.warning(f"Failed to send order notification: {notif_err}")
                     else:
                         updated += 1
+
+                        # Проверяем изменение статуса на COMPLETED
+                        status_changed_to_completed = (
+                            old_status and
+                            old_status != parsed["status"] and
+                            parsed["status"] == "COMPLETED"
+                        )
+
+                        if status_changed_to_completed:
+                            logger.info(f"Order {parsed['kaspi_order_code']} status: {old_status} → COMPLETED")
+
+                            try:
+                                owner = await conn.fetchrow(
+                                    "SELECT user_id FROM kaspi_stores WHERE id = $1",
+                                    uuid_module.UUID(store_id)
+                                )
+                                if owner:
+                                    from .whatsapp_automation_service import process_order_completed
+                                    await process_order_completed(
+                                        user_id=str(owner["user_id"]),
+                                        store_id=store_id,
+                                        order_id=str(order_id),
+                                        order_code=parsed["kaspi_order_code"],
+                                        pool=pool,
+                                    )
+                                    logger.info(f"WhatsApp automation completed for order {parsed['kaspi_order_code']}")
+                            except Exception as e:
+                                logger.error(f"Failed to process completed order {parsed['kaspi_order_code']}: {e}")
 
                     # Accumulate customer contact (only for new orders with real phone)
                     if user_id and result["inserted"] and _is_valid_phone(parsed["customer_phone"]):

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { useT } from "@/lib/i18n"
 import { SubscriptionGate } from "@/components/shared/subscription-gate"
+import { FeatureGate } from "@/components/shared/feature-gate"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -288,6 +289,7 @@ export default function UnitEconomicsPage() {
 
   return (
     <SubscriptionGate>
+      <FeatureGate feature="unit_economics">
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -966,6 +968,7 @@ export default function UnitEconomicsPage() {
         </DialogContent>
       </Dialog>
     </div>
+      </FeatureGate>
     </SubscriptionGate>
   )
 }

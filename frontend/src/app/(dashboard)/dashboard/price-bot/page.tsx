@@ -4,6 +4,7 @@ import { useState } from "react"
 import { useStore } from "@/store/use-store"
 import { useT } from "@/lib/i18n"
 import { SubscriptionGate } from "@/components/shared/subscription-gate"
+import { FeatureGate } from "@/components/shared/feature-gate"
 import { useProducts, useDempingSettings, useUpdateProduct, useUpdateDempingSettings, useSyncProducts, useSyncPrices, useBulkUpdateProducts } from "@/hooks/api/use-products"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -320,6 +321,7 @@ export default function PriceBotPage() {
 
   return (
     <SubscriptionGate>
+      <FeatureGate feature="demping">
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -842,6 +844,7 @@ export default function PriceBotPage() {
         onOpenChange={(open) => !open && setSelectedProductId(null)}
       />
     </div>
+      </FeatureGate>
     </SubscriptionGate>
   )
 }

@@ -353,6 +353,99 @@ class AISalesmanService:
             logger.error("Failed to generate review request: %s", str(e))
             return self._get_fallback_message(context, SalesmanTrigger.REVIEW_REQUEST)
 
+    async def generate_search_keywords(
+        self,
+        order_items: List[Dict[str, Any]],
+        customer_message: str,
+    ) -> List[str]:
+        """
+        Генерировать keywords для поиска товаров через Gemini.
+
+        Args:
+            order_items: Товары из заказа
+            customer_message: Сообщение клиента
+
+        Returns:
+            Список keywords: ["чехол", "зарядка", "наушники", ...]
+        """
+        items_text = ", ".join([item.get('name', '') for item in order_items[:5]])
+
+        system_prompt = """Ты эксперт по извлечению ключевых слов для поиска товаров.
+
+Правила:
+1. Только существительные в именительном падеже
+2. Русский язык
+3. Одно слово или устойчивое словосочетание (макс 2 слова)
+4. Связанные товары/аксессуары
+5. БЕЗ повторений
+
+Формат: только список слов через запятую
+Пример: чехол, зарядка, наушники"""
+
+        user_prompt = f"""Клиент купил: {items_text}
+Ответ: "{customer_message}"
+
+Ключевые слова для поиска дополнительных товаров:"""
+
+        try:
+            model = self._get_model(system_prompt)
+            response = await model.generate_content_async(
+                user_prompt,
+                generation_config=genai.GenerationConfig(max_output_tokens=100, temperature=0.5)
+            )
+
+            keywords = [kw.strip().lower() for kw in response.text.split(',') if kw.strip()]
+            return keywords[:10]
+
+        except Exception as e:
+            logger.error(f"Keywords generation failed: {e}")
+            # Fallback: первое слово из товаров
+            return [item['name'].split()[0].lower() for item in order_items[:5] if item.get('name')]
+
+    async def search_products_by_keywords(
+        self,
+        store_id: UUID,
+        keywords: List[str],
+        pool: asyncpg.Pool,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        """
+        Поиск товаров по keywords через SQL ILIKE.
+
+        Args:
+            store_id: ID магазина
+            keywords: Список ключевых слов
+            pool: Пул БД
+            limit: Максимум товаров
+
+        Returns:
+            Список товаров с полями: id, name, kaspi_sku, price, category
+        """
+        if not keywords:
+            return []
+
+        async with pool.acquire() as conn:
+            # Строим OR условия для ILIKE
+            conditions = []
+            params = [store_id]
+            for idx, keyword in enumerate(keywords, start=2):
+                conditions.append(f"p.name ILIKE ${idx}")
+                params.append(f"%{keyword}%")
+
+            where_clause = " OR ".join(conditions) if conditions else "FALSE"
+
+            query = f"""
+                SELECT p.id, p.name, p.kaspi_sku, p.price, p.category
+                FROM products p
+                WHERE p.store_id = $1 AND p.bot_active = TRUE
+                  AND ({where_clause})
+                ORDER BY p.price DESC
+                LIMIT {limit}
+            """
+
+            rows = await conn.fetch(query, *params)
+            return [dict(row) for row in rows]
+
 
 async def process_order_for_upsell(
     order_id: UUID,
@@ -426,7 +519,7 @@ async def process_order_for_upsell(
         catalog = await conn.fetch("""
             SELECT p.id, p.name, p.kaspi_sku, p.price, p.category
             FROM products p
-            WHERE p.store_id = $1 AND p.is_active = TRUE
+            WHERE p.store_id = $1 AND p.bot_active = TRUE
             ORDER BY p.sales_count DESC NULLS LAST
             LIMIT 50
         """, order['store_id'])
@@ -498,7 +591,7 @@ async def process_order_for_upsell(
                 wa_session = await conn.fetchrow("""
                     SELECT session_name, status
                     FROM whatsapp_sessions
-                    WHERE user_id = $1 AND status = 'WORKING'
+                    WHERE user_id = $1 AND status IN ('connected', 'WORKING')
                 """, order['user_id'])
 
                 if wa_session:
@@ -597,7 +690,7 @@ async def handle_incoming_message(
         session = await conn.fetchrow("""
             SELECT ws.user_id, ws.session_name
             FROM whatsapp_sessions ws
-            WHERE ws.session_name = $1 AND ws.status = 'WORKING'
+            WHERE ws.session_name = $1 AND ws.status IN ('connected', 'WORKING')
         """, session_name)
 
         if not session:
@@ -651,6 +744,28 @@ async def handle_incoming_message(
             ORDER BY created_at DESC
             LIMIT 5
         """, store_id, from_number)
+
+        # 4.5. Проверить активную order_conversation (контекст заказа для допродажи)
+        conversation = await conn.fetchrow("""
+            SELECT oc.id, oc.order_data, oc.language
+            FROM order_conversations oc
+            WHERE oc.customer_phone = $1 AND oc.status = 'active'
+              AND oc.expires_at > NOW()
+            ORDER BY oc.created_at DESC
+            LIMIT 1
+        """, from_number)
+
+        if conversation:
+            logger.info(f"Active order conversation found for {from_number}")
+            return await _handle_order_conversation(
+                store_id=store_id,
+                store=store,
+                from_number=from_number,
+                message_text=message_text,
+                conversation=conversation,
+                session_name=session_name,
+                pool=pool,
+            )
 
         # 5. Загрузить каталог магазина (top товары)
         catalog = await conn.fetch("""
@@ -754,3 +869,147 @@ async def handle_incoming_message(
             logger.warning("Failed to save AI message to history: %s", e)
 
         return reply_text
+
+
+# ==================== ORDER CONVERSATION HANDLER (ДОПРОДАЖА) ====================
+
+
+async def _handle_order_conversation(
+    store_id: UUID,
+    store: dict,
+    from_number: str,
+    message_text: str,
+    conversation: dict,
+    session_name: str,
+    pool: asyncpg.Pool,
+) -> Optional[str]:
+    """
+    Обработка входящего сообщения в контексте завершенного заказа.
+
+    Флоу:
+    1. Генерируем keywords через Gemini
+    2. Ищем товары в БД по keywords
+    3. Gemini выбирает 1-2 лучших товара
+    4. Отправляем ответ с рекомендацией
+    """
+    import json
+
+    # Парсим order_data
+    order_data = json.loads(conversation['order_data']) if isinstance(conversation['order_data'], str) else conversation['order_data']
+
+    # 1. Генерируем keywords
+    salesman = get_ai_salesman()
+    keywords = await salesman.generate_search_keywords(
+        order_items=order_data.get('items', []),
+        customer_message=message_text,
+    )
+
+    logger.info(f"Generated keywords for order conversation: {keywords}")
+
+    # 2. Ищем товары
+    products = await salesman.search_products_by_keywords(
+        store_id=store_id,
+        keywords=keywords,
+        pool=pool,
+        limit=20,
+    )
+
+    # 3. ИИ выбирает лучшие и генерирует ответ
+    if not products:
+        reply_text = "Спасибо за отзыв! Если понадобится что-то — пишите, будем рады помочь."
+    else:
+        reply_text = await _generate_upsell_reply(
+            salesman, store, message_text, order_data, products
+        )
+
+    # 4. Отправляем
+    try:
+        from .waha_service import get_waha_service
+        waha = get_waha_service()
+        await waha.send_text(phone=from_number, text=reply_text, session=session_name)
+        logger.info(f"AI upsell reply sent to {from_number}")
+    except Exception as e:
+        logger.error(f"Failed to send upsell reply to {from_number}: {e}")
+        return None
+
+    # 5. Сохраняем в БД
+    async with pool.acquire() as conn:
+        try:
+            products_suggested = [p.get('kaspi_sku', '') for p in products[:2] if p.get('kaspi_sku')]
+            await conn.execute("""
+                INSERT INTO ai_salesman_messages
+                (store_id, customer_phone, trigger_type, message_text, products_suggested, sent_at)
+                VALUES ($1, $2, 'order_conversation', $3, $4, NOW())
+            """, store_id, from_number, reply_text, products_suggested)
+        except Exception as e:
+            logger.warning(f"Failed to save upsell message: {e}")
+
+    return reply_text
+
+
+async def _generate_upsell_reply(
+    salesman: AISalesmanService,
+    store: dict,
+    customer_message: str,
+    order_data: dict,
+    products: List[Dict[str, Any]],
+) -> str:
+    """
+    ИИ выбирает 1-2 товара из списка и генерирует ответ с рекомендацией.
+
+    Args:
+        salesman: Экземпляр AISalesmanService
+        store: Данные магазина
+        customer_message: Сообщение клиента
+        order_data: Данные заказа (items, total_price)
+        products: Найденные товары
+
+    Returns:
+        Текст ответа с рекомендацией
+    """
+    items_text = ", ".join([i['name'] for i in order_data.get('items', [])[:3]])
+    products_text = "\n".join([
+        f"{i+1}. {p['name']} — {p['price']}₸"
+        for i, p in enumerate(products[:20])
+    ])
+
+    system_prompt = """Ты ИИ-продажник магазина на Kaspi.kz. Клиент оставил отзыв о завершенном заказе.
+
+Задача:
+1. Поблагодари клиента за отзыв
+2. Если отзыв положительный — порадуйся вместе
+3. Если есть вопрос или проблема — помоги
+4. Ненавязчиво порекомендуй 1-2 товара из списка, которые РЕАЛЬНО подходят к его заказу
+5. Если ничего не подходит — НЕ предлагай товары вообще
+
+Правила:
+- Русский язык, на "вы"
+- 3-5 предложений максимум
+- Не навязывай
+- Укажи название товара + цену
+- Объясни ПОЧЕМУ этот товар полезен (связь с заказом)"""
+
+    user_prompt = f"""Клиент купил: {items_text}
+
+Отзыв клиента: "{customer_message}"
+
+Доступные товары для рекомендации:
+{products_text}
+
+Твой ответ:"""
+
+    try:
+        model = salesman._get_model(system_prompt)
+        response = await model.generate_content_async(
+            user_prompt,
+            generation_config=genai.GenerationConfig(max_output_tokens=500, temperature=0.7)
+        )
+        return response.text.strip()
+    except Exception as e:
+        logger.error(f"Gemini upsell failed: {e}")
+        # Fallback
+        if products:
+            prod = products[0]
+            return f"Спасибо за отзыв! Кстати, у нас есть {prod['name']} за {prod['price']}₸, отлично дополнит ваш заказ."
+        else:
+            return "Спасибо за отзыв! Если понадобится что-то еще — пишите!"

@@ -132,6 +132,10 @@ export function getNotificationMeta(type: string): {
     case 'preorder_failed':
       return { icon: 'AlertTriangle', color: 'text-orange-500', bgColor: 'bg-orange-500/10' }
 
+    // WhatsApp
+    case 'whatsapp_template_failed':
+      return { icon: 'MessageSquareOff', color: 'text-red-500', bgColor: 'bg-red-500/10' }
+
     // System
     case 'system_subscription_expiring':
       return { icon: 'Clock', color: 'text-yellow-500', bgColor: 'bg-yellow-500/10' }

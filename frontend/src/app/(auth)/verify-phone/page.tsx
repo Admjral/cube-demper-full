@@ -117,9 +117,9 @@ export default function VerifyPhonePage() {
     setResending(false)
   }
 
-  // Mask phone: 77001234567 -> +7 *** *** 45 67
+  // Mask phone: 77001234567 -> +7 (***) ***-**-67
   const maskedPhone = user?.phone
-    ? `+${user.phone.slice(0, 1)} *** *** ${user.phone.slice(-4, -2)} ${user.phone.slice(-2)}`
+    ? `+7 (***) ***-**-${user.phone.slice(-2)}`
     : ''
 
   if (authLoading) {

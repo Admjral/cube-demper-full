@@ -186,6 +186,67 @@ class KaspiOrdersAPI:
             logger.error(f"Network error fetching order {order_id}: {e}")
             return None
 
+    async def fetch_order_by_code(
+        self,
+        api_token: str,
+        order_code: str,
+    ) -> Optional[dict]:
+        """
+        Fetch order directly by order code using filter query.
+
+        More efficient than fetch_orders() + loop search.
+        Uses: GET /orders?filter[orders][code]={code}
+
+        Args:
+            api_token: X-Auth-Token
+            order_code: Kaspi order code (e.g. "823418267")
+
+        Returns:
+            Order data dict (JSON:API format) or None
+
+        Raises:
+            KaspiTokenInvalidError: If token is invalid/expired
+            KaspiOrdersAPIError: If API call fails
+        """
+        headers = self._get_headers(api_token)
+        params = {"filter[orders][code]": order_code}
+
+        try:
+            async with httpx.AsyncClient(**self._get_client_kwargs()) as client:
+                # Rate limiting: 6 RPS for Orders API
+                await get_orders_rate_limiter().acquire()
+
+                response = await client.get(
+                    self.BASE_URL,
+                    headers=headers,
+                    params=params,
+                )
+
+                if response.status_code in (401, 403):
+                    raise KaspiTokenInvalidError(
+                        f"API token invalid or expired (HTTP {response.status_code})"
+                    )
+
+                if response.status_code != 200:
+                    error_body = response.text[:500] if response.text else "No response body"
+                    logger.warning(
+                        f"Kaspi REST API error searching order {order_code}: {response.status_code}, "
+                        f"body: {error_body}"
+                    )
+                    raise KaspiOrdersAPIError(f"HTTP {response.status_code}")
+
+                data = response.json()
+                orders = data.get("data", [])
+
+                return orders[0] if orders else None
+
+        except httpx.TimeoutException:
+            logger.warning(f"Timeout searching order {order_code} (geo-restricted?)")
+            raise KaspiOrdersAPIError("Request timeout — API may be geo-restricted to KZ")
+        except httpx.RequestError as e:
+            logger.error(f"Network error searching order {order_code}: {e}")
+            raise KaspiOrdersAPIError(f"Network error: {e}")
+
     async def get_customer_phone(
         self,
         api_token: str,
@@ -219,29 +280,26 @@ class KaspiOrdersAPI:
             """, order_code)
 
         order_id = row['kaspi_order_id'] if row else None
+        order_data = None
 
+        # Try to fetch order directly by code (more efficient)
         if not order_id:
-            # Try fetching orders list to find the order
             logger.debug(f"Order {order_code} not in DB, searching via API")
-            now = datetime.utcnow()
-            orders = await self.fetch_orders(
-                api_token=api_token,
-                date_from=now - timedelta(days=14),
-                date_to=now,
-                states=["APPROVED", "ACCEPTED_BY_MERCHANT", "DELIVERY", "DELIVERED", "COMPLETED"],
-                size=100,
-            )
-            for order in orders:
-                if order.get("attributes", {}).get("code") == order_code:
-                    order_id = order.get("id")
-                    break
+            try:
+                order_data = await self.fetch_order_by_code(api_token, order_code)
+                if order_data:
+                    order_id = order_data.get("id")
+                    logger.debug(f"Found order {order_code} via direct search, ID: {order_id}")
+            except KaspiOrdersAPIError as e:
+                logger.warning(f"Error searching order {order_code}: {e}")
 
-        if not order_id:
-            logger.warning(f"Could not find order_id for code {order_code}")
+        if not order_id and not order_data:
+            logger.warning(f"Could not find order {order_code}")
             return None
 
-        # Fetch order detail with real phone
-        order_data = await self.fetch_order_detail(api_token, order_id)
+        # Fetch order detail if we don't have it yet
+        if not order_data:
+            order_data = await self.fetch_order_detail(api_token, order_id)
         if not order_data:
             return None
 
@@ -250,21 +308,39 @@ class KaspiOrdersAPI:
         customer = attributes.get("customer", {})
         delivery = attributes.get("deliveryAddress", {}) or {}
 
-        raw_phone = customer.get("cellPhone", "")
-        if not raw_phone:
-            return None
+        # PRIORITY 1: Decode customer.id (Base64) to get real phone
+        # Local import to avoid circular dependency
+        from .api_parser import decode_customer_id_to_phone
 
-        # Format phone: cellPhone comes as "77XXXXXXXXX" (11 digits)
-        digits = "".join(filter(str.isdigit, str(raw_phone)))
-        if len(digits) == 11 and digits.startswith('7'):
-            formatted_phone = f"+{digits}"
-        elif len(digits) == 10:
-            formatted_phone = f"+7{digits}"
+        customer_id_base64 = customer.get("id")
+        formatted_phone = decode_customer_id_to_phone(customer_id_base64)
+
+        if formatted_phone:
+            logger.info(f"Successfully decoded phone from customer.id for order {order_code}: {formatted_phone}")
+            # Extract digits for phone_raw (10 digits without country code)
+            # formatted_phone is like "+77023565077" or "+7023565077"
+            digits = "".join(filter(str.isdigit, formatted_phone))
+            if len(digits) == 11 and digits.startswith('7'):
+                digits = digits[1:]  # "77023565077" → "7023565077" (remove country code)
+            # else: digits is already 10 digits
         else:
-            formatted_phone = f"+7{digits}" if digits else None
+            # PRIORITY 2: Fallback to cellPhone (may be masked +0(000)-000-00-00)
+            logger.debug(f"customer.id not available or decode failed, using cellPhone for order {order_code}")
+            raw_phone = customer.get("cellPhone", "")
+            if not raw_phone:
+                return None
 
-        if not formatted_phone:
-            return None
+            # Format phone: cellPhone comes as "77XXXXXXXXX" (11 digits) or may be masked
+            digits = "".join(filter(str.isdigit, str(raw_phone)))
+            if len(digits) == 11 and digits.startswith('7'):
+                formatted_phone = f"+{digits}"
+            elif len(digits) == 10:
+                formatted_phone = f"+7{digits}"
+            else:
+                formatted_phone = f"+7{digits}" if digits else None
+
+            if not formatted_phone:
+                return None
 
         # Build address
         address_parts = []

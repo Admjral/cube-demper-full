@@ -150,6 +150,11 @@ class GenerateDocumentResponse(BaseModel):
     created_at: datetime
 
 
+class UpdateDocumentRequest(BaseModel):
+    """Request to update document content"""
+    content: str = Field(..., min_length=1, max_length=100000)
+
+
 class DocumentHistoryItem(BaseModel):
     """Item in document history"""
     id: str

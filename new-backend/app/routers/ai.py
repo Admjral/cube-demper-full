@@ -81,7 +81,7 @@ class BulkProcessRequest(BaseModel):
 @router.post("/chat", response_model=AIChatResponse)
 async def chat_with_assistant(
     chat_request: AIChatRequest,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("ai_lawyer")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """
@@ -391,7 +391,7 @@ async def process_orders_bulk(
 
 @router.get("/salesman/history")
 async def get_salesman_history(
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("ai_salesman")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     limit: int = 50,
 ):
@@ -464,7 +464,7 @@ class UpdateAISalesmanSettingsRequest(BaseModel):
 
 @router.get("/salesman/settings", response_model=List[AISalesmanSettingsResponse])
 async def get_salesman_settings(
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("ai_salesman")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
 ):
     """
@@ -499,7 +499,7 @@ async def get_salesman_settings(
 async def update_salesman_settings(
     store_id: str,
     request: UpdateAISalesmanSettingsRequest,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("ai_salesman")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
 ):
     """
@@ -586,7 +586,7 @@ async def update_salesman_settings(
 
 @router.get("/salesman/stats")
 async def get_salesman_stats(
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("ai_salesman")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     days: int = 7,
 ):

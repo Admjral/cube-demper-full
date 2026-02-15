@@ -1,6 +1,7 @@
 """AI Lawyer router - legal consultations, document generation, calculators"""
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query, Form
+from fastapi.responses import StreamingResponse
 from typing import Annotated, List, Optional
 import asyncpg
 import logging
@@ -13,6 +14,7 @@ from ..schemas.lawyer import (
     LawyerChatRequest, LawyerChatResponse,
     SetLanguageRequest, LawyerLanguage,
     GenerateDocumentRequest, GenerateDocumentResponse, DocumentHistoryItem,
+    UpdateDocumentRequest,
     AnalyzeContractResponse, ContractRisk, RiskLevel,
     CalculatePenaltyRequest, CalculatePenaltyResponse,
     CalculateTaxRequest, CalculateTaxResponse, TaxCalculationItem,
@@ -20,7 +22,7 @@ from ..schemas.lawyer import (
     ChatFeedbackRequest
 )
 from ..core.database import get_db_pool
-from ..dependencies import get_current_user
+from ..dependencies import get_current_user, require_feature
 from ..services.ai_lawyer_service import get_ai_lawyer
 
 router = APIRouter()
@@ -32,7 +34,7 @@ logger = logging.getLogger(__name__)
 @router.post("/set-language", status_code=status.HTTP_200_OK)
 async def set_language(
     request: SetLanguageRequest,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("ai_lawyer")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Set preferred language for AI Lawyer"""
@@ -47,7 +49,7 @@ async def set_language(
 
 @router.get("/language")
 async def get_language(
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("ai_lawyer")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Get current language preference"""
@@ -65,7 +67,7 @@ async def get_language(
 @router.post("/chat", response_model=LawyerChatResponse)
 async def chat_with_lawyer(
     request: LawyerChatRequest,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("ai_lawyer")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """
@@ -115,7 +117,7 @@ async def chat_with_lawyer(
 
 @router.get("/chat/history")
 async def get_chat_history(
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("ai_lawyer")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     limit: int = 50
 ):
@@ -144,7 +146,7 @@ async def get_chat_history(
 
 @router.delete("/chat/history", status_code=status.HTTP_204_NO_CONTENT)
 async def clear_chat_history(
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("ai_lawyer")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Clear chat history with AI Lawyer"""
@@ -158,7 +160,7 @@ async def clear_chat_history(
 @router.post("/chat/feedback", status_code=status.HTTP_201_CREATED)
 async def submit_feedback(
     request: ChatFeedbackRequest,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("ai_lawyer")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Submit feedback on AI Lawyer response"""
@@ -207,7 +209,7 @@ async def submit_feedback(
 @router.post("/generate-document", response_model=GenerateDocumentResponse)
 async def generate_document(
     request: GenerateDocumentRequest,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("ai_lawyer")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """
@@ -259,7 +261,7 @@ async def generate_document(
 
 @router.get("/documents")
 async def get_document_history(
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("ai_lawyer")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     limit: int = 20
 ):
@@ -289,7 +291,7 @@ async def get_document_history(
 @router.get("/documents/{document_id}")
 async def get_document(
     document_id: str,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("ai_lawyer")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Get a specific generated document"""
@@ -328,65 +330,143 @@ async def get_document(
     }
 
 
+@router.get("/documents/{document_id}/pdf")
+async def download_document_pdf(
+    document_id: str,
+    current_user: Annotated[dict, require_feature("ai_lawyer")],
+    pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
+):
+    """Download document as PDF (generated on-the-fly, not stored)"""
+    try:
+        doc_uuid = UUID(document_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid document_id format"
+        )
+
+    async with pool.acquire() as conn:
+        doc = await conn.fetchrow("""
+            SELECT title, content FROM lawyer_documents
+            WHERE id = $1 AND user_id = $2
+        """, doc_uuid, current_user['id'])
+
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found"
+        )
+
+    lawyer = get_ai_lawyer()
+    try:
+        pdf_bytes = lawyer.generate_pdf(content=doc['content'], title=doc['title'])
+    except Exception as e:
+        logger.error(f"PDF generation error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate PDF"
+        )
+
+    from urllib.parse import quote
+    safe_title = doc['title'].replace('"', '').replace("'", "")
+    encoded_title = quote(safe_title, safe='')
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"attachment; filename=\"document.pdf\"; filename*=UTF-8''{encoded_title}.pdf"
+        }
+    )
+
+
+@router.patch("/documents/{document_id}")
+async def update_document(
+    document_id: str,
+    request: UpdateDocumentRequest,
+    current_user: Annotated[dict, require_feature("ai_lawyer")],
+    pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
+):
+    """Update document content (for editing in UI)"""
+    try:
+        doc_uuid = UUID(document_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid document_id format"
+        )
+
+    async with pool.acquire() as conn:
+        result = await conn.execute("""
+            UPDATE lawyer_documents SET content = $1
+            WHERE id = $2 AND user_id = $3
+        """, request.content, doc_uuid, current_user['id'])
+
+    if result == "UPDATE 0":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found"
+        )
+
+    return {"message": "Document updated", "id": document_id}
+
+
 # ==================== CONTRACT ANALYSIS ====================
 
-@router.post("/analyze-contract", response_model=AnalyzeContractResponse)
-async def analyze_contract(
-    current_user: Annotated[dict, Depends(get_current_user)],
-    pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
-    file: UploadFile = File(...),
-    language: LawyerLanguage = LawyerLanguage.RUSSIAN
-):
-    """
-    Analyze a contract for risks and key conditions.
-    
-    Supports: PDF, DOCX, TXT files up to 10MB.
-    """
-    # Validate file size (10MB max)
-    MAX_SIZE = 10 * 1024 * 1024
-    content = await file.read()
-    if len(content) > MAX_SIZE:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="File too large. Maximum size is 10MB."
-        )
-    
-    # Extract text based on file type
-    filename = file.filename.lower() if file.filename else ""
-    
-    if filename.endswith('.txt'):
-        contract_text = content.decode('utf-8', errors='ignore')
-    elif filename.endswith('.pdf'):
-        # TODO: Add PDF extraction with pypdf or pdfplumber
-        contract_text = content.decode('utf-8', errors='ignore')
+def _extract_text_from_file(content: bytes, filename: str) -> str:
+    """Extract text from uploaded file (PDF, DOCX, TXT)."""
+    filename = filename.lower()
+
+    if filename.endswith('.pdf'):
+        try:
+            from pypdf import PdfReader
+            reader = PdfReader(io.BytesIO(content))
+            pages = [page.extract_text() or '' for page in reader.pages]
+            return '\n'.join(pages)
+        except Exception as e:
+            logger.error(f"PDF extraction error: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to extract text from PDF"
+            )
     elif filename.endswith('.docx'):
-        # TODO: Add DOCX extraction with python-docx
-        contract_text = content.decode('utf-8', errors='ignore')
+        try:
+            from docx import Document
+            doc = Document(io.BytesIO(content))
+            paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+            return '\n'.join(paragraphs)
+        except Exception as e:
+            logger.error(f"DOCX extraction error: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to extract text from DOCX"
+            )
     else:
-        # Try to decode as text
-        contract_text = content.decode('utf-8', errors='ignore')
-    
+        return content.decode('utf-8', errors='ignore')
+
+
+async def _run_contract_analysis(contract_text: str, language: LawyerLanguage) -> AnalyzeContractResponse:
+    """Common logic for contract analysis (used by both file and text endpoints)."""
     if len(contract_text.strip()) < 100:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Could not extract text from file or file is too short"
+            detail="Text is too short for analysis (minimum 100 characters)"
         )
-    
+
     lawyer = get_ai_lawyer()
-    
+
     try:
         analysis = await lawyer.analyze_contract(contract_text, language)
-        
+
         return AnalyzeContractResponse(
             summary=analysis.get('summary', ''),
             key_conditions=analysis.get('key_conditions', []),
             risks=[
                 ContractRisk(
-                    level=RiskLevel(r['level']),
-                    title=r['title'],
-                    description=r['description'],
+                    level=RiskLevel(r.get('level', 'medium')),
+                    title=r.get('title', ''),
+                    description=r.get('description', ''),
                     clause=r.get('clause'),
-                    recommendation=r['recommendation']
+                    recommendation=r.get('recommendation', '')
                 )
                 for r in analysis.get('risks', [])
             ],
@@ -394,7 +474,6 @@ async def analyze_contract(
             overall_risk_level=RiskLevel(analysis.get('overall_risk_level', 'medium')),
             language=language
         )
-        
     except Exception as e:
         logger.error(f"Contract analysis error: {e}", exc_info=True)
         raise HTTPException(
@@ -403,12 +482,45 @@ async def analyze_contract(
         )
 
 
+@router.post("/analyze-contract", response_model=AnalyzeContractResponse)
+async def analyze_contract(
+    current_user: Annotated[dict, require_feature("ai_lawyer")],
+    pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
+    file: UploadFile = File(...),
+    language: LawyerLanguage = LawyerLanguage.RUSSIAN
+):
+    """Analyze a contract file for risks and key conditions. Supports PDF, DOCX, TXT up to 10MB."""
+    MAX_SIZE = 10 * 1024 * 1024
+    content = await file.read()
+    if len(content) > MAX_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="File too large. Maximum size is 10MB."
+        )
+
+    filename = file.filename or "unknown.txt"
+    contract_text = _extract_text_from_file(content, filename)
+
+    return await _run_contract_analysis(contract_text, language)
+
+
+@router.post("/analyze-contract-text", response_model=AnalyzeContractResponse)
+async def analyze_contract_text(
+    current_user: Annotated[dict, require_feature("ai_lawyer")],
+    pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
+    text: str = Form(...),
+    language: LawyerLanguage = LawyerLanguage.RUSSIAN
+):
+    """Analyze contract text directly (pasted by user)."""
+    return await _run_contract_analysis(text, language)
+
+
 # ==================== CALCULATORS ====================
 
 @router.post("/calculate-penalty", response_model=CalculatePenaltyResponse)
 async def calculate_penalty(
     request: CalculatePenaltyRequest,
-    current_user: Annotated[dict, Depends(get_current_user)]
+    current_user: Annotated[dict, require_feature("ai_lawyer")]
 ):
     """
     Calculate penalty/interest amount.
@@ -439,7 +551,7 @@ async def calculate_penalty(
 @router.post("/calculate-tax", response_model=CalculateTaxResponse)
 async def calculate_tax(
     request: CalculateTaxRequest,
-    current_user: Annotated[dict, Depends(get_current_user)]
+    current_user: Annotated[dict, require_feature("ai_lawyer")]
 ):
     """
     Calculate taxes for Kazakhstan.
@@ -475,7 +587,7 @@ async def calculate_tax(
 @router.post("/calculate-fee", response_model=CalculateFeeResponse)
 async def calculate_fee(
     request: CalculateFeeRequest,
-    current_user: Annotated[dict, Depends(get_current_user)]
+    current_user: Annotated[dict, require_feature("ai_lawyer")]
 ):
     """
     Calculate state fees.

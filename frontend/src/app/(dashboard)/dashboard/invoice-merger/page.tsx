@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react"
 import { useT } from "@/lib/i18n"
 import { SubscriptionGate } from "@/components/shared/subscription-gate"
+import { FeatureGate } from "@/components/shared/feature-gate"
 import { useProcessInvoices, LayoutType } from "@/hooks/api/use-invoices"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -160,6 +161,7 @@ export default function InvoiceMergerPage() {
 
   return (
     <SubscriptionGate>
+      <FeatureGate feature="invoice_glue">
     <div className="space-y-6">
       {/* Header */}
       <div>
@@ -379,6 +381,7 @@ export default function InvoiceMergerPage() {
         </CardContent>
       </Card>
     </div>
+      </FeatureGate>
     </SubscriptionGate>
   )
 }

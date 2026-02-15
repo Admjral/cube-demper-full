@@ -122,12 +122,12 @@ class Settings(BaseSettings):
     tiptoppay_api_secret: Optional[str] = None
     tiptoppay_webhook_secret: Optional[str] = None
 
-    # Subscription Plans (prices in tiyns)
-    plan_free_products_limit: int = 100
-    plan_basic_products_limit: int = 500
-    plan_pro_products_limit: int = 5000
-    plan_basic_price_tiyns: int = 999900  # 9999.00 KZT
-    plan_pro_price_tiyns: int = 2999900   # 29999.00 KZT
+    # Subscription Plans — legacy config (actual plans are in DB `plans` table)
+    plan_free_products_limit: int = 0
+    plan_basic_products_limit: int = 50     # demping_limit for basic plan
+    plan_pro_products_limit: int = 200      # demping_limit for premium plan
+    plan_basic_price_tiyns: int = 2199000   # 21990 KZT
+    plan_pro_price_tiyns: int = 3399000     # 33990 KZT
 
     # Logging
     log_level: str = "INFO"

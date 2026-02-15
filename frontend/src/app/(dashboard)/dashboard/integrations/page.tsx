@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import Image from "next/image"
 import { useT } from "@/lib/i18n"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -412,19 +413,23 @@ export default function IntegrationsPage() {
                     </Button>
                   </div>
 
-                  {/* How to get token - collapsible instructions */}
+                  {/* How to get token - visual instructions */}
                   <details className="text-xs">
                     <summary className="cursor-pointer text-muted-foreground hover:text-foreground flex items-center gap-1">
                       <ChevronDown className="h-3 w-3" />
                       {t("integrations.apiTokenHowTo")}
                     </summary>
-                    <ol className="mt-2 ml-4 space-y-1 text-muted-foreground list-decimal">
-                      <li>{t("integrations.apiTokenStep1")}</li>
-                      <li>{t("integrations.apiTokenStep2")}</li>
-                      <li>{t("integrations.apiTokenStep3")}</li>
-                      <li>{t("integrations.apiTokenStep4")}</li>
-                    </ol>
-                    <p className="mt-2 text-yellow-600 dark:text-yellow-500">
+                    <div className="mt-3 rounded-lg border bg-muted/30 p-3 overflow-hidden">
+                      <Image
+                        src="/instructions.png"
+                        alt="Инструкция по получению API токена Kaspi"
+                        width={800}
+                        height={600}
+                        className="w-full h-auto rounded-md"
+                        priority={false}
+                      />
+                    </div>
+                    <p className="mt-2 text-yellow-600 dark:text-yellow-500 font-medium">
                       {t("integrations.apiTokenExpiredWarning")}
                     </p>
                   </details>

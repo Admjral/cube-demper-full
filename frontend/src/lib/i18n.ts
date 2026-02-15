@@ -524,6 +524,28 @@ const translations: Record<Locale, Record<string, string>> = {
     "wa.dailyStats": "По дням",
     "wa.suggestedProducts": "Рекомендованные товары",
 
+    // === API Token Banner (Connection tab) ===
+    "wa.tokenConnected": "API токен Kaspi подключен",
+    "wa.tokenConnectedDesc": "Реальные номера телефонов клиентов доступны для авторассылки.",
+    "wa.tokenNotConnected": "API токен Kaspi не подключен",
+    "wa.tokenNotConnectedDesc": "Для работы авторассылки и AI Продажника необходим API токен Kaspi.",
+    "wa.connectToken": "Подключить токен",
+
+    // === AI Salesman Conditions Checklist ===
+    "wa.salesmanSetup": "Настройка AI Продажника",
+    "wa.salesmanSetupDesc": "Для работы AI Продажника необходимо выполнить все условия:",
+    "wa.condWhatsapp": "WhatsApp подключен",
+    "wa.condWhatsappNo": "WhatsApp не подключен",
+    "wa.condToken": "API токен Kaspi подключен",
+    "wa.condTokenNo": "API токен Kaspi не подключен",
+    "wa.condTemplate": "Шаблон \"Заказ оплачен\" активен",
+    "wa.condTemplateNo": "Нет активного шаблона \"Заказ оплачен\"",
+    "wa.condAiEnabled": "AI Продажник включен",
+    "wa.condAiEnabledNo": "AI Продажник выключен",
+    "wa.goToConnection": "Подключить",
+    "wa.goToIntegrations": "Настроить",
+    "wa.goToTemplates": "Создать шаблон",
+
     // === WhatsApp шаблоны (компоненты) ===
     "waTpl.editTemplate": "Редактировать шаблон",
     "waTpl.newTemplate": "Новый шаблон",
@@ -630,7 +652,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "dashboard.whatsappDesc": "Автоматизация сообщений",
     "dashboard.referral": "Реферальная программа",
     "dashboard.referralDesc": "Приглашай друзей и зарабатывай",
-    "dashboard.tryFree3Days": "Попробуйте бесплатно 3 дня",
+    "dashboard.tryFree3Days": "Попробуйте бесплатно 7 дней",
     "dashboard.tryFree3DaysDesc": "Получите доступ ко всем функциям тарифа Базовый",
     "dashboard.activate": "Активировать",
     "dashboard.trialError": "Не удалось активировать пробный период",
@@ -655,7 +677,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "billing.demping": "Демпинг",
     "billing.features": "Доступные функции:",
     "billing.freePlan": "Бесплатный план",
-    "billing.tryFree": "Попробуйте все функции бесплатно в течение 3 дней",
+    "billing.tryFree": "Попробуйте все функции бесплатно в течение 7 дней",
 
     // === Селектор магазина ===
     "storeSelector.select": "Выберите магазин",
@@ -682,7 +704,7 @@ const translations: Record<Locale, Record<string, string>> = {
     // === Бесплатный план ===
     "freePlan.locked": "Раздел недоступен",
     "freePlan.needPlan": "Для доступа к этому разделу необходим активный тарифный план",
-    "freePlan.tryFree": "Попробовать бесплатно 3 дня",
+    "freePlan.tryFree": "Попробовать бесплатно 7 дней",
     "freePlan.choosePlan": "Выбрать тариф",
     "freePlan.trialError": "Не удалось активировать пробный период",
 
@@ -1247,6 +1269,28 @@ const translations: Record<Locale, Record<string, string>> = {
     "wa.dailyStats": "Күн бойынша",
     "wa.suggestedProducts": "Ұсынылған тауарлар",
 
+    // === API Token Banner (Connection tab) ===
+    "wa.tokenConnected": "Kaspi API токені қосылған",
+    "wa.tokenConnectedDesc": "Клиенттердің нақты телефон нөмірлері авторассылка үшін қолжетімді.",
+    "wa.tokenNotConnected": "Kaspi API токені қосылмаған",
+    "wa.tokenNotConnectedDesc": "Авторассылка мен AI Сатушы жұмысы үшін Kaspi API токені қажет.",
+    "wa.connectToken": "Токенді қосу",
+
+    // === AI Salesman Conditions Checklist ===
+    "wa.salesmanSetup": "AI Сатушыны баптау",
+    "wa.salesmanSetupDesc": "AI Сатушы жұмысы үшін барлық шарттарды орындау қажет:",
+    "wa.condWhatsapp": "WhatsApp қосылған",
+    "wa.condWhatsappNo": "WhatsApp қосылмаған",
+    "wa.condToken": "Kaspi API токені қосылған",
+    "wa.condTokenNo": "Kaspi API токені қосылмаған",
+    "wa.condTemplate": "\"Тапсырыс төленді\" үлгісі белсенді",
+    "wa.condTemplateNo": "\"Тапсырыс төленді\" белсенді үлгісі жоқ",
+    "wa.condAiEnabled": "AI Сатушы қосулы",
+    "wa.condAiEnabledNo": "AI Сатушы өшірулі",
+    "wa.goToConnection": "Қосу",
+    "wa.goToIntegrations": "Баптау",
+    "wa.goToTemplates": "Үлгі жасау",
+
     // === WhatsApp үлгілер (компоненттер) ===
     "waTpl.editTemplate": "Үлгіні өңдеу",
     "waTpl.newTemplate": "Жаңа үлгі",
@@ -1353,7 +1397,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "dashboard.whatsappDesc": "Хабарламаларды автоматтандыру",
     "dashboard.referral": "Серіктестік бағдарлама",
     "dashboard.referralDesc": "Достарыңызды шақырыңыз, табыс табыңыз",
-    "dashboard.tryFree3Days": "3 күн тегін пайдаланып көріңіз",
+    "dashboard.tryFree3Days": "7 күн тегін пайдаланып көріңіз",
     "dashboard.tryFree3DaysDesc": "Базалық тарифтің барлық мүмкіндіктеріне қол жеткізіңіз",
     "dashboard.activate": "Белсендіру",
     "dashboard.trialError": "Сынақ мерзімін белсендіру сәтсіз аяқталды",
@@ -1378,7 +1422,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "billing.demping": "Демпинг",
     "billing.features": "Қолжетімді мүмкіндіктер:",
     "billing.freePlan": "Тегін жоспар",
-    "billing.tryFree": "Барлық мүмкіндіктерді 3 күн тегін пайдаланып көріңіз",
+    "billing.tryFree": "Барлық мүмкіндіктерді 7 күн тегін пайдаланып көріңіз",
 
     // === Дүкен таңдағыш ===
     "storeSelector.select": "Дүкенді таңдаңыз",
@@ -1405,7 +1449,7 @@ const translations: Record<Locale, Record<string, string>> = {
     // === Тегін жоспар ===
     "freePlan.locked": "Бөлім қолжетімсіз",
     "freePlan.needPlan": "Бұл бөлімге қол жеткізу үшін белсенді тариф жоспары қажет",
-    "freePlan.tryFree": "3 күн тегін пайдаланып көру",
+    "freePlan.tryFree": "7 күн тегін пайдаланып көру",
     "freePlan.choosePlan": "Тарифті таңдау",
     "freePlan.trialError": "Сынақ мерзімін белсендіру сәтсіз аяқталды",
 

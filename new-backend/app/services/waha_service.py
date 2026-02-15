@@ -375,6 +375,9 @@ class WahaService:
         """
         # Убираем все нецифровые символы (включая +)
         phone_clean = "".join(filter(str.isdigit, phone))
+        # Нормализация: 87... → 77... (WhatsApp не знает код 8, только +7)
+        if phone_clean.startswith("8") and len(phone_clean) == 11:
+            phone_clean = "7" + phone_clean[1:]
         return f"{phone_clean}@c.us"
 
     async def send_text(

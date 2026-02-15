@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { SubscriptionGate } from "@/components/shared/subscription-gate"
+import { FeatureGate } from "@/components/shared/feature-gate"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
@@ -97,6 +98,7 @@ export default function AILawyerPage() {
   if (activeTab) {
     return (
       <SubscriptionGate>
+      <FeatureGate feature="ai_lawyer">
       <div className={cn(
         "flex flex-col",
         // Chat and analysis need fixed height for scroll + sticky input
@@ -130,6 +132,7 @@ export default function AILawyerPage() {
           {activeTab === 'fees' && <FeeCalculator />}
         </Card>
       </div>
+      </FeatureGate>
       </SubscriptionGate>
     )
   }
@@ -137,6 +140,7 @@ export default function AILawyerPage() {
   // Main menu
   return (
     <SubscriptionGate>
+    <FeatureGate feature="ai_lawyer">
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -155,7 +159,7 @@ export default function AILawyerPage() {
       {/* Features Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {features.map((feature) => (
-          <Card 
+          <Card
             key={feature.id}
             className="glass-card cursor-pointer hover:shadow-lg transition-all hover:scale-[1.02]"
             onClick={() => setActiveTab(feature.id)}
@@ -202,6 +206,7 @@ export default function AILawyerPage() {
         Powered by Gemini AI. Не заменяет консультацию профессионального юриста.
       </p>
     </div>
+    </FeatureGate>
     </SubscriptionGate>
   )
 }

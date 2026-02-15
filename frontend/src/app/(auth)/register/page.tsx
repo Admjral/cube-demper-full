@@ -36,13 +36,50 @@ function RegisterForm() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Format phone as +7 (XXX) XXX-XX-XX
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target.value
+    // Extract only digits
+    let digits = input.replace(/\D/g, '')
+
+    // If user cleared everything, allow empty
+    if (digits.length === 0) {
+      setPhone('')
+      return
+    }
+
+    // Normalize: 87... → 77..., or just digits without country code → prepend 7
+    if (digits.startsWith('8') && digits.length > 1) {
+      digits = '7' + digits.slice(1)
+    } else if (!digits.startsWith('7')) {
+      digits = '7' + digits
+    }
+
+    // Limit to 11 digits (7 + 10 digits)
+    digits = digits.slice(0, 11)
+
+    // Format: +7 (XXX) XXX-XX-XX
+    let formatted = '+7'
+    const rest = digits.slice(1) // remove the "7" prefix
+    if (rest.length > 0) formatted += ' (' + rest.slice(0, 3)
+    if (rest.length >= 3) formatted += ') '
+    if (rest.length > 3) formatted += rest.slice(3, 6)
+    if (rest.length >= 6) formatted += '-'
+    if (rest.length > 6) formatted += rest.slice(6, 8)
+    if (rest.length >= 8) formatted += '-'
+    if (rest.length > 8) formatted += rest.slice(8, 10)
+
+    setPhone(formatted)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
 
-    // Validate phone
-    const phoneDigits = phone.replace(/\D/g, '')
-    if (phoneDigits.length < 10 || phoneDigits.length > 15) {
+    // Extract and normalize phone digits: always starts with 7
+    const rawDigits = phone.replace(/\D/g, '')
+    const phoneDigits = rawDigits.startsWith('8') ? '7' + rawDigits.slice(1) : rawDigits
+    if (phoneDigits.length !== 11 || !phoneDigits.startsWith('7')) {
       setError(t("auth.invalidPhone"))
       return
     }
@@ -149,9 +186,9 @@ function RegisterForm() {
             <Input
               id="phone"
               type="tel"
-              placeholder="+7XXXXXXXXXX"
+              placeholder="+7 (700) 123-45-67"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={handlePhoneChange}
               className="pl-10"
               required
               disabled={loading}

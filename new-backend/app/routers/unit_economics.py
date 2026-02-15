@@ -21,7 +21,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from ..config import settings
-from ..routers.auth import get_current_user
+from ..dependencies import require_feature
 from ..core.database import get_db_pool
 
 router = APIRouter()
@@ -365,7 +365,9 @@ def get_delivery_cost(delivery_type: str, price: float, weight_kg: float) -> flo
 # =============================================================================
 
 @router.get("/categories")
-async def get_categories():
+async def get_categories(
+    current_user: Annotated[dict, require_feature("unit_economics")]
+):
     """Get list of all categories with their commission rates"""
     result = []
     for cat in ALL_CATEGORIES:
@@ -381,6 +383,7 @@ async def get_categories():
 
 @router.get("/commission")
 async def get_commission(
+    current_user: Annotated[dict, require_feature("unit_economics")],
     category: str = Query(..., description="Category name"),
     subcategory: Optional[str] = Query(None, description="Subcategory name"),
     use_vat: bool = Query(False, description="Use VAT-included rate")
@@ -396,7 +399,9 @@ async def get_commission(
 
 
 @router.get("/delivery-tariffs")
-async def get_delivery_tariffs():
+async def get_delivery_tariffs(
+    current_user: Annotated[dict, require_feature("unit_economics")]
+):
     """Get all delivery tariff structures"""
     result = {}
     for key, value in DELIVERY_TARIFFS.items():
@@ -409,7 +414,9 @@ async def get_delivery_tariffs():
 
 
 @router.get("/tax-regimes")
-async def get_tax_regimes():
+async def get_tax_regimes(
+    current_user: Annotated[dict, require_feature("unit_economics")]
+):
     """Get all available tax regimes"""
     return TAX_REGIMES
 
@@ -419,7 +426,10 @@ VAT_RATE = 12.0  # НДС rate in Kazakhstan: 12%
 
 
 @router.post("/calculate", response_model=CalculationResult)
-async def calculate_unit_economics(request: CalculationRequest):
+async def calculate_unit_economics(
+    request: CalculationRequest,
+    current_user: Annotated[dict, require_feature("unit_economics")]
+):
     """
     Calculate full unit economics with all delivery scenarios
     """
@@ -539,8 +549,8 @@ def detect_category_from_text(text: str) -> tuple:
 
 @router.get("/parse-url", response_model=ProductParseResult)
 async def parse_kaspi_url(
+    current_user: Annotated[dict, require_feature("unit_economics")],
     url: str = Query(..., description="Kaspi product URL"),
-    current_user: dict = Depends(get_current_user),
 ):
     """
     Parse Kaspi product URL to extract product info and category
@@ -739,6 +749,7 @@ async def parse_kaspi_url(
 
 @router.get("/quick-calculate")
 async def quick_calculate(
+    current_user: Annotated[dict, require_feature("unit_economics")],
     selling_price: float = Query(..., gt=0, description="Selling price"),
     purchase_price: float = Query(..., ge=0, description="Purchase price"),
     category: str = Query("Автотовары", description="Category"),
@@ -761,7 +772,7 @@ async def quick_calculate(
         other_costs=0
     )
 
-    result = await calculate_unit_economics(request)
+    result = await calculate_unit_economics(request, current_user)
 
     return {
         "commission_rate": result.commission_effective_rate,
@@ -846,7 +857,7 @@ class SavedCalculationsList(BaseModel):
 @router.post("/saved", response_model=SavedCalculation)
 async def create_saved_calculation(
     request: SaveCalculationRequest,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("unit_economics")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Save a calculation to the library"""
@@ -864,7 +875,7 @@ async def create_saved_calculation(
         tax_regime=request.tax_regime,
         use_vat=request.use_vat
     )
-    result = await calculate_unit_economics(calc_request)
+    result = await calculate_unit_economics(calc_request, current_user)
 
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -934,7 +945,7 @@ async def create_saved_calculation(
 
 @router.get("/saved", response_model=SavedCalculationsList)
 async def list_saved_calculations(
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("unit_economics")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -1018,7 +1029,7 @@ async def list_saved_calculations(
 @router.get("/saved/{calculation_id}", response_model=SavedCalculation)
 async def get_saved_calculation(
     calculation_id: str,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("unit_economics")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Get a specific saved calculation"""
@@ -1065,7 +1076,7 @@ async def get_saved_calculation(
 async def update_saved_calculation(
     calculation_id: str,
     request: SaveCalculationRequest,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("unit_economics")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Update a saved calculation"""
@@ -1083,7 +1094,7 @@ async def update_saved_calculation(
         tax_regime=request.tax_regime,
         use_vat=request.use_vat
     )
-    result = await calculate_unit_economics(calc_request)
+    result = await calculate_unit_economics(calc_request, current_user)
 
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -1155,7 +1166,7 @@ async def update_saved_calculation(
 @router.patch("/saved/{calculation_id}/favorite")
 async def toggle_favorite(
     calculation_id: str,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("unit_economics")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Toggle favorite status"""
@@ -1182,7 +1193,7 @@ async def toggle_favorite(
 @router.delete("/saved/{calculation_id}")
 async def delete_saved_calculation(
     calculation_id: str,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("unit_economics")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Delete a saved calculation"""
@@ -1207,7 +1218,7 @@ async def delete_saved_calculation(
 
 @router.get("/saved/export/csv")
 async def export_to_csv(
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("unit_economics")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     favorites_only: bool = Query(False)
 ):
@@ -1284,7 +1295,7 @@ async def export_to_csv(
 
 @router.get("/saved/export/excel")
 async def export_to_excel(
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("unit_economics")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     favorites_only: bool = Query(False)
 ):

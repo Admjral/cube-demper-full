@@ -69,6 +69,7 @@ export default function AdminUsersPage() {
   const [subscriptionForm, setSubscriptionForm] = useState({
     planCode: '',
     days: 30,
+    bonusDays: 14,
     isTrial: false,
     notes: '',
     endsAt: '',
@@ -139,7 +140,7 @@ export default function AdminUsersPage() {
 
   const openSubscriptionDialog = (userId: string) => {
     setSelectedUserId(userId)
-    setSubscriptionForm({ planCode: '', days: 30, isTrial: false, notes: '', endsAt: '' })
+    setSubscriptionForm({ planCode: '', days: 30, bonusDays: 14, isTrial: false, notes: '', endsAt: '' })
     setAddonForm({ addonCode: '', quantity: 1, days: 30 })
     setShowSubscriptionDialog(true)
   }
@@ -150,13 +151,13 @@ export default function AdminUsersPage() {
       await assignSubscription.mutateAsync({
         userId: selectedUserId,
         planCode: subscriptionForm.planCode,
-        days: subscriptionForm.days,
+        days: subscriptionForm.days + (subscriptionForm.bonusDays || 0),
         isTrial: subscriptionForm.isTrial,
         notes: subscriptionForm.notes || undefined,
         endsAt: subscriptionForm.endsAt ? new Date(subscriptionForm.endsAt).toISOString() : undefined,
       })
-      toast.success('Подписка назначена')
-      setSubscriptionForm({ planCode: '', days: 30, isTrial: false, notes: '', endsAt: '' })
+      toast.success(`Подписка назначена (${subscriptionForm.days} + ${subscriptionForm.bonusDays || 0} бонус = ${subscriptionForm.days + (subscriptionForm.bonusDays || 0)} дней)`)
+      setSubscriptionForm({ planCode: '', days: 30, bonusDays: 14, isTrial: false, notes: '', endsAt: '' })
     } catch {
       toast.error('Ошибка назначения подписки')
     }
@@ -585,7 +586,7 @@ export default function AdminUsersPage() {
                   <CardTitle className="text-base">Назначить/изменить подписку</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-3 gap-4">
                     <div className="space-y-2">
                       <Label>Тариф</Label>
                       <Select
@@ -612,6 +613,18 @@ export default function AdminUsersPage() {
                         value={subscriptionForm.days}
                         onChange={(e) => setSubscriptionForm({ ...subscriptionForm, days: parseInt(e.target.value) || 30, endsAt: '' })}
                       />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Бонусные дни</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={subscriptionForm.bonusDays}
+                        onChange={(e) => setSubscriptionForm({ ...subscriptionForm, bonusDays: parseInt(e.target.value) || 0 })}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Итого: {subscriptionForm.days + (subscriptionForm.bonusDays || 0)} дней
+                      </p>
                     </div>
                   </div>
                   <div className="space-y-2">

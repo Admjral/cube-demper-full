@@ -10,6 +10,22 @@ class ApiClient {
     this.baseUrl = baseUrl
   }
 
+  private async extractErrorMessage(response: Response, errorText: string): Promise<string> {
+    let errorMessage = errorText
+    try {
+      const errorJson = JSON.parse(errorText)
+      // Handle 403 feature_not_available with backend message
+      if (response.status === 403 && errorJson.detail?.error === 'feature_not_available') {
+        errorMessage = errorJson.detail.message || errorJson.detail.error
+      } else {
+        errorMessage = errorJson.detail || errorText
+      }
+    } catch {
+      // Keep errorText as is
+    }
+    return errorMessage
+  }
+
   private getAuthHeaders(): HeadersInit {
     const token = authClient.getToken()
 
@@ -39,13 +55,7 @@ class ApiClient {
 
     if (!response.ok) {
       const errorText = await response.text()
-      let errorMessage = errorText
-      try {
-        const errorJson = JSON.parse(errorText)
-        errorMessage = errorJson.detail || errorText
-      } catch {
-        // Keep errorText as is
-      }
+      const errorMessage = await this.extractErrorMessage(response, errorText)
       const error: ApiError = {
         message: errorMessage,
         status: response.status,
@@ -65,13 +75,7 @@ class ApiClient {
 
     if (!response.ok) {
       const errorText = await response.text()
-      let errorMessage = errorText
-      try {
-        const errorJson = JSON.parse(errorText)
-        errorMessage = errorJson.detail || errorText
-      } catch {
-        // Keep errorText as is
-      }
+      const errorMessage = await this.extractErrorMessage(response, errorText)
       const error: ApiError = {
         message: errorMessage,
         status: response.status,
@@ -91,13 +95,7 @@ class ApiClient {
 
     if (!response.ok) {
       const errorText = await response.text()
-      let errorMessage = errorText
-      try {
-        const errorJson = JSON.parse(errorText)
-        errorMessage = errorJson.detail || errorText
-      } catch {
-        // Keep errorText as is
-      }
+      const errorMessage = await this.extractErrorMessage(response, errorText)
       const error: ApiError = {
         message: errorMessage,
         status: response.status,
@@ -117,13 +115,7 @@ class ApiClient {
 
     if (!response.ok) {
       const errorText = await response.text()
-      let errorMessage = errorText
-      try {
-        const errorJson = JSON.parse(errorText)
-        errorMessage = errorJson.detail || errorText
-      } catch {
-        // Keep errorText as is
-      }
+      const errorMessage = await this.extractErrorMessage(response, errorText)
       const error: ApiError = {
         message: errorMessage,
         status: response.status,
@@ -142,13 +134,7 @@ class ApiClient {
 
     if (!response.ok) {
       const errorText = await response.text()
-      let errorMessage = errorText
-      try {
-        const errorJson = JSON.parse(errorText)
-        errorMessage = errorJson.detail || errorText
-      } catch {
-        // Keep errorText as is
-      }
+      const errorMessage = await this.extractErrorMessage(response, errorText)
       const error: ApiError = {
         message: errorMessage,
         status: response.status,

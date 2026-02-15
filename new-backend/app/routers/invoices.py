@@ -17,7 +17,7 @@ from ..services.invoice_merger import (
     InvalidPDFError,
     EmptyArchiveError,
 )
-from ..dependencies import get_current_user
+from ..dependencies import get_current_user, require_feature
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -62,7 +62,7 @@ async def process_invoices(
         UploadFile,
         File(description="ZIP-архив с PDF-накладными")
     ],
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("invoice_glue")],
     layout: Annotated[
         LayoutType,
         Query(description="Тип сетки для размещения накладных")

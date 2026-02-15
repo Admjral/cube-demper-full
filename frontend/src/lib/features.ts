@@ -13,6 +13,10 @@ export const featureLabels: Record<string, string> = {
   whatsapp_auto: 'Авто рассылка WhatsApp',
   whatsapp_bulk: 'Массовая рассылка WhatsApp',
   ai_salesman: 'ИИ продажник',
+  niche_search: 'Поиск ниш',
+  city_demping: 'Демпер по городам',
+  delivery_demping: 'Демпер по доставке',
+  priority_products: 'Приоритетные товары',
 }
 
 export const planConfig: Record<string, { icon: typeof Zap; color: string }> = {

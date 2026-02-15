@@ -1,10 +1,12 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useStore } from "@/store/use-store"
 import { useT } from "@/lib/i18n"
 import { SubscriptionGate } from "@/components/shared/subscription-gate"
+import { FeatureGate } from "@/components/shared/feature-gate"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -43,7 +45,12 @@ import {
   BarChart3,
   Clock,
   Zap,
+  CheckCircle2,
+  AlertCircle,
+  ExternalLink,
+  Key,
 } from "lucide-react"
+import Link from "next/link"
 import { toast } from "sonner"
 import {
   useWhatsAppSessions,
@@ -95,6 +102,7 @@ export default function WhatsAppPage() {
   const [manualSendMessage, setManualSendMessage] = useState("")
 
   // API hooks
+  const { data: stores } = useStores()
   const { data: sessions, isLoading: sessionsLoading } = useWhatsAppSessions()
   const { data: qrData, isLoading: qrLoading } = useSessionQRCode(
     selectedSessionId || "",
@@ -174,6 +182,7 @@ export default function WhatsAppPage() {
 
   return (
     <SubscriptionGate>
+    <FeatureGate feature="whatsapp_auto">
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -312,6 +321,34 @@ export default function WhatsAppPage() {
             </CardContent>
           </Card>
 
+          {/* API Token Status Banner */}
+          {stores?.length ? (
+            stores.some(s => s.api_key_set && s.api_key_valid) ? (
+              <Alert className="border-green-500/50 bg-green-500/5">
+                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                <AlertTitle className="text-green-600">{t("wa.tokenConnected")}</AlertTitle>
+                <AlertDescription className="text-muted-foreground">
+                  {t("wa.tokenConnectedDesc")}
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <Alert className="border-yellow-500/50 bg-yellow-500/5">
+                <AlertCircle className="h-4 w-4 text-yellow-500" />
+                <AlertTitle className="text-yellow-600">{t("wa.tokenNotConnected")}</AlertTitle>
+                <AlertDescription className="text-muted-foreground flex flex-col sm:flex-row sm:items-center gap-2">
+                  <span>{t("wa.tokenNotConnectedDesc")}</span>
+                  <Link href="/dashboard/integrations">
+                    <Button variant="outline" size="sm" className="gap-1">
+                      <Key className="h-3 w-3" />
+                      {t("wa.connectToken")}
+                      <ExternalLink className="h-3 w-3" />
+                    </Button>
+                  </Link>
+                </AlertDescription>
+              </Alert>
+            )
+          ) : null}
+
           {/* Manual Send Card */}
           <Card className="glass-card">
             <CardHeader>
@@ -361,7 +398,9 @@ export default function WhatsAppPage() {
 
         {/* AI Salesman Tab */}
         <TabsContent value="salesman" className="space-y-6 mt-6">
-          <AISalesmanTab />
+          <FeatureGate feature="ai_salesman">
+            <AISalesmanTab />
+          </FeatureGate>
         </TabsContent>
       </Tabs>
 
@@ -467,6 +506,7 @@ export default function WhatsAppPage() {
         </DialogContent>
       </Dialog>
     </div>
+    </FeatureGate>
     </SubscriptionGate>
   )
 }
@@ -705,6 +745,8 @@ function AISalesmanTab() {
   const t = useT()
   const { locale } = useStore()
   const { data: stores } = useStores()
+  const { data: sessions } = useWhatsAppSessions()
+  const { data: templates } = useWhatsAppTemplates()
 
   const [selectedStoreId, setSelectedStoreId] = useState<string>("")
   const [statsDays, setStatsDays] = useState(7)
@@ -776,6 +818,105 @@ function AISalesmanTab() {
     repeat_customer: t("wa.repeatCustomers"),
     review_request: t("wa.reviewRequest"),
     order_completed: t("wa.orderCompleted"),
+  }
+
+  // Conditions check for AI Salesman
+  const condWhatsapp = sessions?.some(s => s.status === "connected") ?? false
+  const condToken = stores?.some(s => s.api_key_set && s.api_key_valid) ?? false
+  const condTemplate = templates?.some(t => t.trigger_event === "order_approved" && t.is_active) ?? false
+  const condAiEnabled = allSettings?.some(s => s.ai_enabled) ?? false
+  const allConditionsMet = condWhatsapp && condToken && condTemplate && condAiEnabled
+
+  // Show checklist if not all conditions are met
+  if (!allConditionsMet && !settingsLoading) {
+    return (
+      <Card className="glass-card">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Bot className="h-5 w-5" />
+            {t("wa.salesmanSetup")}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-muted-foreground text-sm">{t("wa.salesmanSetupDesc")}</p>
+          <div className="space-y-3">
+            {/* 1. WhatsApp connected */}
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+              <div className="flex items-center gap-3">
+                {condWhatsapp ? (
+                  <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0" />
+                ) : (
+                  <XCircle className="h-5 w-5 text-red-500 shrink-0" />
+                )}
+                <span className="text-sm">{condWhatsapp ? t("wa.condWhatsapp") : t("wa.condWhatsappNo")}</span>
+              </div>
+              {!condWhatsapp && (
+                <Button variant="outline" size="sm" asChild>
+                  <Link href="/dashboard/whatsapp">{t("wa.goToConnection")}</Link>
+                </Button>
+              )}
+            </div>
+
+            {/* 2. API token */}
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+              <div className="flex items-center gap-3">
+                {condToken ? (
+                  <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0" />
+                ) : (
+                  <XCircle className="h-5 w-5 text-red-500 shrink-0" />
+                )}
+                <span className="text-sm">{condToken ? t("wa.condToken") : t("wa.condTokenNo")}</span>
+              </div>
+              {!condToken && (
+                <Button variant="outline" size="sm" asChild>
+                  <Link href="/dashboard/integrations">{t("wa.goToIntegrations")}</Link>
+                </Button>
+              )}
+            </div>
+
+            {/* 3. Template order_approved */}
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+              <div className="flex items-center gap-3">
+                {condTemplate ? (
+                  <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0" />
+                ) : (
+                  <XCircle className="h-5 w-5 text-red-500 shrink-0" />
+                )}
+                <span className="text-sm">{condTemplate ? t("wa.condTemplate") : t("wa.condTemplateNo")}</span>
+              </div>
+              {!condTemplate && (
+                <Button variant="outline" size="sm" asChild>
+                  <Link href="/dashboard/whatsapp?tab=templates">{t("wa.goToTemplates")}</Link>
+                </Button>
+              )}
+            </div>
+
+            {/* 4. AI enabled (with toggle) */}
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+              <div className="flex items-center gap-3">
+                {condAiEnabled ? (
+                  <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0" />
+                ) : (
+                  <XCircle className="h-5 w-5 text-red-500 shrink-0" />
+                )}
+                <span className="text-sm">{condAiEnabled ? t("wa.condAiEnabled") : t("wa.condAiEnabledNo")}</span>
+              </div>
+              {!condAiEnabled && selectedStoreId && (
+                <Switch
+                  checked={settingsForm.ai_enabled}
+                  onCheckedChange={async (v) => {
+                    setSettingsForm(f => ({ ...f, ai_enabled: v }))
+                    try {
+                      await updateSettings.mutateAsync({ storeId: selectedStoreId, ai_enabled: v })
+                    } catch {}
+                  }}
+                />
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    )
   }
 
   return (
@@ -1221,6 +1362,7 @@ function BroadcastsTab() {
   }
 
   return (
+    <FeatureGate feature="whatsapp_bulk">
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -1378,5 +1520,6 @@ function BroadcastsTab() {
         </div>
       )}
     </div>
+    </FeatureGate>
   )
 }

@@ -27,44 +27,28 @@ logger = logging.getLogger(__name__)
 
 
 @router.get("/plans", response_model=list[SubscriptionPlan])
-async def get_subscription_plans():
-    """Get available subscription plans"""
-    return [
-        SubscriptionPlan(
-            name="free",
-            price_tiyns=0,
-            products_limit=settings.plan_free_products_limit,
-            features=[
-                "Up to 100 products",
-                "Basic price monitoring",
-                "Email support"
-            ]
-        ),
-        SubscriptionPlan(
-            name="basic",
-            price_tiyns=settings.plan_basic_price_tiyns,
-            products_limit=settings.plan_basic_products_limit,
-            features=[
-                "Up to 500 products",
-                "Automatic price demping",
-                "WhatsApp notifications",
-                "Priority support"
-            ]
-        ),
-        SubscriptionPlan(
-            name="pro",
-            price_tiyns=settings.plan_pro_price_tiyns,
-            products_limit=settings.plan_pro_products_limit,
-            features=[
-                "Up to 5000 products",
-                "Advanced analytics",
-                "AI assistants (Lawyer, Accountant, Salesman)",
-                "WhatsApp integration",
-                "Priority support",
-                "Custom integrations"
-            ]
-        )
-    ]
+async def get_subscription_plans(
+    pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
+):
+    """Get available subscription plans (redirects to plans-v2 data)"""
+    async with pool.acquire() as conn:
+        plans = await conn.fetch("""
+            SELECT code, name, price_tiyns, analytics_limit, demping_limit, features
+            FROM plans
+            WHERE is_active = true
+            ORDER BY display_order
+        """)
+
+    result = []
+    for p in plans:
+        features_list = json.loads(p['features']) if isinstance(p['features'], str) else (p['features'] or [])
+        result.append(SubscriptionPlan(
+            name=p['code'],
+            price_tiyns=p['price_tiyns'],
+            products_limit=p['demping_limit'] if p['demping_limit'] > 0 else 0,
+            features=features_list
+        ))
+    return result
 
 
 @router.get("/subscription", response_model=SubscriptionResponse)
@@ -113,25 +97,28 @@ async def create_subscription(
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Create new subscription (admin only until payment integration)"""
-    # Validate plan
-    if subscription_request.plan not in ['basic', 'pro']:
+    plan_code = subscription_request.plan
+    # Support legacy 'pro' code → map to 'premium'
+    if plan_code == 'pro':
+        plan_code = 'premium'
+
+    if plan_code not in ['basic', 'standard', 'premium']:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid plan. Must be 'basic' or 'pro'"
+            detail="Invalid plan. Must be 'basic', 'standard', or 'premium'"
         )
 
-    # Get plan details
-    if subscription_request.plan == 'basic':
-        products_limit = settings.plan_basic_products_limit
-        price_tiyns = settings.plan_basic_price_tiyns
-    else:  # pro
-        products_limit = settings.plan_pro_products_limit
-        price_tiyns = settings.plan_pro_price_tiyns
-
-    # TODO: Create TipTopPay payment
-    # For now, just create subscription directly
-
     async with pool.acquire() as conn:
+        # Get plan details from DB
+        plan_row = await conn.fetchrow(
+            "SELECT id, price_tiyns, demping_limit, analytics_limit FROM plans WHERE code = $1 AND is_active = true",
+            plan_code
+        )
+        if not plan_row:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Plan not found")
+
+        products_limit = plan_row['demping_limit']
+        price_tiyns = plan_row['price_tiyns']
         # Deactivate old subscriptions
         await conn.execute(
             "UPDATE subscriptions SET status = 'cancelled' WHERE user_id = $1 AND status = 'active'",
@@ -143,15 +130,19 @@ async def create_subscription(
         subscription = await conn.fetchrow(
             """
             INSERT INTO subscriptions (
-                user_id, plan, status, products_limit,
+                user_id, plan_id, plan, status, products_limit,
+                analytics_limit, demping_limit,
                 current_period_start, current_period_end
             )
-            VALUES ($1, $2, 'active', $3, $4, $5)
+            VALUES ($1, $2, $3, 'active', $4, $5, $6, $7, $8)
             RETURNING *
             """,
             current_user['id'],
-            subscription_request.plan,
+            plan_row['id'],
+            plan_code,
             products_limit,
+            plan_row['analytics_limit'],
+            plan_row['demping_limit'],
             now,
             now + timedelta(days=30)
         )
@@ -164,7 +155,7 @@ async def create_subscription(
             """,
             current_user['id'],
             price_tiyns,
-            subscription_request.plan
+            plan_code
         )
 
         # Auto-credit referral commission
@@ -190,11 +181,11 @@ async def create_subscription(
                             referrer['id'],
                             current_user['id'],
                             commission_amount,
-                            f"Комиссия {commission_pct}% за подписку {subscription_request.plan}"
+                            f"Комиссия {commission_pct}% за подписку {plan_code}"
                         )
                         logger.info(
                             f"[REFERRAL] Credited {commission_amount} tiyns to referrer {referrer['id']} "
-                            f"for user {current_user['id']} plan {subscription_request.plan}"
+                            f"for user {current_user['id']} plan {plan_code}"
                         )
                         await notify_referral_paid(
                             pool, referrer['id'], current_user.get('email', ''), commission_amount
@@ -218,8 +209,8 @@ async def create_subscription(
 
         total_allocated = sum(len(proxies) for proxies in proxies_by_module.values())
         logger.info(
-            f"✅ Allocated {total_allocated} proxies to user {user_id} "
-            f"({subscription_request.plan} plan): "
+            f"Allocated {total_allocated} proxies to user {user_id} "
+            f"({plan_code} plan): "
             f"{len(proxies_by_module.get('demper', []))} demper, "
             f"{len(proxies_by_module.get('orders', []))} orders, "
             f"{len(proxies_by_module.get('catalog', []))} catalog"
@@ -409,10 +400,10 @@ async def activate_trial(
     user_id = current_user['id']
 
     async with pool.acquire() as conn:
-        # Check if user already has/had a subscription with a real plan
+        # Check if user already has/had a subscription with a real plan (not free)
         existing = await conn.fetchrow("""
             SELECT id FROM subscriptions
-            WHERE user_id = $1 AND plan_id IS NOT NULL
+            WHERE user_id = $1 AND plan_id IS NOT NULL AND plan != 'free'
             LIMIT 1
         """, user_id)
 
@@ -441,6 +432,26 @@ async def activate_trial(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Пробный период уже был использован для этого магазина"
             )
+
+        # Anti-abuse: check if this phone number was already used for a trial on another account
+        user_phone = current_user.get('phone')
+        if user_phone:
+            phone_trial_used = await conn.fetchrow("""
+                SELECT u2.id
+                FROM users u2
+                JOIN subscriptions sub ON sub.user_id = u2.id
+                WHERE u2.phone = $1
+                  AND u2.id != $2
+                  AND sub.is_trial = TRUE
+                  AND sub.plan_id IS NOT NULL
+                LIMIT 1
+            """, user_phone, user_id)
+
+            if phone_trial_used:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Пробный период уже был использован для этого номера телефона"
+                )
 
         # Get the basic plan (the only one with trial_days > 0)
         plan = await conn.fetchrow("""
@@ -480,7 +491,7 @@ async def activate_trial(
             user_id,
             plan['id'],
             plan['code'],
-            plan['demping_limit'],
+            plan['analytics_limit'],
             plan['analytics_limit'],
             plan['demping_limit'],
             now,

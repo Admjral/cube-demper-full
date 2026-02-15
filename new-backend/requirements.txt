@@ -47,6 +47,12 @@ pytz==2024.2
 # PDF Processing (для склейки накладных)
 pypdf==5.1.0
 
+# PDF Generation (для ИИ-Юриста)
+fpdf2==2.8.2
+
+# DOCX Processing (для анализа договоров)
+python-docx==1.1.2
+
 # Development (removed for production build)
 # pytest==8.3.3
 # pytest-asyncio==0.24.0

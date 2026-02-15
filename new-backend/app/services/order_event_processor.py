@@ -230,15 +230,33 @@ class OrderEventProcessor:
                 logger.warning(f"No active WhatsApp session for user {user_id}")
                 return {"status": "no_whatsapp_session"}
 
-            # 8. Отправляем сообщение
-            try:
-                waha = get_waha_service()
-                result = await waha.send_text(
-                    phone=order_data['phone_raw'] or order_data['phone'].replace('+7', '7'),
-                    text=message_text,
-                    session=wa_session['session_name'],
-                )
+            # 8. Отправляем сообщение с retry (3 попытки)
+            waha = get_waha_service()
+            send_phone = order_data['phone_raw'] or order_data['phone'].replace('+7', '7')
+            retry_delays = [0, 5, 15]  # секунды между попытками
+            send_result = None
+            last_error = None
 
+            for attempt, delay in enumerate(retry_delays):
+                if delay > 0:
+                    await asyncio.sleep(delay)
+                try:
+                    send_result = await waha.send_text(
+                        phone=send_phone,
+                        text=message_text,
+                        session=wa_session['session_name'],
+                    )
+                    last_error = None
+                    break
+                except WahaError as e:
+                    last_error = e
+                    logger.warning(
+                        f"WAHA send attempt {attempt + 1}/3 failed for order {order_code}: {e}"
+                    )
+
+            template_sent = send_result is not None
+
+            if template_sent:
                 logger.info(f"Message sent to {order_data['phone']} for order {order_code}")
 
                 # 9. Сохраняем в историю
@@ -255,7 +273,7 @@ class OrderEventProcessor:
                     RETURNING id
                 """,
                     UUID(user_id), template['id'], order_data['phone'], order_data.get('full_name'),
-                    message_text, event.value, order_code, result.get('id'),
+                    message_text, event.value, order_code, send_result.get('id'),
                     wa_session['session_name']
                 )
 
@@ -265,17 +283,10 @@ class OrderEventProcessor:
                     "recipient": order_data['phone'],
                     "text": message_text,
                 }
-
-                # Schedule AI Salesman upsell 5 min after template
-                if event in (OrderEvent.ORDER_APPROVED, OrderEvent.ORDER_ACCEPTED_BY_MERCHANT):
-                    asyncio.create_task(
-                        _delayed_ai_salesman(user_id, store_id, order_code, pool)
-                    )
-
-                return result
-
-            except WahaError as e:
-                logger.error(f"Failed to send WhatsApp message: {e}")
+            else:
+                logger.error(
+                    f"All 3 WAHA send attempts failed for order {order_code}: {last_error}"
+                )
 
                 # Сохраняем failed сообщение
                 await conn.execute("""
@@ -287,10 +298,38 @@ class OrderEventProcessor:
                     VALUES ($1, $2, $3, $4, $5, 'template', 'failed', $6, $7, $8)
                 """,
                     UUID(user_id), template['id'], order_data['phone'], order_data.get('full_name'),
-                    message_text, event.value, order_code, str(e)
+                    message_text, event.value, order_code, str(last_error)
                 )
 
-                return {"status": "error", "error": str(e)}
+                # Уведомление о неудаче
+                try:
+                    from .notification_service import create_notification, NotificationType
+                    await create_notification(
+                        pool=pool,
+                        user_id=UUID(user_id),
+                        notification_type=NotificationType.WHATSAPP_TEMPLATE_FAILED,
+                        title=f"Шаблон не доставлен для заказа #{order_code}",
+                        message=f"WhatsApp сообщение не отправлено после 3 попыток: {last_error}",
+                        data={"order_code": order_code, "event": event.value},
+                    )
+                except Exception as notif_err:
+                    logger.warning(f"Failed to create template failure notification: {notif_err}")
+
+                result = {"status": "error", "error": str(last_error)}
+
+            # 10. Schedule AI Salesman upsell (независимо от успеха шаблона)
+            if event in (OrderEvent.ORDER_APPROVED, OrderEvent.ORDER_ACCEPTED_BY_MERCHANT):
+                # Читаем задержку из настроек магазина
+                delay_row = await conn.fetchval(
+                    "SELECT COALESCE(ai_send_delay_minutes, 10) FROM kaspi_stores WHERE id = $1",
+                    UUID(store_id)
+                )
+                delay_seconds = (delay_row or 10) * 60
+                asyncio.create_task(
+                    _delayed_ai_salesman(user_id, store_id, order_code, pool, delay_seconds=delay_seconds)
+                )
+
+            return result
 
     def _replace_variables(self, template: str, data: Dict[str, Any]) -> str:
         """Заменить переменные в шаблоне на значения"""

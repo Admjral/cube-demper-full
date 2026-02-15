@@ -230,7 +230,7 @@ export default function BillingPage() {
 
                       {plan.trial_days > 0 && (!features?.plan_code || features.plan_code === 'free') && (
                         <p className="text-xs text-green-600 mb-4 text-center font-medium">
-                          {plan.trial_days} дня бесплатного пробного периода
+                          {plan.trial_days} {plan.trial_days === 1 ? 'день' : plan.trial_days >= 2 && plan.trial_days <= 4 ? 'дня' : 'дней'} бесплатного пробного периода
                         </p>
                       )}
 

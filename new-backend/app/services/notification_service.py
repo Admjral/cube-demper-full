@@ -31,6 +31,9 @@ class NotificationType:
     PREORDER_ACTIVATED = "preorder_activated"
     PREORDER_FAILED = "preorder_failed"
 
+    # WhatsApp
+    WHATSAPP_TEMPLATE_FAILED = "whatsapp_template_failed"
+
     # System
     SYSTEM_SUBSCRIPTION_EXPIRING = "system_subscription_expiring"
     SYSTEM_SUBSCRIPTION_EXPIRED = "system_subscription_expired"

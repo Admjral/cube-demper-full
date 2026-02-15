@@ -101,6 +101,18 @@ async def register(
                 detail="User with this email already exists"
             )
 
+        # Check if phone number already registered
+        if user_data.phone:
+            existing_phone = await conn.fetchrow(
+                "SELECT id FROM users WHERE phone = $1",
+                user_data.phone
+            )
+            if existing_phone:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Этот номер телефона уже зарегистрирован"
+                )
+
         # Hash password
         password_hash = get_password_hash(user_data.password)
 

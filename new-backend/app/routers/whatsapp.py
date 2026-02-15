@@ -45,7 +45,7 @@ from ..schemas.whatsapp import (
     WhatsAppWebhook,
 )
 from ..core.database import get_db_pool
-from ..dependencies import get_current_user
+from ..dependencies import get_current_user, require_feature
 from ..services.waha_service import (
     get_waha_service,
     WahaService,
@@ -83,7 +83,7 @@ def normalize_waha_status(waha_status: str) -> str:
 
 @router.post("/session/create", response_model=WhatsAppSessionResponse, status_code=status.HTTP_201_CREATED)
 async def create_whatsapp_session(
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("whatsapp_auto")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     waha: Annotated[WahaService, Depends(get_waha)],
 ):
@@ -183,7 +183,7 @@ async def create_whatsapp_session(
 
 @router.get("/session", response_model=WhatsAppSessionResponse)
 async def get_whatsapp_session(
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("whatsapp_auto")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     waha: Annotated[WahaService, Depends(get_waha)],
 ):
@@ -241,7 +241,7 @@ async def get_whatsapp_session(
 
 @router.get("/session/qr")
 async def get_qr_code(
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("whatsapp_auto")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     waha: Annotated[WahaService, Depends(get_waha)],
     qr_format: str = "image",
@@ -307,7 +307,7 @@ async def get_qr_code(
 
 @router.delete("/session")
 async def delete_whatsapp_session(
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("whatsapp_auto")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     waha: Annotated[WahaService, Depends(get_waha)],
 ):
@@ -352,7 +352,7 @@ async def delete_whatsapp_session(
 @router.post("/send", status_code=status.HTTP_200_OK)
 async def send_message(
     message_data: SendMessageRequest,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("whatsapp_auto")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     waha: Annotated[WahaService, Depends(get_waha)],
 ):
@@ -419,7 +419,7 @@ async def send_message(
 @router.post("/send/poll", status_code=status.HTTP_200_OK)
 async def send_poll(
     poll_data: SendPollRequest,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("whatsapp_auto")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     waha: Annotated[WahaService, Depends(get_waha)],
 ):
@@ -449,7 +449,7 @@ async def send_poll(
 @router.post("/send/location", status_code=status.HTTP_200_OK)
 async def send_location(
     location_data: SendLocationRequest,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("whatsapp_auto")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     waha: Annotated[WahaService, Depends(get_waha)],
 ):
@@ -481,7 +481,7 @@ async def send_location(
 @router.post("/send/contact", status_code=status.HTTP_200_OK)
 async def send_contact(
     contact_data: SendContactRequest,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("whatsapp_auto")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     waha: Annotated[WahaService, Depends(get_waha)],
 ):
@@ -514,7 +514,7 @@ async def send_contact(
 async def send_bulk_messages(
     phones: List[str],
     message: str,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("whatsapp_bulk")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     waha: Annotated[WahaService, Depends(get_waha)],
 ):
@@ -620,6 +620,21 @@ async def waha_webhook(
             body = message_data.get("body", "")
             is_from_me = data.get("fromMe", False)
 
+            # Дедупликация через Redis (WAHA дублирует первое сообщение от нового контакта)
+            message_id = data.get("id")
+            if message_id:
+                from ..core.redis import get_redis
+                redis = await get_redis()
+                redis_key = f"waha:msg:{message_id}"
+
+                is_duplicate = await redis.get(redis_key)
+                if is_duplicate:
+                    logger.debug(f"Duplicate message {message_id}, skipping")
+                    return {"status": "ok"}
+
+                # Сохраняем с TTL 1 час
+                await redis.setex(redis_key, 3600, "1")
+
             logger.info(f"Incoming message from {from_number} (fromMe={is_from_me}): {body[:50]}...")
 
             # Только входящие от клиентов (не наши исходящие)
@@ -652,7 +667,7 @@ async def waha_webhook(
 
 @router.get("/templates", response_model=List[WhatsAppTemplateResponse])
 async def list_templates(
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("whatsapp_auto")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Получить список шаблонов сообщений"""
@@ -688,7 +703,7 @@ async def list_templates(
 @router.post("/templates", response_model=WhatsAppTemplateResponse, status_code=status.HTTP_201_CREATED)
 async def create_template(
     template_data: WhatsAppTemplateCreate,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("whatsapp_auto")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Создать шаблон сообщения"""
@@ -733,7 +748,7 @@ async def create_template(
 async def update_template(
     template_id: str,
     template_data: WhatsAppTemplateUpdate,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("whatsapp_auto")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Обновить шаблон сообщения"""
@@ -816,7 +831,7 @@ async def update_template(
 @router.delete("/templates/{template_id}")
 async def delete_template(
     template_id: str,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("whatsapp_auto")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Удалить шаблон сообщения"""
@@ -864,7 +879,7 @@ class MessageHistoryResponse(BaseModel):
 
 @router.get("/messages", response_model=MessageHistoryResponse)
 async def get_message_history(
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("whatsapp_auto")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     status_filter: Optional[str] = None,
     phone: Optional[str] = None,
@@ -977,7 +992,7 @@ class WhatsAppStatsResponse(BaseModel):
 
 @router.get("/stats", response_model=WhatsAppStatsResponse)
 async def get_whatsapp_stats(
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("whatsapp_auto")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     days: int = 7,
 ):
@@ -1152,7 +1167,7 @@ class UpdateSettingsRequest(BaseModel):
 
 @router.get("/sessions", response_model=List[SessionListResponse])
 async def list_sessions(
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("whatsapp_auto")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
 ):
     """
@@ -1185,7 +1200,7 @@ async def list_sessions(
 @router.post("/sessions", response_model=SessionListResponse, status_code=status.HTTP_201_CREATED)
 async def create_session_new(
     request: CreateSessionRequest,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("whatsapp_auto")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     waha: Annotated[WahaService, Depends(get_waha)],
 ):
@@ -1299,7 +1314,7 @@ async def _ensure_session_ready(waha: WahaService, session_name: str) -> None:
 @router.get("/sessions/{session_id}/qr")
 async def get_session_qr_by_id(
     session_id: str,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("whatsapp_auto")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     waha: Annotated[WahaService, Depends(get_waha)],
 ):
@@ -1372,7 +1387,7 @@ class PairPhoneRequest(BaseModel):
 async def pair_by_phone(
     session_id: str,
     request: PairPhoneRequest,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("whatsapp_auto")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     waha: Annotated[WahaService, Depends(get_waha)],
 ):
@@ -1415,7 +1430,7 @@ async def pair_by_phone(
 @router.delete("/sessions/{session_id}")
 async def delete_session_by_id(
     session_id: str,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("whatsapp_auto")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     waha: Annotated[WahaService, Depends(get_waha)],
 ):
@@ -1455,7 +1470,7 @@ async def delete_session_by_id(
 
 @router.get("/settings", response_model=SettingsResponse)
 async def get_whatsapp_settings(
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("whatsapp_auto")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
 ):
     """
@@ -1491,7 +1506,7 @@ async def get_whatsapp_settings(
 @router.patch("/settings", response_model=SettingsResponse)
 async def update_whatsapp_settings(
     request: UpdateSettingsRequest,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("whatsapp_auto")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
 ):
     """
@@ -1600,7 +1615,7 @@ class ContactsListResponse(BaseModel):
 
 @router.get("/contacts", response_model=ContactsListResponse)
 async def get_customer_contacts(
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("whatsapp_auto")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     store_id: Optional[str] = None,
     search: Optional[str] = None,
@@ -1669,7 +1684,7 @@ async def get_customer_contacts(
 @router.patch("/contacts/{contact_id}/block")
 async def block_contact(
     contact_id: str,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("whatsapp_auto")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
 ):
     """Block a contact (exclude from broadcasts)."""
@@ -1686,7 +1701,7 @@ async def block_contact(
 @router.patch("/contacts/{contact_id}/unblock")
 async def unblock_contact(
     contact_id: str,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("whatsapp_auto")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
 ):
     """Unblock a contact."""
@@ -1729,7 +1744,7 @@ class BroadcastCampaignResponse(BaseModel):
 
 @router.get("/broadcasts", response_model=List[BroadcastCampaignResponse])
 async def list_broadcasts(
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("whatsapp_bulk")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
 ):
     """List broadcast campaigns."""
@@ -1763,7 +1778,7 @@ async def list_broadcasts(
 @router.post("/broadcasts", response_model=BroadcastCampaignResponse, status_code=201)
 async def create_broadcast(
     data: BroadcastCampaignCreate,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("whatsapp_bulk")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
 ):
     """Create a broadcast campaign (status=draft, not yet started)."""
@@ -1826,7 +1841,7 @@ async def create_broadcast(
 async def start_broadcast(
     campaign_id: str,
     background_tasks: BackgroundTasks,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("whatsapp_bulk")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     waha: Annotated[WahaService, Depends(get_waha)],
 ):
@@ -1906,7 +1921,7 @@ async def start_broadcast(
 @router.post("/broadcasts/{campaign_id}/cancel")
 async def cancel_broadcast(
     campaign_id: str,
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("whatsapp_bulk")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
 ):
     """Cancel a broadcast (pending messages will be skipped)."""

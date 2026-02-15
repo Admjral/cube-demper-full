@@ -7,7 +7,7 @@ from datetime import datetime
 import uuid
 
 from ..core.database import get_db_pool
-from ..dependencies import get_current_user
+from ..dependencies import get_current_user, require_feature
 from ..models.niche import NicheCategory, NicheProduct, NicheProductHistory
 from ..utils.security import escape_like
 
@@ -19,7 +19,7 @@ router = APIRouter()
 @router.get("/categories")
 async def get_categories(
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("niche_search")],
     parent_id: Optional[str] = None,
     sort_by: str = Query("total_revenue", enum=["total_revenue", "total_products", "total_sellers", "name"]),
     order: str = Query("desc", enum=["asc", "desc"])
@@ -61,7 +61,7 @@ async def get_categories(
 async def get_category_details(
     category_id: str,
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
-    current_user: Annotated[dict, Depends(get_current_user)]
+    current_user: Annotated[dict, require_feature("niche_search")]
 ):
     """
     Детальная информация о категории
@@ -144,7 +144,7 @@ async def get_category_details(
 @router.get("/products")
 async def get_products(
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("niche_search")],
     category_id: Optional[str] = None,
     min_revenue: Optional[int] = None,
     max_revenue: Optional[int] = None,
@@ -266,7 +266,7 @@ async def get_products(
 async def get_product_details(
     product_id: str,
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
-    current_user: Annotated[dict, Depends(get_current_user)]
+    current_user: Annotated[dict, require_feature("niche_search")]
 ):
     """
     Детальная информация о товаре с историей
@@ -319,7 +319,7 @@ async def get_product_details(
 
 @router.post("/calculate-unit-economics")
 async def calculate_unit_economics(
-    current_user: Annotated[dict, Depends(get_current_user)],
+    current_user: Annotated[dict, require_feature("niche_search")],
     purchase_price: int,  # Закупочная цена
     selling_price: int,  # Цена продажи
     packaging_cost: int = 0,  # Упаковка
@@ -371,7 +371,7 @@ async def calculate_unit_economics(
 @router.get("/stats")
 async def get_niche_stats(
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
-    current_user: Annotated[dict, Depends(get_current_user)]
+    current_user: Annotated[dict, require_feature("niche_search")]
 ):
     """
     Общая статистика по нишам

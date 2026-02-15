@@ -9,7 +9,7 @@ import { useTranslation } from '@/lib/i18n'
 
 /**
  * FreePlanGate - shown when a free plan user tries to access a restricted page.
- * Prompts them to activate a 3-day trial or view available plans.
+ * Prompts them to activate a 7-day trial or view available plans.
  */
 export function FreePlanGate() {
   const { t } = useTranslation()

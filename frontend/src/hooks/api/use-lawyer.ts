@@ -18,6 +18,13 @@ export type DocumentType =
   | 'claim_to_buyer'
   | 'claim_to_marketplace'
   | 'complaint_to_authority'
+  | 'ip_registration'
+  | 'too_registration'
+  | 'license_application'
+  | 'tax_application'
+  | 'acceptance_act'
+  | 'work_completion_act'
+  | 'reconciliation_act'
 
 export type TaxType = 'simplified_ip' | 'standard_ip' | 'too_kpn' | 'vat' | 'social'
 
@@ -263,6 +270,30 @@ export function useAnalyzeContract() {
   })
 }
 
+// Analyze contract text (pasted)
+export function useAnalyzeContractText() {
+  return useMutation({
+    mutationFn: async (params: { text: string; language?: LawyerLanguage }) => {
+      const formData = new FormData()
+      formData.append('text', params.text)
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/ai/lawyer/analyze-contract-text?language=${params.language || 'ru'}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${authClient.getToken()}`,
+        },
+        body: formData,
+      })
+
+      if (!response.ok) {
+        throw new Error('Contract analysis failed')
+      }
+
+      return response.json() as Promise<ContractAnalysis>
+    },
+  })
+}
+
 // Calculate penalty
 export function useCalculatePenalty() {
   return useMutation({
@@ -296,6 +327,43 @@ export function useCalculateFee() {
       fee_type: 'ip_registration' | 'too_registration' | 'court_fee_property' | 'court_fee_non_property' | 'license_fee'
       claim_amount?: number
     }) => api.post<FeeResult>('/ai/lawyer/calculate-fee', params),
+  })
+}
+
+// Update document content
+export function useUpdateDocument() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (params: { id: string; content: string }) =>
+      api.patch(`/ai/lawyer/documents/${params.id}`, { content: params.content }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: lawyerKeys.documents() })
+    },
+  })
+}
+
+// Download document as PDF
+export function useDownloadDocumentPdf() {
+  return useMutation({
+    mutationFn: async (params: { id: string; title: string }) => {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/ai/lawyer/documents/${params.id}/pdf`,
+        {
+          headers: {
+            'Authorization': `Bearer ${authClient.getToken()}`,
+          },
+        }
+      )
+      if (!response.ok) throw new Error('PDF download failed')
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${params.title}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    },
   })
 }
 

@@ -26,6 +26,10 @@ class FeatureAccessService:
         'whatsapp_auto': {'plans': ['standard', 'premium'], 'addons': ['whatsapp']},
         'whatsapp_bulk': {'plans': ['premium'], 'addons': ['whatsapp']},
         'ai_salesman': {'plans': [], 'addons': ['ai_salesman']},
+        'niche_search': {'plans': ['standard', 'premium']},
+        'city_demping': {'plans': ['standard', 'premium'], 'addons': ['city_demping']},
+        'delivery_demping': {'plans': ['premium'], 'addons': ['delivery_demping']},
+        'priority_products': {'plans': ['premium']},
     }
 
     # Plan names for upgrade messages
@@ -43,6 +47,8 @@ class FeatureAccessService:
         'whatsapp': 'WhatsApp рассылка',
         'demping_100': 'Демпинг +100 товаров',
         'analytics_unlimited': 'Аналитика безлимит',
+        'city_demping': 'Демпер по городам',
+        'delivery_demping': 'Демпер по доставке',
     }
 
     async def get_user_features(self, pool: asyncpg.Pool, user_id: UUID) -> dict:
