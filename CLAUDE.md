@@ -83,7 +83,8 @@ rsync -av --exclude='.git' --exclude='node_modules' --exclude='.next' frontend/ 
 - `app/services/notification_service.py` — Уведомления (price, orders, support)
 - `app/services/orders_sync_service.py` — Фоновый sync заказов (каждые 8 мин)
 - `app/services/preorder_checker.py` — Фоновая проверка предзаказов (каждые 5 мин)
-- `app/services/kaspi_orders_api.py` — Kaspi REST API (X-Auth-Token, реальные телефоны)
+- `app/services/kaspi_orders_api.py` — Kaspi REST API (X-Auth-Token, реальные телефоны через Base64 декодирование)
+- `app/services/kaspi_products_api.py` — Kaspi Products REST API (полные данные товаров: name, price, SKU)
 - `app/services/kaspi_mc_service.py` — MC GraphQL (заказы, телефоны замаскированы)
 - `app/services/kaspi_auth_service.py` — Playwright авторизация Kaspi MC
 - `app/services/waha_service.py` — WAHA WhatsApp API client (singleton)
@@ -104,10 +105,12 @@ rsync -av --exclude='.git' --exclude='node_modules' --exclude='.next' frontend/ 
 
 ### Frontend
 - `src/app/(dashboard)/` — Dashboard pages
+- `src/app/(dashboard)/dashboard/integrations/page.tsx` — API token management с визуальными инструкциями
 - `src/hooks/use-notifications.ts` — Уведомления (query + mutations)
 - `src/components/notifications/notification-bell.tsx` — Колокольчик с иконками
 - `src/lib/i18n.ts` — Переводы (ru/kz)
 - `src/lib/api.ts` — API клиент
+- `public/instructions.png` — Визуальная инструкция по получению API токена из Kaspi MC
 
 ## Database Migrations
 ```bash
@@ -125,6 +128,28 @@ alembic heads  # Проверить что нет multiple heads
 UPDATE kaspi_stores SET needs_reauth = FALSE WHERE guid IS NOT NULL;
 ```
 
+### API Token Invalid/Expired
+- **Симптомы**: `api_key_valid = FALSE`, endpoints возвращают маскированные телефоны
+- **Причины**: Kaspi REST API токен истёк, неправильно скопирован, или удалён в Kaspi MC
+- **Решение**:
+  1. Получить новый токен: Kaspi MC → Настройки → Интеграции → API токен
+  2. Обновить через UI: `/dashboard/integrations` → вставить токен → сохранить (с автовалидацией)
+  3. Или через SQL: `UPDATE kaspi_stores SET api_key = 'NEW_TOKEN', api_key_valid = TRUE WHERE id = '...'`
+- **Тестирование**: `POST /stores/{store_id}/test-api-token` — проверит токен без сохранения
+
+### Телефоны клиентов замаскированы
+- **Проблема**: endpoint возвращает `"+0(000)-000-00-00"` вместо реального номера
+- **Причина**: нет `api_key` или `api_key_valid = FALSE` → fallback на MC GraphQL (маскированные телефоны)
+- **Решение**: установить/обновить API токен в `/dashboard/integrations`
+- **Проверка**: `SELECT api_key, api_key_valid FROM kaspi_stores WHERE id = '...'`
+- **Логи**: смотри `"Successfully decoded phone from customer.id"` в backend logs
+
+### Products Sync возвращает только ID/SKU
+- **Проблема**: синхронизация товаров не возвращает названия и цены
+- **Причина**: используется MC GraphQL вместо REST API (GraphQL возвращает только IDs)
+- **Решение**: установить API токен → синхронизация автоматически переключится на REST API
+- **Проверка**: в логах должно быть `"Synced N products via REST API"`, не GraphQL
+
 ### asyncpg + JSONB
 - **Запись**: `json.dumps(data, ensure_ascii=False, default=str)` — asyncpg НЕ принимает dict
 - **Чтение**: `json.loads(row['col']) if isinstance(row['col'], str) else row['col']`
@@ -133,11 +158,31 @@ UPDATE kaspi_stores SET needs_reauth = FALSE WHERE guid IS NOT NULL;
 - Email: `hamitov.adil04@gmail.com`, Username: `Admjral`
 - Railway CLI: `/opt/homebrew/bin/railway`
 
+## Environment Variables
+
+### VPS Production (.env file)
+- **Location**: `/home/ubuntu/cube-demper/.env`
+- **Key vars**:
+  - `GEMINI_API_KEY` — Google Gemini API key (текущий: `AIzaSyCcSc21pY7yrx58zCnukoccTmvSzxJzKvo`)
+  - `SECRET_KEY` — JWT signing key (32+ chars)
+  - `ENCRYPTION_KEY` — Fernet encryption key (32 bytes)
+  - `POSTGRES_HOST=postgres` — Docker service name
+  - `REDIS_HOST=redis` — Docker service name
+  - `WAHA_URL=http://waha:3000` — WAHA internal URL
+- **Обновление**: После изменения .env → `docker compose restart <service>`
+- **Backup**: Всегда создавай `.env.backup` перед изменениями
+
+### Local Development
+- **Config**: `new-backend/app/config.py` — Pydantic Settings с автозагрузкой из .env
+- **Defaults**: большинство параметров имеют dev-defaults (localhost, postgres, redis)
+- **Валидация**: `validate_secrets()` проверяет что SECRET_KEY и ENCRYPTION_KEY не дефолтные
+
 ## Important Notes
 1. **Never force push** to main/master
 2. **VPS — единственный прод** для всех сервисов. Railway — только offers-relay
 3. **Migrations автоматические** при старте бэкенда (`alembic upgrade head`)
 4. **offers-relay** деплоится отдельно: `cd offers-relay && railway up`
+5. **Gemini API ключ**: обновляется в VPS `.env` файле, требует рестарт backend/workers
 
 ---
 
@@ -157,6 +202,31 @@ UPDATE kaspi_stores SET needs_reauth = FALSE WHERE guid IS NOT NULL;
 - **REST API** (`kaspi.kz/shop/api/v2/orders`): `X-Auth-Token` header, KZ IP required, `User-Agent` обязателен
 - **MC GraphQL**: `mc.shop.kaspi.kz/mc/facade/graphql`, cookies dict + `x-auth-version: 3`, НЕ Relay-схема, телефоны замаскированы
 - **Orders Sync**: Фоновая задача в бэкенде (НЕ в воркерах), каждые 8 мин (480s), REST API first → MC GraphQL fallback
+
+### Real Phone Numbers (2026-02-15)
+- **customer.id = Base64-encoded phone**: `atob("NzAyMzU2NTA3Nw")` → `"7023565077"` → `"+77023565077"`
+- **customer.cellPhone = маскирован**: `"+0(000)-000-00-00"` (бесполезен)
+- **Приоритет**: REST API (Base64 decode) → MC GraphQL (masked fallback)
+- **Утилита**: `decode_customer_id_to_phone()` в `api_parser.py`
+- **Endpoint**: `GET /orders/{store_id}/{order_code}/customer` — возвращает реальный телефон если есть api_key
+- **Logic**: В `kaspi_orders_api.py:get_customer_phone()` — local import чтобы избежать circular dependency
+
+### Products Sync (2026-02-15)
+- **Kaspi Products REST API**: `kaspi.kz/shop/api/v2/products` (X-Auth-Token, JSON:API format)
+- **Полные данные**: name, price, SKU, description, images (НЕ только ID как в GraphQL!)
+- **Service**: `kaspi_products_api.py` — `KaspiProductsAPI.fetch_products()`
+- **Sync endpoint**: `POST /stores/{store_id}/sync` — REST API first → GraphQL fallback
+- **Rate limit**: 6 RPS (shared with orders API via `get_orders_rate_limiter()`)
+- **Pagination**: автоматическая через `page[number]` и `meta.totalPages`
+- **Сохранение**: `_sync_products_to_db()` в `routers/kaspi.py` — INSERT ... ON CONFLICT UPDATE
+
+### API Token Management (2026-02-15)
+- **Валидация при сохранении**: `PATCH /stores/{store_id}/api-token` делает тестовый запрос к Kaspi API
+- **Тестирование токена**: `POST /stores/{store_id}/test-api-token` — проверка без сохранения
+- **Response**: `{"valid": bool, "orders_count": int, "error": str, "message": str}`
+- **Маскирование**: `api_key_masked` в `KaspiStoreResponse` — первые 4 + последние 4 символа (`"eIBx...Ay8="`)
+- **Флаг валидности**: `kaspi_stores.api_key_valid` — auto-update при ошибках 401/403
+- **Frontend**: `/dashboard/integrations` — input field + visual instructions image (`/public/instructions.png`)
 
 ### City Prices (2026-02-13)
 - `KASPI_CITIES` в `schemas/kaspi.py` — НЕ полный список, ~28 городов
@@ -180,6 +250,21 @@ UPDATE kaspi_stores SET needs_reauth = FALSE WHERE guid IS NOT NULL;
 ### CORS & Middleware
 - `BaseHTTPMiddleware` может проглотить CORS-заголовки → pure ASGI middleware
 - Playwright endpoints: всегда `except Exception` catch-all
+
+### Circular Import Patterns (2026-02-15)
+- **Проблема**: `api_parser.py` → `order_event_processor.py` → `kaspi_orders_api.py` → `api_parser.py`
+- **Решение**: Local imports внутри функций вместо top-level imports
+- **Пример**:
+  ```python
+  # ❌ Top-level (circular!)
+  from .api_parser import decode_customer_id_to_phone
+
+  # ✅ Local import
+  def get_customer_phone(...):
+      from .api_parser import decode_customer_id_to_phone  # Inside function
+      ...
+  ```
+- **Когда использовать**: утилиты в `api_parser.py`, которые используются в сервисах с cross-dependencies
 
 ### WhatsApp / WAHA
 - OTP сессия: `config.py:waha_otp_session = "default"` (77027410732, Cube Development)
