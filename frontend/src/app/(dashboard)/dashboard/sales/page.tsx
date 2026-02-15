@@ -6,7 +6,9 @@ import { useT } from "@/lib/i18n"
 import { SubscriptionGate } from "@/components/shared/subscription-gate"
 import { FeatureGate } from "@/components/shared/feature-gate"
 import { useSalesAnalytics, useTopProducts, useSyncOrders } from "@/hooks/api/use-analytics"
+import { useStores } from "@/hooks/api/use-stores"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -31,6 +33,8 @@ import {
   AlertCircle,
   RefreshCw,
   Loader2,
+  Key,
+  ExternalLink,
 } from "lucide-react"
 import Link from "next/link"
 import { toast } from "sonner"
@@ -255,6 +259,8 @@ export default function SalesPage() {
   const { selectedStore } = useStore()
   const t = useT()
   const [period, setPeriod] = useState<"7d" | "30d" | "90d">("7d")
+  const { data: stores } = useStores()
+  const hasValidToken = stores?.some(s => s.api_key_set && s.api_key_valid) ?? false
 
   const {
     data: analytics,
@@ -369,6 +375,24 @@ export default function SalesPage() {
           </Button>
         </div>
       </div>
+
+      {/* API Token Banner */}
+      {selectedStore && !hasValidToken && (
+        <Alert className="border-yellow-500/50 bg-yellow-500/5">
+          <AlertCircle className="h-4 w-4 text-yellow-500" />
+          <AlertTitle className="text-yellow-600">{t("sales.tokenNotConnected")}</AlertTitle>
+          <AlertDescription className="text-muted-foreground flex flex-col sm:flex-row sm:items-center gap-2">
+            <span>{t("sales.tokenNotConnectedDesc")}</span>
+            <Link href="/dashboard/integrations">
+              <Button variant="outline" size="sm" className="gap-1">
+                <Key className="h-3 w-3" />
+                {t("sales.connectToken")}
+                <ExternalLink className="h-3 w-3" />
+              </Button>
+            </Link>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* No store selected */}
       {!selectedStore && <NoStoreSelected />}

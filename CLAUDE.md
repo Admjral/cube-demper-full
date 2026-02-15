@@ -86,6 +86,7 @@ rsync -av --exclude='.git' --exclude='node_modules' --exclude='.next' frontend/ 
 - `app/services/kaspi_orders_api.py` — Kaspi REST API (X-Auth-Token, реальные телефоны через Base64 декодирование)
 - `app/services/kaspi_products_api.py` — Kaspi Products REST API (полные данные товаров: name, price, SKU)
 - `app/services/kaspi_mc_service.py` — MC GraphQL (заказы, телефоны замаскированы)
+- `app/services/order_event_processor.py` — Обработка событий заказов → WhatsApp шаблоны (KASPI_STATE_TO_EVENT mapping)
 - `app/services/kaspi_auth_service.py` — Playwright авторизация Kaspi MC
 - `app/services/waha_service.py` — WAHA WhatsApp API client (singleton)
 - `app/services/invoice_merger.py` — Склейка PDF-накладных
@@ -207,13 +208,39 @@ UPDATE kaspi_stores SET needs_reauth = FALSE WHERE guid IS NOT NULL;
 - **MC GraphQL**: `mc.shop.kaspi.kz/mc/facade/graphql`, cookies dict + `x-auth-version: 3`, НЕ Relay-схема, телефоны замаскированы
 - **Orders Sync**: Фоновая задача в бэкенде (НЕ в воркерах), каждые 8 мин (480s), REST API first → MC GraphQL fallback
 
+### Kaspi REST API — `state` vs `status` (2026-02-15)
+- **ДВА разных параметра фильтрации**:
+  - `filter[orders][state]` — таб/вкладка: `NEW`, `SIGN_REQUIRED`, `PICKUP`, `DELIVERY`, `KASPI_DELIVERY`, `ARCHIVE`
+  - `filter[orders][status]` — статус заказа: `APPROVED_BY_BANK`, `ACCEPTED_BY_MERCHANT`, `COMPLETED`, `CANCELLED`, `CANCELLING`, `KASPI_DELIVERY_RETURN_REQUESTED`, `RETURNED`
+- **В ответе тоже оба поля**: `attributes.state` (таб) и `attributes.status` (реальный статус)
+- **Пример**: заказ на самовывозе `state=PICKUP`, `status=ACCEPTED_BY_MERCHANT`. Выданный: `state=ARCHIVE`, `status=COMPLETED`
+- **Правило**: всегда использовать `attributes.status` для логики статусов заказов, НЕ `attributes.state`
+- **ARCHIVE не приходит без фильтра**: дефолтный запрос без `filter[orders][state]` НЕ возвращает архивные заказы → нужен отдельный запрос с `filter[orders][state]=ARCHIVE`
+- **httpx и запятые**: httpx кодирует запятые как `%2C` в query params → строить URL вручную через f-string
+
+### Orders Sync Pipeline (2026-02-15)
+- **`kaspi_order_id` = order code** (NOT REST API `id`): REST API `id` = Base64(code), MC GraphQL хранит plain code → дубли если использовать `id`. Всегда `attributes.code` как `kaspi_order_id`
+- **WhatsApp шаблоны при смене статуса**: `sync_orders_to_db()` триггерит `process_new_kaspi_order()` и для INSERT (новый заказ), и для UPDATE (смена статуса)
+- **Dedup шаблонов**: таблица `whatsapp_messages` — `order_code + trigger_event` предотвращает повторную отправку
+- **Event mapping** в `order_event_processor.py`:
+  - `APPROVED_BY_BANK` → ORDER_APPROVED, `ACCEPTED_BY_MERCHANT` → ORDER_ACCEPTED
+  - `COMPLETED` → ORDER_COMPLETED, `CANCELLED`/`RETURNED` → ORDER_CANCELLED
+  - `ARCHIVE` → ORDER_COMPLETED (fallback)
+
+### Base64 Phone Decode (2026-02-15)
+- **customer.id без padding**: Kaspi отдаёт Base64 без `=` padding (например `NzAyMzU2NTA3Nw`, 15 символов)
+- **Фикс**: `padded = customer_id_base64 + '=' * (-len(customer_id_base64) % 4)` перед `b64decode()`
+- **Masked phone detection**: `cellPhone` может быть all-zeros (`00000000000`) → проверка `all(c == '0' for c in digits)`
+- **WAHA phone format**: `phone_raw` должен быть 11 цифр с кодом страны (`77023565077`), НЕ 10 (`7023565077`). Формат для WAHA: `{phone_raw}@c.us`
+
 ### Real Phone Numbers (2026-02-15)
 - **customer.id = Base64-encoded phone**: `atob("NzAyMzU2NTA3Nw")` → `"7023565077"` → `"+77023565077"`
-- **customer.cellPhone = маскирован**: `"+0(000)-000-00-00"` (бесполезен)
+- **customer.cellPhone = маскирован**: `"+0(000)-000-00-00"` или all-zeros (бесполезен)
 - **Приоритет**: REST API (Base64 decode) → MC GraphQL (masked fallback)
-- **Утилита**: `decode_customer_id_to_phone()` в `api_parser.py`
+- **Утилита**: `decode_customer_id_to_phone()` в `api_parser.py` — с padding fix (`+= '=' * (-len % 4)`)
 - **Endpoint**: `GET /orders/{store_id}/{order_code}/customer` — возвращает реальный телефон если есть api_key
 - **Logic**: В `kaspi_orders_api.py:get_customer_phone()` — local import чтобы избежать circular dependency
+- **phone_raw**: 11 цифр с кодом страны (7XXXXXXXXXX), для WAHA: `{phone_raw}@c.us`
 
 ### Products Sync (2026-02-15)
 - **Kaspi Products REST API**: `kaspi.kz/shop/api/v2/products` (X-Auth-Token, JSON:API format)
@@ -284,33 +311,9 @@ UPDATE kaspi_stores SET needs_reauth = FALSE WHERE guid IS NOT NULL;
 - Alembic: `ba10cb14a230` и `6ce6a0fa5853` оба `down_revision = None` — не трогать
 
 ### Full Module Audit (2026-02-14)
-
-**12 модулей — статус:**
-
-| # | Модуль | Роутер | Статус | Ключевые проблемы |
-|---|--------|--------|--------|-------------------|
-| 1 | Демпинг цен | `workers/demper_instance.py` | ✅ 94% | `sync_store_sessions()` = TODO placeholder; `_process_city_prices` и `_process_product_cities` могут конфликтовать |
-| 2 | Аналитика | `routers/kaspi.py` | ✅ 90% | N+1 subquery в `get_store_analytics()`; UTC вместо KZ timezone |
-| 3 | Поиск ниш | `routers/niches.py` | ⚠️ 75% | Данные статичные (нет sync с Kaspi); комиссия hardcoded 12% (неточно); медленные запросы |
-| 4 | Юнит-экономика | `routers/unit_economics.py` | ✅ 93% | Relay работает; VAT toggle не влияет на комиссию; subcategory matching через substring |
-| 5 | Предзаказы | `routers/preorders.py` | ✅ OK | Background checker каждые 5 мин; нет отдельного endpoint для `pre_order_days` |
-| 6 | WhatsApp | `routers/whatsapp.py` | ✅ OK | 30 эндпоинтов; broadcasts с anti-spam delay 15-30с; legacy /session/create рядом с /sessions |
-| 7 | ИИ Продажник | `services/ai_salesman_service.py` + `routers/ai.py` | ✅ OK | `handle_incoming_message()` для входящих; `process_order_for_upsell()` для заказов (ручной); нет dedup входящих |
-| 8 | Заказы | `services/orders_sync_service.py` | ✅ OK | Sync каждые 8 мин; REST API first → MC GraphQL fallback; нет GET /orders endpoint |
-| 9 | Склейка накладных | `routers/invoices.py` | ✅ 100% | Чисто, без проблем |
-| 10 | Интеграции Kaspi | `routers/kaspi.py` + `services/kaspi_auth_service.py` | ⚠️ | Race condition в SMS verify (store limit не перепроверяется); ON CONFLICT не обновляет user_id |
-| 11 | ИИ-Юрист | `routers/lawyer.py` + `services/ai_lawyer_service.py` | ✅ 95% | 15 шаблонов, PDF export (fpdf2), редактирование, RAG + Gemini; pgvector нет → text search fallback |
-| 12 | Техподдержка | `routers/support.py` | ⚠️ | WebSocket + HTTP; 3 определения `/me` (dead code); нет ownership check при отправке сообщений |
-
-**Доп. модули:**
-- **Auth** (`routers/auth.py`): ✅ OK. OTP 6 цифр, 5 мин expiry, 60с cooldown. Password reset = TODO (email не отправляется)
-- **Billing** (`routers/billing.py`): ⚠️ TipTopPay не интегрирован (подписки без оплаты). `plan_id = NULL` для free плана
-- **Admin** (`routers/admin.py`): ✅ OK. Workers status = TODO (всегда `running_workers: 0`)
-
-**Dead code найден:**
-- `services/kaspi_auth_complete_example.py`, `kaspi_auth_usage_example.py`, `test_kaspi_auth.py` — example/test файлы
-- `services/railway_waha_service.py` — не используется (WAHA в Docker, не Railway)
-- `routers/support.py` строки 134-156 — два пустых определения `/me` перед реальным
+- **⚠️ Проблемные**: Поиск ниш (75%, статичные данные), Интеграции (race condition SMS verify), Техподдержка (dead code `/me`), Billing (TipTopPay не интегрирован)
+- **✅ OK**: Демпинг (94%), Аналитика (90%), Юнит-экономика (93%), Предзаказы, WhatsApp, ИИ Продажник, Заказы, Накладные (100%), ИИ-Юрист (95%)
+- **Dead code**: `kaspi_auth_*_example.py`, `test_kaspi_auth.py`, `railway_waha_service.py`, дубли `/me` в support.py
 
 ### ИИ-Юрист — Генерация документов (2026-02-15)
 - **15 типов документов**: supply/sale/service/rent/employment contracts, claims (supplier/buyer/marketplace), complaint, IP/TOO registration, license/tax application, acceptance/work_completion/reconciliation acts
@@ -321,18 +324,11 @@ UPDATE kaspi_stores SET needs_reauth = FALSE WHERE guid IS NOT NULL;
 - **Редактирование**: `PATCH /lawyer/documents/{id}` + `UpdateDocumentRequest` в `schemas/lawyer.py`
 
 ### PDF генерация с fpdf2 (2026-02-15)
-- **Библиотека**: `fpdf2==2.8.2` в `requirements.txt`
-- **Шрифты**: DejaVu Sans для кириллицы — `new-backend/app/fonts/DejaVuSans.ttf` + `DejaVuSans-Bold.ttf`
-- **Метод**: `generate_pdf(content, title)` в `ai_lawyer_service.py` — in-memory (BytesIO → bytes, без файлов на диске)
-- **Endpoint**: `GET /lawyer/documents/{id}/pdf` → `StreamingResponse(media_type="application/pdf")`
-- **Рендеринг**: markdown-like → PDF (H1/H2 headers, **bold**, таблицы `|col|col|`, подписи `___`)
-- **Баг 1 — `multi_cell(0, ...)` crash**: `FPDFException: Not enough horizontal space to render a single character`
-  - Причина: после `pdf.cell(col_w, ...)` (таблицы) курсор X остаётся у правого края, `multi_cell(0, ...)` = "оставшаяся ширина" = 0
-  - Фикс: `pdf.x = pdf.l_margin` перед каждым блоком + `multi_cell(content_w, ...)` с явной шириной вместо `0`
-- **Баг 2 — Кириллица в Content-Disposition**: `UnicodeEncodeError: 'latin-1' codec can't encode characters`
-  - Причина: HTTP заголовки кодируются в latin-1, кириллица в `filename="Договор.pdf"` не помещается
-  - Фикс: RFC 5987 — `filename="document.pdf"; filename*=UTF-8''%D0%94%D0%BE%D0%B3%D0%BE%D0%B2%D0%BE%D1%80.pdf`
-  - Код: `from urllib.parse import quote` → `quote(safe_title, safe='')` для URL-encoding кириллицы
+- **Библиотека**: `fpdf2==2.8.2`, шрифты DejaVu Sans для кириллицы (`app/fonts/`)
+- **Метод**: `generate_pdf(content, title)` в `ai_lawyer_service.py` → in-memory bytes
+- **Endpoint**: `GET /lawyer/documents/{id}/pdf` → `StreamingResponse`
+- **Важно**: `pdf.x = pdf.l_margin` перед каждым блоком, `multi_cell(content_w, ...)` с явной шириной (НЕ `0`)
+- **Кириллица в заголовках**: RFC 5987 — `filename*=UTF-8''%D0%...pdf`
 
 ### Alembic Multiple Heads (2026-02-15)
 - **Симптом**: Backend не стартует — `"Multiple head revisions are present"` → 502

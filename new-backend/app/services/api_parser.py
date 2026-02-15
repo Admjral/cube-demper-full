@@ -70,7 +70,9 @@ def decode_customer_id_to_phone(customer_id_base64: str) -> Optional[str]:
         return None
 
     try:
-        phone_digits = base64.b64decode(customer_id_base64).decode('utf-8')
+        # Base64 requires padding to a multiple of 4 chars
+        padded = customer_id_base64 + '=' * (-len(customer_id_base64) % 4)
+        phone_digits = base64.b64decode(padded).decode('utf-8')
 
         # Валидация: только цифры
         if not phone_digits.isdigit():
@@ -1124,16 +1126,26 @@ async def parse_order_details(order_data: dict) -> dict:
 
     # Parse customer info
     customer = attributes.get("customer", {})
-    customer_phone = customer.get("cellPhone", "")
 
-    # Debug logging for phone numbers
-    if customer_phone:
-        logger.debug(f"Order {attributes.get('code')}: customer_phone = {customer_phone}")
+    # Try Base64 decode of customer.id first (real phone)
+    # then fallback to cellPhone (usually masked by Kaspi)
+    customer_phone = ""
+    customer_id = customer.get("id")
+    if customer_id:
+        decoded_phone = decode_customer_id_to_phone(customer_id)
+        if decoded_phone:
+            customer_phone = decoded_phone
+            logger.debug(f"Order {attributes.get('code')}: decoded phone from customer.id = {customer_phone}")
+
+    if not customer_phone:
+        customer_phone = customer.get("cellPhone", "")
+        if customer_phone:
+            logger.debug(f"Order {attributes.get('code')}: using cellPhone (possibly masked) = {customer_phone}")
 
     return {
-        "kaspi_order_id": order_data.get("id", ""),
+        "kaspi_order_id": attributes.get("code", "") or order_data.get("id", ""),
         "kaspi_order_code": attributes.get("code", ""),
-        "status": attributes.get("state", ""),
+        "status": attributes.get("status") or attributes.get("state", ""),
         "total_price": int(attributes.get("totalPrice", 0)),
         "delivery_cost": int(attributes.get("deliveryCost", 0)),
         "customer_name": f"{customer.get('firstName', '')} {customer.get('lastName', '')}".strip(),
@@ -1232,6 +1244,9 @@ async def sync_orders_to_db(
                         DO UPDATE SET
                             status = $4,
                             total_price = $5,
+                            customer_name = CASE WHEN EXCLUDED.customer_name != '' THEN EXCLUDED.customer_name ELSE orders.customer_name END,
+                            customer_phone = CASE WHEN EXCLUDED.customer_phone != '' AND EXCLUDED.customer_phone NOT LIKE '%00000%' THEN EXCLUDED.customer_phone ELSE orders.customer_phone END,
+                            delivery_address = CASE WHEN EXCLUDED.delivery_address != '' THEN EXCLUDED.delivery_address ELSE orders.delivery_address END,
                             updated_at = NOW()
                         RETURNING id, (xmax = 0) as inserted
                         """,
@@ -1275,14 +1290,18 @@ async def sync_orders_to_db(
 
                                 # Send WhatsApp message if template is active
                                 try:
-                                    await process_new_kaspi_order(
+                                    wa_result = await process_new_kaspi_order(
                                         user_id=str(owner["user_id"]),
                                         store_id=store_id,
                                         order_code=code,
                                         kaspi_state=parsed.get("status", "APPROVED"),
                                         pool=pool,
                                     )
-                                    logger.info(f"WhatsApp sent for order {code}")
+                                    wa_status = wa_result.get("status", "unknown")
+                                    if wa_status == "sent":
+                                        logger.info(f"WhatsApp sent for order {code}")
+                                    else:
+                                        logger.info(f"WhatsApp result for order {code}: {wa_status}")
                                 except Exception as wa_err:
                                     logger.warning(f"Failed to send WhatsApp for order {code}: {wa_err}")
                         except Exception as notif_err:
@@ -1290,15 +1309,11 @@ async def sync_orders_to_db(
                     else:
                         updated += 1
 
-                        # Проверяем изменение статуса на COMPLETED
-                        status_changed_to_completed = (
-                            old_status and
-                            old_status != parsed["status"] and
-                            parsed["status"] == "COMPLETED"
-                        )
-
-                        if status_changed_to_completed:
-                            logger.info(f"Order {parsed['kaspi_order_code']} status: {old_status} → COMPLETED")
+                        # Trigger WhatsApp template on status change
+                        if old_status and old_status != parsed["status"]:
+                            code = parsed.get("kaspi_order_code", "")
+                            new_status = parsed["status"]
+                            logger.info(f"Order {code} status: {old_status} → {new_status}")
 
                             try:
                                 owner = await conn.fetchrow(
@@ -1306,17 +1321,23 @@ async def sync_orders_to_db(
                                     uuid_module.UUID(store_id)
                                 )
                                 if owner:
-                                    from .whatsapp_automation_service import process_order_completed
-                                    await process_order_completed(
-                                        user_id=str(owner["user_id"]),
-                                        store_id=store_id,
-                                        order_id=str(order_id),
-                                        order_code=parsed["kaspi_order_code"],
-                                        pool=pool,
-                                    )
-                                    logger.info(f"WhatsApp automation completed for order {parsed['kaspi_order_code']}")
+                                    try:
+                                        wa_result = await process_new_kaspi_order(
+                                            user_id=str(owner["user_id"]),
+                                            store_id=store_id,
+                                            order_code=code,
+                                            kaspi_state=new_status,
+                                            pool=pool,
+                                        )
+                                        wa_status = wa_result.get("status", "unknown")
+                                        if wa_status == "sent":
+                                            logger.info(f"WhatsApp sent for order {code} (status → {new_status})")
+                                        else:
+                                            logger.info(f"WhatsApp result for order {code} (status → {new_status}): {wa_status}")
+                                    except Exception as wa_err:
+                                        logger.warning(f"Failed to send WhatsApp for order {code}: {wa_err}")
                             except Exception as e:
-                                logger.error(f"Failed to process completed order {parsed['kaspi_order_code']}: {e}")
+                                logger.error(f"Failed to process status change for order {code}: {e}")
 
                     # Accumulate customer contact (only for new orders with real phone)
                     if user_id and result["inserted"] and _is_valid_phone(parsed["customer_phone"]):

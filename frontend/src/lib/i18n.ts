@@ -150,6 +150,9 @@ const translations: Record<Locale, Record<string, string>> = {
     "sales.byRevenue": "По выручке",
     "sales.pcs": "шт",
     "sales.noSalesData": "Нет данных о продажах",
+    "sales.tokenNotConnected": "API токен Kaspi не подключён",
+    "sales.tokenNotConnectedDesc": "Аналитика работает в ограниченном режиме. Подключите API токен для полных данных и реальных телефонов.",
+    "sales.connectToken": "Подключить токен",
 
     // === Поиск ниш ===
     "niche.title": "Поиск ниш",
@@ -276,6 +279,9 @@ const translations: Record<Locale, Record<string, string>> = {
     // === Синхронизация цен ===
     "priceBot.syncPrices": "Обновить цены",
     "priceBot.syncPricesStarted": "Обновление цен запущено",
+    "priceBot.tokenNotConnected": "API токен Kaspi не подключён",
+    "priceBot.tokenNotConnectedDesc": "Синхронизация товаров может быть неполной. Подключите API токен для полных данных о товарах.",
+    "priceBot.connectToken": "Подключить токен",
 
     // === Статус очереди ===
     "priceBot.status": "Статус",
@@ -895,6 +901,9 @@ const translations: Record<Locale, Record<string, string>> = {
     "sales.byRevenue": "Түсім бойынша",
     "sales.pcs": "дана",
     "sales.noSalesData": "Сатылым деректері жоқ",
+    "sales.tokenNotConnected": "Kaspi API токені қосылмаған",
+    "sales.tokenNotConnectedDesc": "Талдау шектеулі режимде жұмыс істейді. Толық деректер үшін API токенін қосыңыз.",
+    "sales.connectToken": "Токенді қосу",
 
     // === Тауша іздеу ===
     "niche.title": "Тауша іздеу",
@@ -1021,6 +1030,9 @@ const translations: Record<Locale, Record<string, string>> = {
     // === Бағаларды синхрондау ===
     "priceBot.syncPrices": "Бағаларды жаңарту",
     "priceBot.syncPricesStarted": "Бағаларды жаңарту басталды",
+    "priceBot.tokenNotConnected": "Kaspi API токені қосылмаған",
+    "priceBot.tokenNotConnectedDesc": "Тауарларды синхрондау толық болмауы мүмкін. Толық деректер үшін API токенін қосыңыз.",
+    "priceBot.connectToken": "Токенді қосу",
 
     // === Кезек мәртебесі ===
     "priceBot.status": "Мәртебе",

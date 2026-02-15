@@ -42,12 +42,20 @@ class OrderEvent(str, Enum):
 
 # Маппинг статусов Kaspi на события
 KASPI_STATE_TO_EVENT = {
-    "APPROVED": OrderEvent.ORDER_APPROVED,
+    # REST API states (official)
+    "APPROVED_BY_BANK": OrderEvent.ORDER_APPROVED,
     "ACCEPTED_BY_MERCHANT": OrderEvent.ORDER_ACCEPTED_BY_MERCHANT,
-    "DELIVERY": OrderEvent.ORDER_SHIPPED,
-    "DELIVERED": OrderEvent.ORDER_DELIVERED,
     "COMPLETED": OrderEvent.ORDER_COMPLETED,
     "CANCELLED": OrderEvent.ORDER_CANCELLED,
+    "RETURNED": OrderEvent.ORDER_CANCELLED,
+    # MC GraphQL states (different naming)
+    "APPROVED": OrderEvent.ORDER_APPROVED,
+    "ACCEPTED": OrderEvent.ORDER_ACCEPTED_BY_MERCHANT,
+    "DELIVERY": OrderEvent.ORDER_SHIPPED,
+    "PICKUP": OrderEvent.ORDER_DELIVERED,
+    "DELIVERED": OrderEvent.ORDER_DELIVERED,
+    # REST API tab states
+    "ARCHIVE": OrderEvent.ORDER_COMPLETED,  # "выданный" → ARCHIVE в REST API
 }
 
 
@@ -152,7 +160,10 @@ class OrderEventProcessor:
                         order_code=order_code,
                         pool=pool,
                     )
-                    logger.info(f"Got phone via REST API for order {order_code}")
+                    if order_data and order_data.get('phone'):
+                        logger.info(f"Got phone via REST API for order {order_code}: {order_data['phone']}")
+                    else:
+                        logger.warning(f"REST API returned no phone for order {order_code}")
                 except KaspiTokenInvalidError:
                     logger.warning(f"API token invalid for store {store_id}, marking as invalid")
                     await conn.execute(

@@ -43,7 +43,6 @@ REST_API_STATES = [
     "ACCEPTED_BY_MERCHANT",
     "DELIVERY",
     "PICKUP",
-    "KASPI_DELIVERY_RETURN_REQUESTED",
 ]
 
 
@@ -123,18 +122,31 @@ async def _run_sync_cycle(pool: asyncpg.Pool):
 
                         rest_api = get_kaspi_orders_api()
                         now = datetime.utcnow()
+                        date_from = now - timedelta(days=14)
+                        # Fetch active orders (no state filter = active tabs only)
                         orders = await rest_api.fetch_orders(
                             api_token=api_key,
-                            date_from=now - timedelta(days=14),
+                            date_from=date_from,
                             date_to=now,
-                            states=[
-                                "APPROVED",
-                                "ACCEPTED",
-                                "DELIVERY",
-                                "PICKUP",
-                            ],
                             size=100,
                         )
+                        # Also fetch archived orders to catch COMPLETED transitions
+                        try:
+                            archive_orders = await rest_api.fetch_orders(
+                                api_token=api_key,
+                                date_from=now - timedelta(days=3),
+                                date_to=now,
+                                states=["ARCHIVE"],
+                                size=100,
+                            )
+                            if archive_orders:
+                                # Merge, avoiding duplicates by order id
+                                existing_ids = {o.get("id") for o in orders}
+                                for ao in archive_orders:
+                                    if ao.get("id") not in existing_ids:
+                                        orders.append(ao)
+                        except Exception as e:
+                            logger.debug(f"[ORDERS_SYNC] {store_name}: archive fetch failed: {e}")
                         source = "rest_api"
                         logger.info(f"[ORDERS_SYNC] {store_name}: {len(orders)} orders via REST API")
                     except KaspiTokenInvalidError:

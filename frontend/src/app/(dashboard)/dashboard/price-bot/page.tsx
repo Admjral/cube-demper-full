@@ -6,7 +6,9 @@ import { useT } from "@/lib/i18n"
 import { SubscriptionGate } from "@/components/shared/subscription-gate"
 import { FeatureGate } from "@/components/shared/feature-gate"
 import { useProducts, useDempingSettings, useUpdateProduct, useUpdateDempingSettings, useSyncProducts, useSyncPrices, useBulkUpdateProducts } from "@/hooks/api/use-products"
+import { useStores } from "@/hooks/api/use-stores"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -45,6 +47,8 @@ import {
   AlertCircle,
   DollarSign,
   RefreshCw,
+  Key,
+  ExternalLink,
   CheckSquare,
   Square,
   Zap,
@@ -126,6 +130,8 @@ function NoProducts() {
 export default function PriceBotPage() {
   const { selectedStore } = useStore()
   const t = useT()
+  const { data: stores } = useStores()
+  const hasValidToken = stores?.some(s => s.api_key_set && s.api_key_valid) ?? false
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all")
   const [showSettingsDialog, setShowSettingsDialog] = useState(false)
@@ -368,6 +374,24 @@ export default function PriceBotPage() {
           </Button>
         </div>
       </div>
+
+      {/* API Token Banner */}
+      {selectedStore && !hasValidToken && (
+        <Alert className="border-yellow-500/50 bg-yellow-500/5">
+          <AlertCircle className="h-4 w-4 text-yellow-500" />
+          <AlertTitle className="text-yellow-600">{t("priceBot.tokenNotConnected")}</AlertTitle>
+          <AlertDescription className="text-muted-foreground flex flex-col sm:flex-row sm:items-center gap-2">
+            <span>{t("priceBot.tokenNotConnectedDesc")}</span>
+            <Link href="/dashboard/integrations">
+              <Button variant="outline" size="sm" className="gap-1">
+                <Key className="h-3 w-3" />
+                {t("priceBot.connectToken")}
+                <ExternalLink className="h-3 w-3" />
+              </Button>
+            </Link>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* No store selected */}
       {!selectedStore && <NoStoreSelected />}

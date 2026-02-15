@@ -54,7 +54,7 @@ class KaspiOrdersAPI:
         api_token: str,
         date_from: datetime,
         date_to: datetime,
-        states: List[str],
+        states: Optional[List[str]] = None,
         page: int = 0,
         size: int = 100,
     ) -> List[dict]:
@@ -65,7 +65,7 @@ class KaspiOrdersAPI:
             api_token: X-Auth-Token from Kaspi MC settings
             date_from: Start date filter
             date_to: End date filter
-            states: List of order states to filter
+            states: Optional list of order states (omit to get all states)
             page: Page number (0-based)
             size: Page size (max 100)
 
@@ -77,13 +77,8 @@ class KaspiOrdersAPI:
             KaspiOrdersAPIError: If API call fails
         """
         headers = self._get_headers(api_token)
-        params = {
-            "page[number]": page,
-            "page[size]": size,
-            "filter[orders][creationDate][$ge]": int(date_from.timestamp() * 1000),
-            "filter[orders][creationDate][$le]": int(date_to.timestamp() * 1000),
-            "filter[orders][state]": ",".join(states),
-        }
+        ts_from = int(date_from.timestamp() * 1000)
+        ts_to = int(date_to.timestamp() * 1000)
 
         all_orders = []
         max_pages = 50
@@ -91,15 +86,21 @@ class KaspiOrdersAPI:
         try:
             async with httpx.AsyncClient(**self._get_client_kwargs()) as client:
                 while page < max_pages:
-                    params["page[number]"] = page
+                    url = (
+                        f"{self.BASE_URL}"
+                        f"?page[number]={page}&page[size]={size}"
+                        f"&filter[orders][creationDate][$ge]={ts_from}"
+                        f"&filter[orders][creationDate][$le]={ts_to}"
+                    )
+                    if states:
+                        url += f"&filter[orders][state]={','.join(states)}"
 
                     # Rate limiting: 6 RPS for Orders API
                     await get_orders_rate_limiter().acquire()
 
                     response = await client.get(
-                        self.BASE_URL,
+                        url,
                         headers=headers,
-                        params=params,
                     )
 
                     if response.status_code in (401, 403):
@@ -300,6 +301,14 @@ class KaspiOrdersAPI:
         # Fetch order detail if we don't have it yet
         if not order_data:
             order_data = await self.fetch_order_detail(api_token, order_id)
+
+        # Fallback: search by order code (MC GraphQL stores code as kaspi_order_id)
+        if not order_data:
+            try:
+                order_data = await self.fetch_order_by_code(api_token, order_code)
+            except KaspiOrdersAPIError as e:
+                logger.warning(f"Fallback search by code for order {order_code}: {e}")
+
         if not order_data:
             return None
 
@@ -317,12 +326,11 @@ class KaspiOrdersAPI:
 
         if formatted_phone:
             logger.info(f"Successfully decoded phone from customer.id for order {order_code}: {formatted_phone}")
-            # Extract digits for phone_raw (10 digits without country code)
-            # formatted_phone is like "+77023565077" or "+7023565077"
+            # Extract digits for phone_raw (11 digits with country code for WAHA)
+            # formatted_phone is like "+77023565077"
             digits = "".join(filter(str.isdigit, formatted_phone))
-            if len(digits) == 11 and digits.startswith('7'):
-                digits = digits[1:]  # "77023565077" → "7023565077" (remove country code)
-            # else: digits is already 10 digits
+            if len(digits) == 10:
+                digits = "7" + digits  # "7023565077" → "77023565077"
         else:
             # PRIORITY 2: Fallback to cellPhone (may be masked +0(000)-000-00-00)
             logger.debug(f"customer.id not available or decode failed, using cellPhone for order {order_code}")
@@ -332,6 +340,12 @@ class KaspiOrdersAPI:
 
             # Format phone: cellPhone comes as "77XXXXXXXXX" (11 digits) or may be masked
             digits = "".join(filter(str.isdigit, str(raw_phone)))
+
+            # Check for masked phone (all zeros like "00000000000")
+            if digits and all(c == '0' for c in digits):
+                logger.debug(f"cellPhone is masked (all zeros) for order {order_code}")
+                return None
+
             if len(digits) == 11 and digits.startswith('7'):
                 formatted_phone = f"+{digits}"
             elif len(digits) == 10:
