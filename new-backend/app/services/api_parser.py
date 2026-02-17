@@ -1373,8 +1373,14 @@ async def sync_orders_to_db(
                         except Exception as e:
                             logger.debug(f"Contact upsert error: {e}")
 
-                    # Upsert order items (only for new orders)
-                    if is_new_order:
+                    # Upsert order items (for new orders, or existing orders missing items)
+                    has_items = False
+                    if not is_new_order:
+                        has_items = await conn.fetchval(
+                            "SELECT EXISTS(SELECT 1 FROM order_items WHERE order_id = $1)",
+                            order_id
+                        )
+                    if not has_items and parsed["entries"]:
                         for entry in parsed["entries"]:
                             # Try to find matching product (by code/sku, fallback to name)
                             product = None

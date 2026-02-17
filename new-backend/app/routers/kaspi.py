@@ -1646,12 +1646,15 @@ async def get_store_stats(
             uuid.UUID(store_id)
         )
 
-        # Get orders stats
+        # Get orders stats (exclude cancelled/returned)
         orders_stats = await conn.fetchrow(
             """
             SELECT
                 COUNT(*) FILTER (WHERE order_date >= CURRENT_DATE) as today_orders,
                 COALESCE(SUM(total_price) FILTER (WHERE order_date >= CURRENT_DATE), 0) as today_revenue,
+                COALESCE(SUM(
+                    (SELECT COALESCE(SUM(quantity), 0) FROM order_items WHERE order_id = orders.id)
+                ) FILTER (WHERE order_date >= CURRENT_DATE), 0) as today_items_sold,
                 COUNT(*) FILTER (WHERE order_date >= NOW() - INTERVAL '7 days') as week_orders,
                 COALESCE(SUM(total_price) FILTER (WHERE order_date >= NOW() - INTERVAL '7 days'), 0) as week_revenue,
                 COUNT(*) FILTER (WHERE order_date >= NOW() - INTERVAL '30 days') as month_orders,
@@ -1660,10 +1663,15 @@ async def get_store_stats(
                 COALESCE(SUM(total_price), 0) as total_revenue
             FROM orders
             WHERE store_id = $1
+                AND status NOT IN ('CANCELLED', 'CANCELLING', 'RETURNED')
             """,
             uuid.UUID(store_id)
         )
 
+        today_avg = (
+            orders_stats['today_revenue'] // orders_stats['today_orders']
+            if orders_stats['today_orders'] > 0 else 0
+        )
         avg_order_value = (
             orders_stats['total_revenue'] // orders_stats['total_orders']
             if orders_stats['total_orders'] > 0 else 0
@@ -1677,6 +1685,8 @@ async def get_store_stats(
             demping_enabled_count=stats['demping_enabled'] or 0,
             today_orders=orders_stats['today_orders'] or 0,
             today_revenue=orders_stats['today_revenue'] or 0,
+            today_items_sold=orders_stats['today_items_sold'] or 0,
+            today_avg_order=today_avg,
             week_orders=orders_stats['week_orders'] or 0,
             week_revenue=orders_stats['week_revenue'] or 0,
             month_orders=orders_stats['month_orders'] or 0,
@@ -1717,7 +1727,7 @@ async def get_store_analytics(
         days = {'7d': 7, '30d': 30, '90d': 90}[period]
         start_date = datetime.utcnow() - timedelta(days=days)
 
-        # Get daily stats from orders table
+        # Get daily stats from orders table (exclude cancelled/returned)
         daily_data = await conn.fetch(
             """
             SELECT
@@ -1729,6 +1739,7 @@ async def get_store_analytics(
                 ), 0) as items
             FROM orders
             WHERE store_id = $1 AND order_date >= $2
+                AND status NOT IN ('CANCELLED', 'CANCELLING', 'RETURNED')
             GROUP BY DATE(order_date)
             ORDER BY date ASC
             """,
@@ -1783,11 +1794,17 @@ async def get_top_products(
     store_id: str,
     current_user: Annotated[dict, require_feature("analytics")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
-    limit: int = 10
+    limit: int = 10,
+    period: str = '7d'
 ):
     """Get top products by sales from orders"""
     # Clamp limit
     limit = clamp_page_size(limit, max_size=50)
+    if period not in ['7d', '30d', '90d']:
+        period = '7d'
+    days = {'7d': 7, '30d': 30, '90d': 90}[period]
+    start_date = datetime.utcnow() - timedelta(days=days)
+
     async with pool.acquire() as conn:
         # Verify ownership
         store = await conn.fetchrow(
@@ -1801,7 +1818,7 @@ async def get_top_products(
                 detail="Store not found"
             )
 
-        # Get top products by sales (from order_items)
+        # Get top products by sales (from order_items, filtered by period and status)
         products = await conn.fetch(
             """
             SELECT
@@ -1815,13 +1832,16 @@ async def get_top_products(
             JOIN orders o ON o.id = oi.order_id
             LEFT JOIN products p ON p.id = oi.product_id
             WHERE o.store_id = $1
+                AND o.order_date >= $3
+                AND o.status NOT IN ('CANCELLED', 'CANCELLING', 'RETURNED')
             GROUP BY COALESCE(p.id, oi.product_id), COALESCE(p.kaspi_sku, oi.sku),
                      COALESCE(p.name, oi.name), COALESCE(p.price, 0)
             ORDER BY sales_count DESC
             LIMIT $2
             """,
             uuid.UUID(store_id),
-            limit
+            limit,
+            start_date
         )
 
         # If no order data, fallback to products list

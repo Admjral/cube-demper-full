@@ -2,13 +2,14 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { dashboardKeys } from './use-dashboard'
 import type { SalesAnalytics, TopProduct } from '@/types/api'
 
 // Query keys
 export const analyticsKeys = {
   all: ['analytics'] as const,
   sales: (storeId: string, period: string) => [...analyticsKeys.all, 'sales', storeId, period] as const,
-  topProducts: (storeId: string) => [...analyticsKeys.all, 'top-products', storeId] as const,
+  topProducts: (storeId: string, period: string = '7d') => [...analyticsKeys.all, 'top-products', storeId, period] as const,
 }
 
 // Sync orders response
@@ -32,10 +33,10 @@ export function useSalesAnalytics(
 }
 
 // Get top products
-export function useTopProducts(storeId: string | undefined, limit: number = 10) {
+export function useTopProducts(storeId: string | undefined, period: '7d' | '30d' | '90d' = '7d', limit: number = 10) {
   return useQuery({
-    queryKey: analyticsKeys.topProducts(storeId || ''),
-    queryFn: () => api.get<TopProduct[]>(`/kaspi/stores/${storeId}/top-products?limit=${limit}`),
+    queryKey: analyticsKeys.topProducts(storeId || '', period),
+    queryFn: () => api.get<TopProduct[]>(`/kaspi/stores/${storeId}/top-products?limit=${limit}&period=${period}`),
     enabled: !!storeId,
     staleTime: 60000,
   })
@@ -49,9 +50,10 @@ export function useSyncOrders() {
     mutationFn: ({ storeId, daysBack = 30 }: { storeId: string; daysBack?: number }) =>
       api.post<SyncOrdersResponse>(`/kaspi/stores/${storeId}/sync-orders?days_back=${daysBack}`),
     onSuccess: (_, { storeId }) => {
-      // Invalidate analytics after a delay to allow sync to complete
+      // Invalidate analytics and dashboard stats after a delay to allow sync to complete
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: analyticsKeys.all })
+        queryClient.invalidateQueries({ queryKey: dashboardKeys.all })
       }, 5000)
     },
   })

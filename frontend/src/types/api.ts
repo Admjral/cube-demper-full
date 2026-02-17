@@ -334,6 +334,8 @@ export interface StoreStats {
   demping_enabled_count: number
   today_orders: number
   today_revenue: number
+  today_items_sold: number
+  today_avg_order: number
   week_orders: number
   week_revenue: number
   month_orders: number

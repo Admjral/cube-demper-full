@@ -172,6 +172,8 @@ class StoreStats(BaseModel):
     demping_enabled_count: int
     today_orders: int = 0
     today_revenue: int = 0
+    today_items_sold: int = 0
+    today_avg_order: int = 0
     week_orders: int = 0
     week_revenue: int = 0
     month_orders: int = 0

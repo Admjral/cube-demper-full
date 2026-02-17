@@ -25,6 +25,7 @@ import {
   CreditCard,
   Lock,
   Headphones,
+  Users,
 } from "lucide-react"
 import { useSupportUnread } from "@/hooks/use-support-unread"
 
@@ -36,6 +37,7 @@ const FREE_PLAN_ALLOWED = [
   '/dashboard/settings',
   '/dashboard/integrations',
   '/dashboard/support',
+  '/dashboard/referral',
 ]
 
 const navigation = [
@@ -101,6 +103,13 @@ const navigation = [
     nameKz: "AI Заңгер",
     href: "/dashboard/ai-lawyer",
     icon: Scale,
+  },
+  {
+    name: "Referral",
+    nameRu: "Реферальная программа",
+    nameKz: "Серіктестік бағдарлама",
+    href: "/dashboard/referral",
+    icon: Users,
   },
 ]
 

@@ -145,6 +145,11 @@ class KaspiMCService:
                         lastName
                     }
                     entries {
+                        merchantProduct {
+                            name
+                            code
+                        }
+                        totalPrice
                         quantity
                     }
                     totalPrice
@@ -447,6 +452,11 @@ class KaspiMCService:
                                     lastName
                                 }
                                 entries {
+                                    merchantProduct {
+                                        name
+                                        code
+                                    }
+                                    totalPrice
                                     quantity
                                 }
                             }
@@ -498,10 +508,6 @@ class KaspiMCService:
                     creation_ts = int(datetime.utcnow().timestamp() * 1000)
                     total_price = detail.get("totalPrice", 0)
 
-                    # Calculate per-item price from totalPrice
-                    total_qty = sum(e.get("quantity", 1) for e in entries) if entries else 1
-                    per_item_price = int(total_price / total_qty) if total_qty > 0 else total_price
-
                     order = {
                         "id": order_code,
                         "attributes": {
@@ -523,12 +529,12 @@ class KaspiMCService:
                             "entries": [
                                 {
                                     "product": {
-                                        "code": "",
+                                        "code": e.get("merchantProduct", {}).get("code", ""),
                                         "sku": "",
-                                        "name": e.get("productName", e.get("name", "")),
+                                        "name": e.get("merchantProduct", {}).get("name", ""),
                                     },
                                     "quantity": e.get("quantity", 1),
-                                    "basePrice": per_item_price,
+                                    "basePrice": e.get("totalPrice", 0),
                                 }
                                 for e in entries
                             ],

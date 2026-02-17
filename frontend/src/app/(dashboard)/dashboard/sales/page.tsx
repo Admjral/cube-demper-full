@@ -6,6 +6,7 @@ import { useT } from "@/lib/i18n"
 import { SubscriptionGate } from "@/components/shared/subscription-gate"
 import { FeatureGate } from "@/components/shared/feature-gate"
 import { useSalesAnalytics, useTopProducts, useSyncOrders } from "@/hooks/api/use-analytics"
+import { useStoreStats } from "@/hooks/api/use-dashboard"
 import { useStores } from "@/hooks/api/use-stores"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
@@ -263,6 +264,11 @@ export default function SalesPage() {
   const hasValidToken = stores?.some(s => s.api_key_set && s.api_key_valid) ?? false
 
   const {
+    data: storeStats,
+    isLoading: statsLoading,
+  } = useStoreStats(selectedStore?.id)
+
+  const {
     data: analytics,
     isLoading: analyticsLoading,
     error: analyticsError,
@@ -271,7 +277,7 @@ export default function SalesPage() {
   const {
     data: topProducts,
     isLoading: topProductsLoading,
-  } = useTopProducts(selectedStore?.id)
+  } = useTopProducts(selectedStore?.id, period)
 
   const syncOrders = useSyncOrders()
 
@@ -289,32 +295,32 @@ export default function SalesPage() {
     }
   }
 
-  const stats = analytics
+  const stats = storeStats
     ? [
         {
           titleKey: "sales.revenue",
-          value: formatPrice(analytics.total_revenue),
+          value: formatPrice(storeStats.today_revenue),
           change: "",
           trend: "up" as const,
           icon: DollarSign,
         },
         {
           titleKey: "sales.ordersCount",
-          value: formatNumber(analytics.total_orders),
+          value: formatNumber(storeStats.today_orders),
           change: "",
           trend: "up" as const,
           icon: ShoppingCart,
         },
         {
           titleKey: "sales.itemsSold",
-          value: formatNumber(analytics.total_items_sold),
+          value: formatNumber(storeStats.today_items_sold),
           change: "",
           trend: "up" as const,
           icon: Package,
         },
         {
           titleKey: "sales.avgOrder",
-          value: formatPrice(analytics.avg_order_value),
+          value: formatPrice(storeStats.today_avg_order),
           change: "",
           trend: "up" as const,
           icon: BarChart3,
@@ -400,26 +406,10 @@ export default function SalesPage() {
       {/* Content when store is selected */}
       {selectedStore && (
         <>
-          {/* Stats */}
-          {analyticsLoading && <StatsLoading />}
+          {/* Stats — today's data */}
+          {statsLoading && <StatsLoading />}
 
-          {analyticsError && (
-            <Card className="glass-card border-destructive/50">
-              <CardContent className="p-6 flex items-center gap-4">
-                <AlertCircle className="h-8 w-8 text-destructive" />
-                <div>
-                  <h3 className="font-semibold">
-                    {t("sales.loadingError")}
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    {t("sales.loadingErrorDesc")}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {!analyticsLoading && !analyticsError && analytics && (
+          {!statsLoading && storeStats && (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {stats.map((stat) => (
                 <Card key={stat.titleKey} className="glass-card glass-hover">
@@ -457,6 +447,22 @@ export default function SalesPage() {
 
           {/* Chart */}
           {analyticsLoading && <ChartLoading />}
+
+          {analyticsError && (
+            <Card className="glass-card border-destructive/50">
+              <CardContent className="p-6 flex items-center gap-4">
+                <AlertCircle className="h-8 w-8 text-destructive" />
+                <div>
+                  <h3 className="font-semibold">
+                    {t("sales.loadingError")}
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    {t("sales.loadingErrorDesc")}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {!analyticsLoading && !analyticsError && analytics && (
             <Card className="glass-card">
