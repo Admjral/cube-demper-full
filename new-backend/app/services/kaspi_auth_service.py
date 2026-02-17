@@ -29,6 +29,10 @@ logger = logging.getLogger(__name__)
 # Per-merchant login locks to prevent concurrent Playwright logins for the same account
 _merchant_login_locks: dict[str, asyncio.Lock] = {}
 
+# Pending phone auth sessions — keeps Playwright page alive between SMS send and verify
+# Key: phone number, Value: Playwright Page object
+_pending_phone_pages: dict[str, Page] = {}
+
 
 def _get_merchant_lock(merchant_id: str) -> asyncio.Lock:
     """Get or create an asyncio Lock for a merchant to prevent concurrent logins."""
@@ -478,6 +482,174 @@ async def verify_sms_code(
             'store_points': store_points,
         }
 
+    finally:
+        await page.close()
+
+
+async def authenticate_kaspi_phone(phone: str) -> dict:
+    """
+    Start phone-based Kaspi authentication.
+
+    Opens Playwright, clicks "Phone" tab, enters number, clicks Continue.
+    Kaspi sends SMS to the phone. Returns partial session for SMS verification.
+
+    Args:
+        phone: Phone number in format 77051751603
+
+    Returns:
+        dict with partial_session data (cookies, page_url, phone)
+
+    Raises:
+        KaspiAuthError: If SMS sending fails
+    """
+    browser_farm = await get_browser_farm()
+    shard = browser_farm.shards[0]
+    await shard.initialize()
+    context = await shard.get_context()
+    page = await context.new_page()
+
+    try:
+        logger.info(f"Starting phone auth for {phone[:4]}***")
+
+        await page.goto("https://idmc.shop.kaspi.kz/login", timeout=30000)
+        await page.wait_for_load_state('domcontentloaded')
+        await asyncio.sleep(2)
+
+        # Click "Phone" tab
+        phone_tab = await page.query_selector("text=Телефон")
+        if not phone_tab:
+            raise KaspiAuthError("Phone tab not found on login page")
+        await phone_tab.click()
+        await asyncio.sleep(1)
+
+        # Enter phone number
+        phone_field = await page.wait_for_selector("#user_phone_field", timeout=5000)
+        if not phone_field:
+            raise KaspiAuthError("Phone field not found")
+        await phone_field.fill(phone)
+        await asyncio.sleep(0.5)
+
+        # Click Continue — triggers SMS
+        btn = await page.query_selector(".button.is-primary")
+        if not btn:
+            raise KaspiAuthError("Continue button not found")
+        await btn.click()
+        await asyncio.sleep(3)
+
+        # Verify SMS code field appeared
+        sms_field = await page.query_selector("input[name=security-code]")
+        if not sms_field:
+            # Check for error
+            error_el = await page.query_selector(".notification.is-danger")
+            if error_el:
+                error_text = await error_el.text_content()
+                raise KaspiAuthError(f"Phone auth error: {error_text}")
+            raise KaspiAuthError("SMS code field not found after sending")
+
+        # Keep page alive for verify step — do NOT close it
+        _pending_phone_pages[phone] = page
+
+        logger.info(f"SMS sent to {phone[:4]}***, waiting for code (page kept alive)")
+        return {
+            'phone': phone,
+            'auth_method': 'phone'
+        }
+
+    except KaspiAuthError:
+        await page.close()
+        raise
+    except Exception as e:
+        await page.close()
+        logger.error(f"Error during phone auth: {e}")
+        raise KaspiAuthError(f"Phone auth failed: {e}")
+
+
+async def verify_phone_sms_code(
+    phone: str,
+    sms_code: str,
+    partial_session: dict
+) -> dict:
+    """
+    Verify SMS code for phone-based authentication.
+    Uses the page kept alive from authenticate_kaspi_phone.
+
+    Args:
+        phone: Phone number
+        sms_code: SMS code received
+        partial_session: Partial session from authenticate_kaspi_phone (unused, kept for API compat)
+
+    Returns:
+        dict: Complete session with merchant_uid, shop_name, guid, store_points
+
+    Raises:
+        KaspiAuthError: If verification fails
+    """
+    page = _pending_phone_pages.pop(phone, None)
+    if not page:
+        raise KaspiAuthError("Сессия SMS истекла. Отправьте SMS заново.")
+
+    try:
+        logger.info(f"Verifying phone SMS code for {phone[:4]}***")
+
+        # The page should still be on the SMS code input screen
+        sms_field = await page.query_selector("input[name=security-code]")
+        if not sms_field:
+            raise KaspiAuthError("SMS code field not found — session may have expired. Try again.")
+
+        # Enter SMS code
+        await sms_field.fill(sms_code)
+        await asyncio.sleep(0.3)
+
+        btn = await page.query_selector(".button.is-primary")
+        await btn.click()
+
+        # Wait for either navbar (success) or error notification
+        try:
+            await page.wait_for_selector('nav.navbar', timeout=30000)
+        except Exception:
+            # Check for error notification
+            error_el = await page.query_selector(".notification.is-danger")
+            if error_el:
+                error_text = (await error_el.text_content() or "").strip()
+                if error_text:
+                    raise KaspiAuthError(f"SMS verification failed: {error_text}")
+            # Log current URL and page content for debugging
+            current_url = page.url
+            logger.error(f"Navbar not found after SMS verify. URL: {current_url}")
+            raise KaspiAuthError("Login failed after SMS code — попробуйте ещё раз")
+
+        logger.info("Phone SMS verification successful")
+
+        # Get updated cookies
+        updated_cookies = await page.context.cookies()
+
+        # Get merchant info using the session
+        merchant_uid, shop_name, store_points = await _get_merchant_info(updated_cookies)
+
+        # Build GUID
+        guid = {
+            'cookies': [dict(c) for c in updated_cookies],
+            'phone': phone,
+            'merchant_uid': merchant_uid,
+            'authenticated_at': datetime.utcnow().isoformat(),
+            'auth_method': 'phone',
+            'sms_verified': True
+        }
+
+        encrypted_guid = encrypt_session(guid)
+
+        return {
+            'merchant_uid': merchant_uid,
+            'shop_name': shop_name,
+            'guid': encrypted_guid,
+            'store_points': store_points,
+        }
+
+    except KaspiAuthError:
+        raise
+    except Exception as e:
+        logger.error(f"Error during phone SMS verification: {e}")
+        raise KaspiAuthError(f"Phone SMS verification failed: {e}")
     finally:
         await page.close()
 

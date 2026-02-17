@@ -50,6 +50,18 @@ class KaspiAuthSMSRequest(BaseModel):
     sms_code: str = Field(..., min_length=4, max_length=6)
 
 
+class KaspiPhoneAuthRequest(BaseModel):
+    """Schema for Kaspi phone + SMS authentication (step 1: send SMS)"""
+    phone: str = Field(..., min_length=10, max_length=12, pattern=r"^7\d{9,10}$",
+                       description="Phone number in format 77051751603")
+
+
+class KaspiPhoneVerifyRequest(BaseModel):
+    """Schema for Kaspi phone SMS verification (step 2: verify code)"""
+    phone: str = Field(..., min_length=10, max_length=12, pattern=r"^7\d{9,10}$")
+    sms_code: str = Field(..., min_length=4, max_length=6)
+
+
 class StoreSyncRequest(BaseModel):
     """Schema for store synchronization"""
     store_id: str

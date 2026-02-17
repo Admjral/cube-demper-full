@@ -7,6 +7,10 @@ import type {
   KaspiStore,
   KaspiAuthRequest,
   KaspiAuthResponse,
+  KaspiPhoneAuthRequest,
+  KaspiPhoneAuthResponse,
+  KaspiPhoneVerifyRequest,
+  KaspiPhoneVerifyResponse,
   SyncStoreResponse,
 } from '@/types/api'
 
@@ -38,6 +42,27 @@ export function useKaspiAuth() {
       api.post<KaspiAuthResponse>('/kaspi/auth', data),
     onSuccess: () => {
       // Invalidate stores list to refetch
+      queryClient.invalidateQueries({ queryKey: storeKeys.all })
+    },
+  })
+}
+
+// Phone-based Kaspi auth (step 1: send SMS)
+export function useKaspiPhoneAuth() {
+  return useMutation({
+    mutationFn: (data: KaspiPhoneAuthRequest) =>
+      api.post<KaspiPhoneAuthResponse>('/kaspi/auth/phone', data),
+  })
+}
+
+// Phone-based Kaspi auth (step 2: verify SMS code)
+export function useKaspiPhoneVerify() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (data: KaspiPhoneVerifyRequest) =>
+      api.post<KaspiPhoneVerifyResponse>('/kaspi/auth/phone/verify', data),
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: storeKeys.all })
     },
   })

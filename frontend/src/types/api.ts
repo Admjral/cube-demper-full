@@ -26,6 +26,27 @@ export interface KaspiAuthResponse {
   message?: string
 }
 
+export interface KaspiPhoneAuthRequest {
+  phone: string
+}
+
+export interface KaspiPhoneAuthResponse {
+  status: 'sms_sent'
+  phone: string
+  message: string
+}
+
+export interface KaspiPhoneVerifyRequest {
+  phone: string
+  sms_code: string
+}
+
+export interface KaspiPhoneVerifyResponse {
+  status: 'success'
+  store_id: string
+  merchant_id: string
+}
+
 export interface CreateStoreRequest {
   merchant_id: string
   name: string

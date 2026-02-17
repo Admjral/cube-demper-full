@@ -14,6 +14,8 @@ from ..schemas.kaspi import (
     ApiTokenUpdate,
     KaspiAuthRequest,
     KaspiAuthSMSRequest,
+    KaspiPhoneAuthRequest,
+    KaspiPhoneVerifyRequest,
     StoreSyncRequest,
     ProductUpdateRequest,
     BulkPriceUpdateRequest,
@@ -31,6 +33,8 @@ from ..dependencies import require_feature
 from ..services.kaspi_auth_service import (
     authenticate_kaspi,
     verify_sms_code,
+    authenticate_kaspi_phone,
+    verify_phone_sms_code,
     get_active_session,
     get_active_session_with_refresh,
     KaspiSMSRequiredError,
@@ -61,7 +65,7 @@ async def list_stores(
             SELECT id, user_id, merchant_id, name, api_key, products_count,
                    last_sync, is_active, api_key_valid, created_at, updated_at
             FROM kaspi_stores
-            WHERE user_id = $1
+            WHERE user_id = $1 AND is_active = TRUE
             ORDER BY created_at DESC
             """,
             current_user['id']
@@ -282,7 +286,7 @@ async def authenticate_store(
     # Check store limit: 1 store per account
     async with pool.acquire() as conn:
         store_count = await conn.fetchval(
-            "SELECT COUNT(*) FROM kaspi_stores WHERE user_id = $1",
+            "SELECT COUNT(*) FROM kaspi_stores WHERE user_id = $1 AND is_active = TRUE",
             current_user['id']
         )
         if store_count >= 1:
@@ -473,6 +477,195 @@ async def verify_sms(
 
     except Exception as e:
         logger.error(f"Unexpected error during SMS verification: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ошибка верификации SMS. Попробуйте позже."
+        )
+
+
+@router.post("/auth/phone", status_code=status.HTTP_200_OK)
+async def authenticate_store_phone(
+    auth_data: KaspiPhoneAuthRequest,
+    current_user: Annotated[dict, require_feature("demping")],
+    pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
+):
+    """
+    Start phone-based Kaspi authentication. Sends SMS to the phone number.
+
+    Returns:
+        - SMS Sent: { "status": "sms_sent", "phone": "7705***" }
+    """
+    # Check store limit: 1 store per account
+    async with pool.acquire() as conn:
+        store_count = await conn.fetchval(
+            "SELECT COUNT(*) FROM kaspi_stores WHERE user_id = $1 AND is_active = TRUE",
+            current_user['id']
+        )
+        if store_count >= 1:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Лимит магазинов: 1 магазин на аккаунт"
+            )
+
+    try:
+        partial_session = await authenticate_kaspi_phone(phone=auth_data.phone)
+
+        # Store partial session encrypted in a temporary record
+        from ..core.security import encrypt_session
+        encrypted_partial = encrypt_session(partial_session)
+
+        async with pool.acquire() as conn:
+            # Upsert temporary record for phone auth
+            await conn.execute(
+                """
+                INSERT INTO kaspi_stores (user_id, merchant_id, name, guid, is_active)
+                VALUES ($1, $2, $3, $4, false)
+                ON CONFLICT (merchant_id)
+                DO UPDATE SET guid = $4, is_active = false, updated_at = NOW()
+                """,
+                current_user['id'],
+                f"phone_pending_{auth_data.phone}",
+                f"Pending ({auth_data.phone[:4]}***)",
+                json.dumps({'encrypted': encrypted_partial}),
+            )
+
+        masked = auth_data.phone[:4] + "***" + auth_data.phone[-2:]
+        return {
+            "status": "sms_sent",
+            "phone": masked,
+            "message": f"SMS-код отправлен на +{auth_data.phone}"
+        }
+
+    except KaspiAuthError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error during phone auth: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ошибка отправки SMS. Попробуйте позже."
+        )
+
+
+@router.post("/auth/phone/verify", status_code=status.HTTP_200_OK)
+async def verify_phone_auth(
+    verify_data: KaspiPhoneVerifyRequest,
+    current_user: Annotated[dict, require_feature("demping")],
+    pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
+    background_tasks: BackgroundTasks,
+):
+    """
+    Complete phone-based Kaspi authentication with SMS code.
+
+    Returns:
+        - Success: { "status": "success", "store_id": "...", "merchant_id": "..." }
+    """
+    try:
+        # Get partial session from temp record
+        pending_merchant_id = f"phone_pending_{verify_data.phone}"
+        async with pool.acquire() as conn:
+            store = await conn.fetchrow(
+                """
+                SELECT id, guid FROM kaspi_stores
+                WHERE merchant_id = $1 AND user_id = $2
+                """,
+                pending_merchant_id,
+                current_user['id']
+            )
+
+            if not store or not store['guid']:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Нет ожидающей авторизации для этого номера. Отправьте SMS заново."
+                )
+
+            from ..core.security import decrypt_session, encrypt_session
+            guid_data = store['guid']
+            if isinstance(guid_data, str):
+                try:
+                    guid_data = json.loads(guid_data)
+                except json.JSONDecodeError:
+                    pass
+            if isinstance(guid_data, dict) and 'encrypted' in guid_data:
+                partial_session = decrypt_session(guid_data['encrypted'])
+            else:
+                partial_session = guid_data
+
+            # Verify SMS code
+            complete_session = await verify_phone_sms_code(
+                phone=verify_data.phone,
+                sms_code=verify_data.sms_code,
+                partial_session=partial_session,
+            )
+
+            merchant_uid = complete_session['merchant_uid']
+            shop_name = complete_session['shop_name']
+            encrypted_guid = complete_session['guid']
+            store_points = complete_session.get('store_points', {})
+
+            # Check if merchant already belongs to another user
+            existing_owner = await conn.fetchval(
+                "SELECT user_id FROM kaspi_stores WHERE merchant_id = $1 AND merchant_id != $2",
+                merchant_uid, pending_merchant_id
+            )
+            if existing_owner and str(existing_owner) != str(current_user['id']):
+                # Clean up temp record
+                await conn.execute(
+                    "DELETE FROM kaspi_stores WHERE id = $1",
+                    store['id']
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Этот магазин уже подключён к другому аккаунту"
+                )
+
+            # Delete temp record
+            await conn.execute(
+                "DELETE FROM kaspi_stores WHERE id = $1",
+                store['id']
+            )
+
+            real_store = await conn.fetchrow(
+                """
+                INSERT INTO kaspi_stores (user_id, merchant_id, name, guid, store_points, is_active)
+                VALUES ($1, $2, $3, $4, $5::jsonb, true)
+                ON CONFLICT (merchant_id)
+                DO UPDATE SET guid = $4, name = $3, store_points = $5::jsonb,
+                              is_active = true, needs_reauth = false, reauth_reason = NULL, updated_at = NOW()
+                RETURNING id, merchant_id
+                """,
+                current_user['id'],
+                merchant_uid,
+                shop_name,
+                json.dumps({'encrypted': encrypted_guid}),
+                json.dumps(store_points),
+            )
+
+        # Auto-sync products
+        background_tasks.add_task(
+            _sync_store_products_task,
+            store_id=str(real_store['id']),
+            merchant_id=merchant_uid
+        )
+        logger.info(f"Phone auth complete for store {real_store['id']} ({shop_name})")
+
+        return {
+            "status": "success",
+            "store_id": str(real_store['id']),
+            "merchant_id": merchant_uid
+        }
+
+    except KaspiAuthError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(e)
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error during phone verify: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Ошибка верификации SMS. Попробуйте позже."
@@ -1883,11 +2076,14 @@ async def delete_store(
     current_user: Annotated[dict, require_feature("demping")],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
-    """Store deletion is not allowed - one store per account policy"""
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Удаление магазина запрещено. Один магазин на аккаунт. Обратитесь в техподдержку."
-    )
+    """Deactivate store (soft delete) — data stays in DB"""
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            "UPDATE kaspi_stores SET is_active = FALSE WHERE id = $1 AND user_id = $2",
+            store_id, current_user['id']
+        )
+        if result == "UPDATE 0":
+            raise HTTPException(status_code=404, detail="Магазин не найден")
 
 
 async def _sync_products_to_db(

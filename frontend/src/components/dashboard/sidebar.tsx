@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useStore } from "@/store/use-store"
@@ -174,10 +175,22 @@ export function Sidebar() {
           {/* Header */}
           <div className="flex h-16 items-center justify-between px-4 border-b border-sidebar-border">
             <Link href="/dashboard" className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-                <span className="text-primary-foreground font-bold text-sm">D</span>
-              </div>
-              <span className="font-semibold text-lg">Demper</span>
+              <Image
+                src="/logodark.svg"
+                alt="Cube Demper"
+                width={140}
+                height={48}
+                className="h-8 w-auto dark:hidden"
+                priority
+              />
+              <Image
+                src="/logowhite.svg"
+                alt="Cube Demper"
+                width={140}
+                height={48}
+                className="h-8 w-auto hidden dark:block"
+                priority
+              />
             </Link>
             <Button
               variant="ghost"

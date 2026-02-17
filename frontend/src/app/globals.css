@@ -176,10 +176,8 @@
 
   /* Glass Header */
   .glass-header {
-    background: var(--glass-bg);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border-bottom: 1px solid var(--glass-border);
+    background: var(--background);
+    border-bottom: 1px solid var(--border);
   }
 
   /* Glass Bottom Nav */
