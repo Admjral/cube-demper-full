@@ -390,7 +390,13 @@ class DemperWorker:
                         COALESCE(ds.work_hours_end, '23:59') as work_hours_end,
                         COALESCE(ds.price_step, 1) as store_price_step,
                         COALESCE(ds.is_enabled, true) as demping_enabled,
-                        COALESCE(ds.excluded_merchant_ids, '{}') as excluded_merchant_ids
+                        COALESCE(ds.excluded_merchant_ids, '{}') as excluded_merchant_ids,
+                        ARRAY(
+                            SELECT ks2.merchant_id FROM kaspi_stores ks2
+                            WHERE ks2.user_id = kaspi_stores.user_id
+                              AND ks2.is_active = TRUE
+                              AND ks2.merchant_id IS NOT NULL
+                        ) as user_merchant_ids
                     FROM products
                     JOIN kaspi_stores ON kaspi_stores.id = products.store_id
                     LEFT JOIN demping_settings ds ON ds.store_id = products.store_id
@@ -526,7 +532,8 @@ class DemperWorker:
 
             # Get excluded merchant IDs (own stores that should not be considered as competitors)
             excluded_merchant_ids = set(product.get("excluded_merchant_ids") or [])
-            # Always exclude our own merchant_id
+            # Auto-exclude ALL stores of the same user
+            excluded_merchant_ids.update(product.get("user_merchant_ids") or [])
             excluded_merchant_ids.add(merchant_id)
 
             session = None
@@ -645,6 +652,32 @@ class DemperWorker:
                         break
 
                 if min_competitor_price is None:
+                    # No competitors — raise price to max_price if set
+                    if max_price and current_price < max_price:
+                        logger.info(
+                            f"No competitors for {sku}, raising price to max_price: "
+                            f"{current_price} → {max_price}"
+                        )
+                        target_price = max_price
+                        pre_order_days = product.get("pre_order_days", 0) or 0
+                        sync_result = await sync_product(
+                            product_id=str(product_id),
+                            new_price=int(target_price),
+                            sku=sku,
+                            merchant_id=merchant_id,
+                            pre_order_days=pre_order_days,
+                            module='demper',
+                        )
+                        if sync_result:
+                            await self._update_product_price(product_id, int(target_price))
+                            await self._record_price_change(
+                                product_id=product_id,
+                                old_price=int(current_price),
+                                new_price=int(target_price),
+                                competitor_price=None,
+                                change_reason="no_competitors_raise_to_max",
+                            )
+                        return sync_result
                     logger.debug(f"No competitor offers for product {sku} (all offers are from excluded merchants)")
                     return False
 
@@ -831,6 +864,7 @@ class DemperWorker:
         strategy = product.get("demping_strategy") or "standard"
         strategy_params = product.get("strategy_params") or {}
         excluded_merchant_ids = set(product.get("excluded_merchant_ids") or [])
+        excluded_merchant_ids.update(product.get("user_merchant_ids") or [])
         excluded_merchant_ids.add(merchant_id)
         is_delivery_demping = product.get("delivery_demping_enabled", False)
         delivery_filter = product.get("delivery_filter", "same_or_faster")
@@ -1055,6 +1089,7 @@ class DemperWorker:
 
         # Get excluded merchant IDs
         excluded_merchant_ids = set(product.get("excluded_merchant_ids") or [])
+        excluded_merchant_ids.update(product.get("user_merchant_ids") or [])
         excluded_merchant_ids.add(merchant_id)
 
         pool = await get_db_pool()
