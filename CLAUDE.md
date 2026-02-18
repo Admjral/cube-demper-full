@@ -6,30 +6,45 @@ Cube Demper — сервис для автоматического демпин�
 ## Architecture
 
 ### Primary Production — VPS (`cube-demper.shop`)
-- **Сервер**: ps.kz (Казахстан), IP `195.93.152.71`, Ubuntu, Docker Compose
+- **Сервер**: ps.kz (Казахстан), IP `77.243.80.24`, Ubuntu, Docker Compose
 - **Зачем VPS**: Kaspi REST API + Pricefeed API требуют KZ IP
 - **7 сервисов**: frontend, backend, postgres, redis, worker-1, worker-2, waha
 - **Домен**: `cube-demper.shop` (Cloudflare DNS → A record → VPS IP), SSL через nginx + Let's Encrypt
-- **SSH**: `/opt/homebrew/Cellar/sshpass/1.06/bin/sshpass -p '<пароль>' ssh ubuntu@195.93.152.71`
+- **SSH**: `/opt/homebrew/Cellar/sshpass/1.06/bin/sshpass -p '<пароль>' ssh ubuntu@77.243.80.24`
 - **Структура на VPS**: `/home/ubuntu/cube-demper/` — `docker-compose.yml`, `.env`, `new-backend/`, `frontend/`, `nginx/`
 - **Все сервисы на VPS**, кроме offers-relay (см. ниже)
 
-### Railway — ТОЛЬКО offers-relay
+### Railway — offers-relay + демо-фронтенд
 
-#### Project: `offers-relay` (единственный активный на Railway)
+#### Project: `offers-relay`
 - **GitHub**: `Admjral/offers-relay` (private), деплой через `railway up` из `/offers-relay/`
 - **Назначение**: Проксирует запросы к Kaspi, которые блокируются с VPS IP
-- **Эндпоинты**:
-  - `POST /relay/offers` — Kaspi Offers API (`/yml/offer-view/offers/{id}`), конкуренты
-  - `POST /relay/parse-url` — Kaspi product page HTML (для юнит-экономики `parse-url`)
+- **Эндпоинты**: `POST /relay/offers`, `POST /relay/parse-url`
 - **URL**: `https://offers-relay-production.up.railway.app`
 - **Auth**: Bearer token через `RELAY_SECRET`
-- **Config в бэкенде**: `offers_relay_url` + `offers_relay_secret` в `config.py`
-- **Fallback**: VPS бэкенд сначала пробует relay, при ошибке → direct запрос
+
+#### Project: `demper-demo` (демо-фронтенд с моковыми данными)
+- **URL**: `https://demper-demo-production.up.railway.app`
+- **Railway project ID**: `1b95126a-006d-4291-993d-0053eceb5d18`
+- **Railway service ID**: `11c9515a-2446-4c7d-9bb4-d3dc519dd21a`
+- **Локальная папка**: `/Users/adilhamitov/Desktop/cube-demper-full/demo/` (в `.gitignore`, только локально!)
+- **Что это**: полная копия `frontend/` с перехватом всех API-вызовов → моковые данные. Без логина, баннер "Демо режим"
+- **⚠️ НЕ деплоить на VPS** — это отдельный демо-сайт, никакого бэкенда не требует
+- **Деплой**:
+  ```bash
+  cd /Users/adilhamitov/Desktop/cube-demper-full/demo
+  railway up --service 11c9515a-2446-4c7d-9bb4-d3dc519dd21a
+  ```
+- **Ключевые изменённые файлы** (относительно `frontend/`):
+  - `src/lib/mock-data/index.ts` — все моковые данные (создан)
+  - `src/lib/api.ts` — все GET → mock, POST/PATCH/PUT/DELETE → no-op
+  - `src/lib/auth.ts` — автологин демо-пользователя
+  - `src/middleware.ts` — нет проверок токена, /login → редирект в /dashboard
+  - `src/app/(dashboard)/layout.tsx` — жёлтый баннер, убраны subscription gates
 
 #### Project: `proud-vision` (НЕ используется как прод, только WAHA)
 - `waha-plus` — WhatsApp (NOWEB engine, OTP сессия: `default`)
-- Остальные сервисы (`frontend`, `backemd`, workers) — неактивны, прод на VPS
+- Остальные сервисы — неактивны, прод на VPS
 
 ## Repository Structure
 
@@ -63,13 +78,20 @@ ssh ubuntu@195.93.152.71 'cd /home/ubuntu/cube-demper && tar xzf /tmp/backend.ta
 ```
 Миграции выполняются автоматически при старте (`alembic upgrade head` в Dockerfile CMD).
 
-### Railway (вторичный)
+### Railway — offers-relay (вторичный)
 ```bash
 # rsync → deploy repos → git push
 rsync -av --exclude='.git' --exclude='__pycache__' --exclude='.venv' new-backend/ "/Users/adilhamitov/Desktop/Cube Demper/new-backend/"
 rsync -av --exclude='.git' --exclude='node_modules' --exclude='.next' frontend/ "/Users/adilhamitov/Desktop/Cube Demper/frontend/"
 # git add + commit + push в каждом deploy repo
 ```
+
+### Demo (Railway — demper-demo)
+```bash
+cd /Users/adilhamitov/Desktop/cube-demper-full/demo
+railway up --service 11c9515a-2446-4c7d-9bb4-d3dc519dd21a
+```
+**⚠️ `demo/` папка в `.gitignore` — она только локальная, не пушить в монорепо.**
 
 ## Key Files
 
@@ -184,10 +206,11 @@ UPDATE kaspi_stores SET needs_reauth = FALSE WHERE guid IS NOT NULL;
 
 ## Important Notes
 1. **Never force push** to main/master
-2. **VPS — единственный прод** для всех сервисов. Railway — только offers-relay
+2. **VPS — единственный прод** для всех сервисов. Railway — только offers-relay + demo
 3. **Migrations автоматические** при старте бэкенда (`alembic upgrade head`)
 4. **offers-relay** деплоится отдельно: `cd offers-relay && railway up`
 5. **Gemini API ключ**: обновляется в VPS `.env` файле, требует рестарт backend/workers
+6. **demo/** папка в `.gitignore` — не коммитить, деплоить только через `railway up` из этой папки
 
 ---
 

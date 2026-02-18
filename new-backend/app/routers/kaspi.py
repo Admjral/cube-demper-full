@@ -140,7 +140,7 @@ async def update_store_api_token(
             api_token=body.api_token,
             date_from=now - timedelta(days=1),
             date_to=now,
-            states=["APPROVED"],
+            states=["NEW"],
             page=0,
             size=1,
         )
