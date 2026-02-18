@@ -94,6 +94,31 @@ export function useSyncStore() {
   })
 }
 
+// Get store subscription status (multi-store info)
+export function useStoreSubscriptions() {
+  const { user } = useAuth()
+
+  return useQuery({
+    queryKey: [...storeKeys.all, 'subscriptions'],
+    queryFn: () =>
+      api.get<{
+        stores: Array<{
+          store_id: string
+          name: string
+          merchant_id: string
+          is_active: boolean
+          plan: string | null
+          status: string
+          expires_at: string | null
+          discount_percent: number
+        }>
+        max_stores: number
+        multi_store_discount: number
+      }>('/billing/subscription/stores'),
+    enabled: !!user?.id,
+  })
+}
+
 // Update store API token
 export function useUpdateStoreApiToken() {
   const queryClient = useQueryClient()

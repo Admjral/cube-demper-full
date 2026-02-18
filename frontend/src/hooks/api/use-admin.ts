@@ -186,7 +186,8 @@ export function useAssignSubscription() {
       days,
       isTrial,
       notes,
-      endsAt
+      endsAt,
+      storeId
     }: {
       userId: string
       planCode: string
@@ -194,6 +195,7 @@ export function useAssignSubscription() {
       isTrial?: boolean
       notes?: string
       endsAt?: string  // ISO datetime
+      storeId?: string  // Link subscription to specific store
     }) =>
       api.post(`/admin/users/${userId}/subscription`, {
         plan_code: planCode,
@@ -201,10 +203,36 @@ export function useAssignSubscription() {
         is_trial: isTrial ?? false,
         notes,
         ends_at: endsAt,
+        store_id: storeId,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: adminKeys.users() })
       queryClient.invalidateQueries({ queryKey: adminKeys.subscriptions() })
+      queryClient.invalidateQueries({ queryKey: [...adminKeys.all, 'user-subscription'] })
+    },
+  })
+}
+
+// Update multi-store settings for a user
+export function useUpdateMultiStore() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({
+      userId,
+      maxStores,
+      multiStoreDiscount
+    }: {
+      userId: string
+      maxStores: number
+      multiStoreDiscount: number
+    }) =>
+      api.patch(`/admin/users/${userId}/multi-store`, {
+        max_stores: maxStores,
+        multi_store_discount: multiStoreDiscount,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: adminKeys.users() })
       queryClient.invalidateQueries({ queryKey: [...adminKeys.all, 'user-subscription'] })
     },
   })

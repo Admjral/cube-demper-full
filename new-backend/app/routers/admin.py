@@ -56,8 +56,10 @@ async def list_users(
         users = await conn.fetch(
             """
             SELECT
-                u.id, u.email, u.full_name, u.role, u.is_blocked, u.partner_id,
+                u.id, u.email, u.full_name, u.phone, u.role, u.is_blocked, u.partner_id,
                 u.created_at, u.updated_at,
+                COALESCE(u.max_stores, 1) as max_stores,
+                COALESCE(u.multi_store_discount, 0) as multi_store_discount,
                 s.plan as subscription_plan,
                 s.status as subscription_status,
                 s.current_period_end as subscription_end_date,
@@ -88,6 +90,7 @@ async def list_users(
                 id=str(u['id']),
                 email=u['email'],
                 full_name=u['full_name'],
+                phone=u.get('phone'),
                 role=u['role'],
                 is_blocked=u.get('is_blocked', False),
                 partner_id=str(u['partner_id']) if u.get('partner_id') else None,
@@ -98,7 +101,9 @@ async def list_users(
                 subscription_status=u['subscription_status'],
                 subscription_end_date=u.get('subscription_end_date'),
                 stores_count=u['stores_count'],
-                products_count=u['products_count']
+                products_count=u['products_count'],
+                max_stores=u['max_stores'],
+                multi_store_discount=u['multi_store_discount']
             )
             for u in users
         ]
@@ -368,7 +373,9 @@ async def get_user_details(
             updated_at=user['updated_at'],
             subscription=dict(subscription) if subscription else None,
             stores=[dict(s) for s in stores],
-            payments=[dict(p) for p in payments]
+            payments=[dict(p) for p in payments],
+            max_stores=user.get('max_stores', 1) or 1,
+            multi_store_discount=user.get('multi_store_discount', 0) or 0
         )
 
 
@@ -711,7 +718,7 @@ async def list_payments(
 
 # --- New tariff system subscription management ---
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from ..services.feature_access import get_feature_access_service
 
@@ -723,6 +730,13 @@ class AssignSubscriptionRequest(BaseModel):
     is_trial: bool = False
     notes: Optional[str] = None
     ends_at: Optional[str] = None  # ISO datetime, overrides days if set
+    store_id: Optional[str] = None  # Link subscription to specific store (multi-store)
+
+
+class UpdateMultiStoreRequest(BaseModel):
+    """Request to update multi-store settings for a user"""
+    max_stores: int = Field(ge=1, le=20)
+    multi_store_discount: int = Field(ge=0, le=100, default=0)  # Discount % for additional stores
 
 
 class AssignAddonRequest(BaseModel):
@@ -739,7 +753,10 @@ async def assign_subscription(
     current_admin: Annotated[dict, Depends(get_current_admin_user)],
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
-    """Assign subscription to user (admin only) - New tariff system"""
+    """Assign subscription to user (admin only) - New tariff system.
+    If store_id is provided, links subscription to that store and only cancels
+    existing subscription for that store (other store subscriptions remain active).
+    """
     async with pool.acquire() as conn:
         # Get plan
         plan = await conn.fetchrow(
@@ -750,15 +767,50 @@ async def assign_subscription(
             raise HTTPException(status_code=404, detail="Plan not found")
 
         # Check if user exists
-        user = await conn.fetchrow("SELECT id FROM users WHERE id = $1", uuid.UUID(user_id))
+        user = await conn.fetchrow(
+            "SELECT id, max_stores, multi_store_discount FROM users WHERE id = $1",
+            uuid.UUID(user_id)
+        )
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
+        store_uuid = uuid.UUID(request.store_id) if request.store_id else None
+
+        # Validate store belongs to user (if store_id provided)
+        if store_uuid:
+            store_owner = await conn.fetchval(
+                "SELECT user_id FROM kaspi_stores WHERE id = $1",
+                store_uuid
+            )
+            if not store_owner or str(store_owner) != user_id:
+                raise HTTPException(status_code=400, detail="Store not found or doesn't belong to this user")
+
         # Deactivate existing subscriptions
-        await conn.execute(
-            "UPDATE subscriptions SET status = 'cancelled' WHERE user_id = $1 AND status = 'active'",
-            uuid.UUID(user_id)
-        )
+        if store_uuid:
+            # Only cancel subscription for this specific store
+            await conn.execute(
+                "UPDATE subscriptions SET status = 'cancelled' WHERE user_id = $1 AND store_id = $2 AND status = 'active'",
+                uuid.UUID(user_id), store_uuid
+            )
+        else:
+            # Legacy: cancel all (for users without multi-store)
+            await conn.execute(
+                "UPDATE subscriptions SET status = 'cancelled' WHERE user_id = $1 AND status = 'active'",
+                uuid.UUID(user_id)
+            )
+
+        # Determine discount for additional stores
+        discount_percent = 0
+        if store_uuid:
+            # Check if user already has another active subscription (for a different store)
+            other_active = await conn.fetchval(
+                """SELECT COUNT(*) FROM subscriptions
+                WHERE user_id = $1 AND status = 'active' AND current_period_end >= NOW()
+                AND (store_id IS NULL OR store_id != $2)""",
+                uuid.UUID(user_id), store_uuid
+            )
+            if other_active > 0:
+                discount_percent = user['multi_store_discount'] or 0
 
         # Create new subscription
         now = datetime.now()
@@ -774,10 +826,11 @@ async def assign_subscription(
                 user_id, plan_id, plan, status, products_limit,
                 analytics_limit, demping_limit,
                 current_period_start, current_period_end,
-                is_trial, trial_ends_at, assigned_by, notes
+                is_trial, trial_ends_at, assigned_by, notes,
+                store_id, discount_percent
             )
-            VALUES ($1, $2, $3, 'active', $4, $5, $6, $7, $8, $9, $10, $11, $12)
-            RETURNING id, plan, status, current_period_end
+            VALUES ($1, $2, $3, 'active', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            RETURNING id, plan, status, current_period_end, discount_percent
         """,
             uuid.UUID(user_id),
             plan['id'],
@@ -790,7 +843,9 @@ async def assign_subscription(
             is_trial,
             trial_ends_at,
             current_admin['id'],
-            request.notes
+            request.notes,
+            store_uuid,
+            discount_percent
         )
 
         # Auto-credit referral commission (skip free plans and trials)
@@ -836,7 +891,38 @@ async def assign_subscription(
         "status": "success",
         "subscription_id": str(subscription['id']),
         "plan": subscription['plan'],
-        "expires_at": subscription['current_period_end'].isoformat()
+        "expires_at": subscription['current_period_end'].isoformat(),
+        "store_id": request.store_id,
+        "discount_percent": subscription['discount_percent']
+    }
+
+
+@router.patch("/users/{user_id}/multi-store")
+async def update_multi_store_settings(
+    user_id: str,
+    request: UpdateMultiStoreRequest,
+    current_admin: Annotated[dict, Depends(get_current_admin_user)],
+    pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
+):
+    """Update multi-store settings for a user (admin only).
+    Controls how many stores a user can have and what discount they get on additional store subscriptions.
+    """
+    async with pool.acquire() as conn:
+        result = await conn.fetchrow(
+            """UPDATE users SET max_stores = $1, multi_store_discount = $2
+            WHERE id = $3
+            RETURNING max_stores, multi_store_discount""",
+            request.max_stores,
+            request.multi_store_discount,
+            uuid.UUID(user_id)
+        )
+        if not result:
+            raise HTTPException(status_code=404, detail="User not found")
+
+    return {
+        "status": "success",
+        "max_stores": result['max_stores'],
+        "multi_store_discount": result['multi_store_discount']
     }
 
 
@@ -948,6 +1034,16 @@ async def get_user_subscription_details(
             AND (ua.expires_at IS NULL OR ua.expires_at >= NOW())
         """, uuid.UUID(user_id))
 
+        # Get user stores (for multi-store subscription assignment)
+        stores = await conn.fetch("""
+            SELECT ks.id, ks.name, ks.merchant_id, ks.is_active,
+                   s.plan as sub_plan, s.status as sub_status, s.current_period_end as sub_expires
+            FROM kaspi_stores ks
+            LEFT JOIN subscriptions s ON s.store_id = ks.id AND s.status = 'active' AND s.current_period_end >= NOW()
+            WHERE ks.user_id = $1
+            ORDER BY ks.created_at ASC
+        """, uuid.UUID(user_id))
+
     return {
         "user_id": str(user_id),
         "user_email": user['email'],
@@ -981,6 +1077,18 @@ async def get_user_subscription_details(
             "analytics_limit": features['analytics_limit'],
             "demping_limit": features['demping_limit'],
         },
+        "stores": [
+            {
+                "id": str(s['id']),
+                "name": s['name'],
+                "merchant_id": s['merchant_id'],
+                "is_active": s['is_active'],
+                "subscription_plan": s['sub_plan'],
+                "subscription_status": s['sub_status'] or "no_subscription",
+                "subscription_expires": s['sub_expires'].isoformat() if s['sub_expires'] else None,
+            }
+            for s in stores
+        ],
     }
 
 

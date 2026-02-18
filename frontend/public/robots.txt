@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard/
+Disallow: /admin/
+Disallow: /partner/
+Disallow: /verify-phone
+Disallow: /forgot-password
+Disallow: /reset-password
+
+Sitemap: https://cube-demper.shop/sitemap.xml

@@ -39,7 +39,7 @@ export function TemplatePicker({ open, onOpenChange, onSelect }: TemplatePickerP
             >
               <span className="text-3xl">{preset.icon}</span>
               <span className="text-sm font-medium leading-tight">
-                {locale === "ru" ? preset.nameRu : preset.nameEn}
+                {locale === "kz" ? preset.nameKz : locale === "ru" ? preset.nameRu : preset.nameEn}
               </span>
             </button>
           ))}

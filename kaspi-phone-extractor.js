@@ -131,9 +131,25 @@
         const customer = attrs.customer || {};
         const delivery = attrs.deliveryAddress || {};
 
-        // Форматируем телефон
-        const rawPhone = customer.cellPhone || '';
-        const digits = rawPhone.replace(/\D/g, '');
+        // Декодируем реальный телефон из customer.id (Base64)
+        // customer.cellPhone всегда замаскирован: "+0(000)-000-00-00"
+        let digits = '';
+        if (customer.id) {
+            try {
+                const decoded = atob(customer.id);
+                if (/^\d+$/.test(decoded)) {
+                    digits = decoded.length === 10 ? '7' + decoded : decoded;
+                }
+            } catch (e) {
+                console.warn('Base64 decode failed:', e);
+            }
+        }
+
+        // Fallback на cellPhone если Base64 не удался
+        if (!digits) {
+            const rawPhone = customer.cellPhone || '';
+            digits = rawPhone.replace(/\D/g, '');
+        }
 
         let phone = '';
         if (digits.length === 11 && digits.startsWith('7')) {
@@ -141,7 +157,7 @@
         } else if (digits.length === 10) {
             phone = `+7 (${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6, 8)}-${digits.slice(8)}`;
         } else {
-            phone = rawPhone;
+            phone = digits ? `+${digits}` : 'Не найден';
         }
 
         // Товары

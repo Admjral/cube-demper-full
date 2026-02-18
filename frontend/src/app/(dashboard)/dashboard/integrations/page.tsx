@@ -40,6 +40,7 @@ import {
 import { toast } from "sonner"
 import {
   useStores,
+  useStoreSubscriptions,
   useKaspiAuth,
   useKaspiPhoneAuth,
   useKaspiPhoneVerify,
@@ -75,6 +76,9 @@ export default function IntegrationsPage() {
 
   // API hooks
   const { data: stores, isLoading: storesLoading } = useStores()
+  const { data: storeSubscriptions } = useStoreSubscriptions()
+  const maxStores = storeSubscriptions?.max_stores ?? 1
+  const canAddStore = (stores?.length ?? 0) < maxStores
   const kaspiAuth = useKaspiAuth()
   const phoneAuth = useKaspiPhoneAuth()
   const phoneVerify = useKaspiPhoneVerify()
@@ -202,7 +206,7 @@ export default function IntegrationsPage() {
             {t("integrations.subtitle")}
           </p>
         </div>
-        <Button onClick={() => setShowAddDialog(true)}>
+        <Button onClick={() => setShowAddDialog(true)} disabled={!canAddStore}>
           <Plus className="h-4 w-4 mr-2" />
           {t("integrations.addStore")}
         </Button>
@@ -218,7 +222,7 @@ export default function IntegrationsPage() {
               </p>
               <ShoppingBag className="h-4 w-4 text-muted-foreground" />
             </div>
-            <p className="text-2xl font-semibold mt-2">{stores?.length || 0}</p>
+            <p className="text-2xl font-semibold mt-2">{stores?.length || 0}<span className="text-sm text-muted-foreground font-normal">/{maxStores}</span></p>
           </CardContent>
         </Card>
         <Card className="glass-card">
@@ -454,7 +458,7 @@ export default function IntegrationsPage() {
               <p className="text-sm text-muted-foreground mb-4">
                 {t("integrations.noStoresDesc")}
               </p>
-              <Button onClick={() => setShowAddDialog(true)}>
+              <Button onClick={() => setShowAddDialog(true)} disabled={!canAddStore}>
                 <Plus className="h-4 w-4 mr-2" />
                 {t("integrations.addStore")}
               </Button>
@@ -517,7 +521,9 @@ export default function IntegrationsPage() {
             <div className="flex items-start gap-2">
               <Info className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
               <p className="text-xs text-blue-700 dark:text-blue-400">
-                {t("integrations.storeLimit")}
+                {maxStores > 1
+                  ? `${t("integrations.storesUsed")}: ${stores?.length ?? 0}/${maxStores}`
+                  : t("integrations.storeLimit")}
               </p>
             </div>
           </div>

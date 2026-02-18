@@ -389,6 +389,34 @@ export interface TopProduct {
   revenue: number
 }
 
+export interface PipelineGroup {
+  count: number
+  revenue: number
+}
+
+export interface OrderPipeline {
+  active: PipelineGroup
+  completed: PipelineGroup
+  cancelled: PipelineGroup
+  total: PipelineGroup
+  conversion_rate: number
+  cancellation_rate: number
+}
+
+export interface BreakdownItem {
+  label: string
+  key?: string
+  count: number
+  revenue: number
+}
+
+export interface OrderBreakdowns {
+  payment: BreakdownItem[]
+  delivery: BreakdownItem[]
+  cities: BreakdownItem[]
+  delivery_cost_total: number
+}
+
 // =============================================
 // City-based Pricing
 // =============================================

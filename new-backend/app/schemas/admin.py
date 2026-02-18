@@ -10,6 +10,7 @@ class UserAdminResponse(BaseModel):
     id: str
     email: str
     full_name: Optional[str]
+    phone: Optional[str] = None
     role: str
     is_blocked: bool = False
     partner_id: Optional[str] = None
@@ -21,6 +22,8 @@ class UserAdminResponse(BaseModel):
     subscription_end_date: Optional[datetime] = None
     stores_count: int
     products_count: int
+    max_stores: int = 1
+    multi_store_discount: int = 0
 
     class Config:
         from_attributes = True
@@ -147,6 +150,8 @@ class UserDetailsResponse(BaseModel):
     subscription: Optional[dict] = None
     stores: List[dict] = []
     payments: List[dict] = []
+    max_stores: int = 1
+    multi_store_discount: int = 0
 
 
 class PaymentAdminResponse(BaseModel):

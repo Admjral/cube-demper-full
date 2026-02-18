@@ -44,6 +44,7 @@ export default function DashboardLayout({
 
   return (
     <div className="min-h-screen bg-background flex">
+      <meta name="robots" content="noindex, nofollow" />
       {/* Desktop sidebar */}
       <Sidebar />
 

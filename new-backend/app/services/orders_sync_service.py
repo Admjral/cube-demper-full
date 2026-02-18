@@ -1,16 +1,10 @@
 """
-Periodic orders sync service - fetches active orders from Kaspi and saves them
-to the database. Accumulates customer contacts from orders.
+Periodic orders sync service - fetches orders from Kaspi REST API
+and saves them to the database. Accumulates customer contacts.
 
 Runs as a background task in the backend (not in workers).
-Cycle: every 60 minutes, sequential processing with delays.
-
-Data sources (in priority order):
-1. REST API (X-Auth-Token) — real phone numbers, product names, prices
-2. MC GraphQL (fallback) — phones are masked, no contacts accumulated
-
-Over time, the database accumulates full order history as orders pass through
-active states before completion.
+Cycle: every 8 minutes. Requires valid API token (X-Auth-Token).
+Stores without API token are skipped.
 """
 import logging
 import asyncio
@@ -18,10 +12,8 @@ from datetime import datetime, timedelta
 
 import asyncpg
 
-from .kaspi_mc_service import get_kaspi_mc_service, KaspiMCError
-from .kaspi_orders_api import get_kaspi_orders_api, KaspiOrdersAPI, KaspiTokenInvalidError, KaspiOrdersAPIError
+from .kaspi_orders_api import get_kaspi_orders_api, KaspiTokenInvalidError, KaspiOrdersAPIError
 from .api_parser import sync_orders_to_db
-from .kaspi_auth_service import KaspiAuthError
 
 logger = logging.getLogger(__name__)
 
@@ -36,14 +28,6 @@ INITIAL_DELAY = 60
 
 # Max concurrent stores (Semaphore limit)
 MAX_CONCURRENT_STORES = 12
-
-# REST API order states to fetch
-REST_API_STATES = [
-    "APPROVED",
-    "ACCEPTED_BY_MERCHANT",
-    "DELIVERY",
-    "PICKUP",
-]
 
 
 async def periodic_orders_sync(pool: asyncpg.Pool):
@@ -89,7 +73,6 @@ async def _run_sync_cycle(pool: asyncpg.Pool):
 
     logger.info(f"[ORDERS_SYNC] Starting cycle for {len(stores)} stores")
 
-    mc = get_kaspi_mc_service()
     total_synced = 0
     total_errors = 0
 
@@ -110,64 +93,42 @@ async def _run_sync_cycle(pool: asyncpg.Pool):
         api_key_valid = store.get('api_key_valid', True)
 
         async with sem:
+            # Skip stores without valid API token
+            if not api_key or not api_key_valid:
+                logger.debug(f"[ORDERS_SYNC] {store_name}: no valid API token, skipping")
+                return
+
             try:
-                orders = None
-                source = "mc_graphql"
+                rest_api = get_kaspi_orders_api()
+                now = datetime.utcnow()
+                date_from = now - timedelta(days=14)
 
-                # Prefer REST API (returns real customer phones)
-                if api_key and api_key_valid:
-                    try:
-                        # API key is stored in plain text (not encrypted)
-                        logger.debug(f"[ORDERS_SYNC] {store_name}: using REST API with token")
+                # Fetch active orders
+                orders = await rest_api.fetch_orders(
+                    api_token=api_key,
+                    date_from=date_from,
+                    date_to=now,
+                    size=100,
+                )
 
-                        rest_api = get_kaspi_orders_api()
-                        now = datetime.utcnow()
-                        date_from = now - timedelta(days=14)
-                        # Fetch active orders (no state filter = active tabs only)
-                        orders = await rest_api.fetch_orders(
-                            api_token=api_key,
-                            date_from=date_from,
-                            date_to=now,
-                            size=100,
-                        )
-                        # Also fetch archived orders to catch COMPLETED transitions
-                        try:
-                            archive_orders = await rest_api.fetch_orders(
-                                api_token=api_key,
-                                date_from=now - timedelta(days=3),
-                                date_to=now,
-                                states=["ARCHIVE"],
-                                size=100,
-                            )
-                            if archive_orders:
-                                # Merge, avoiding duplicates by order id
-                                existing_ids = {o.get("id") for o in orders}
-                                for ao in archive_orders:
-                                    if ao.get("id") not in existing_ids:
-                                        orders.append(ao)
-                        except Exception as e:
-                            logger.debug(f"[ORDERS_SYNC] {store_name}: archive fetch failed: {e}")
-                        source = "rest_api"
-                        logger.info(f"[ORDERS_SYNC] {store_name}: {len(orders)} orders via REST API")
-                    except KaspiTokenInvalidError:
-                        logger.warning(f"[ORDERS_SYNC] {store_name}: API token invalid, marking and falling back to MC")
-                        async with pool.acquire() as conn:
-                            await conn.execute(
-                                "UPDATE kaspi_stores SET api_key_valid = FALSE WHERE id = $1",
-                                store['id']
-                            )
-                        orders = None
-                    except KaspiOrdersAPIError as e:
-                        logger.warning(f"[ORDERS_SYNC] {store_name}: REST API error ({e}), falling back to MC")
-                        orders = None
-
-                # Fallback to MC GraphQL
-                if orders is None:
-                    orders = await mc.fetch_orders_for_sync(
-                        merchant_id=merchant_id,
-                        limit=200,
+                # Also fetch archived orders to catch COMPLETED transitions
+                try:
+                    archive_orders = await rest_api.fetch_orders(
+                        api_token=api_key,
+                        date_from=now - timedelta(days=3),
+                        date_to=now,
+                        states=["ARCHIVE"],
+                        size=100,
                     )
-                    source = "mc_graphql"
+                    if archive_orders:
+                        existing_ids = {o.get("id") for o in orders}
+                        for ao in archive_orders:
+                            if ao.get("id") not in existing_ids:
+                                orders.append(ao)
+                except Exception as e:
+                    logger.debug(f"[ORDERS_SYNC] {store_name}: archive fetch failed: {e}")
+
+                logger.info(f"[ORDERS_SYNC] {store_name}: {len(orders)} orders via REST API")
 
                 if orders:
                     result = await sync_orders_to_db(store_id, orders, user_id=user_id)
@@ -175,19 +136,24 @@ async def _run_sync_cycle(pool: asyncpg.Pool):
                     contacts = result.get('contacts_added', 0)
                     total_synced += synced
                     logger.info(
-                        f"[ORDERS_SYNC] {store_name}: {synced} orders via {source} "
+                        f"[ORDERS_SYNC] {store_name}: {synced} orders synced "
                         f"({result.get('inserted', 0)} new, {result.get('updated', 0)} updated"
                         f"{f', {contacts} contacts' if contacts else ''})"
                     )
                 else:
                     logger.debug(f"[ORDERS_SYNC] {store_name}: no active orders")
 
-            except KaspiMCError as e:
+            except KaspiTokenInvalidError:
                 total_errors += 1
-                logger.warning(f"[ORDERS_SYNC] {store_name}: MC error - {e}")
-            except KaspiAuthError as e:
+                logger.warning(f"[ORDERS_SYNC] {store_name}: API token invalid, marking as invalid")
+                async with pool.acquire() as conn:
+                    await conn.execute(
+                        "UPDATE kaspi_stores SET api_key_valid = FALSE WHERE id = $1",
+                        store['id']
+                    )
+            except KaspiOrdersAPIError as e:
                 total_errors += 1
-                logger.warning(f"[ORDERS_SYNC] {store_name}: auth error - {e}")
+                logger.warning(f"[ORDERS_SYNC] {store_name}: REST API error - {e}")
             except Exception as e:
                 total_errors += 1
                 logger.error(f"[ORDERS_SYNC] {store_name}: unexpected error - {e}", exc_info=True)
@@ -202,29 +168,3 @@ async def _run_sync_cycle(pool: asyncpg.Pool):
         f"[ORDERS_SYNC] Cycle complete in {elapsed:.0f}s: "
         f"{len(stores)} stores, {total_synced} orders synced, {total_errors} errors"
     )
-
-
-async def _fetch_via_rest_api(
-    rest_api: KaspiOrdersAPI,
-    api_key: str,
-    store_name: str,
-) -> list:
-    """
-    Fetch orders via Kaspi REST API (X-Auth-Token).
-
-    Returns data in the same format as MC GraphQL (JSON:API compatible),
-    so sync_orders_to_db() works without changes.
-    """
-    now = datetime.utcnow()
-    date_from = now - timedelta(days=14)
-
-    orders = await rest_api.fetch_orders(
-        api_token=api_key,
-        date_from=date_from,
-        date_to=now,
-        states=REST_API_STATES,
-        size=100,
-    )
-
-    logger.info(f"[ORDERS_SYNC] {store_name}: fetched {len(orders)} orders via REST API")
-    return orders

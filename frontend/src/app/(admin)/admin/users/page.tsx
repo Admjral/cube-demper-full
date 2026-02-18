@@ -38,6 +38,7 @@ import {
   useAssignAddon,
   useRemoveAddon,
   useCancelSubscription,
+  useUpdateMultiStore,
 } from '@/hooks/api/use-admin'
 import { usePlansV2, useAddons } from '@/hooks/api/use-features'
 import {
@@ -46,6 +47,7 @@ import {
   MoreHorizontal,
   Loader2,
   Mail,
+  Phone,
   Calendar,
   Shield,
   Ban,
@@ -73,11 +75,16 @@ export default function AdminUsersPage() {
     isTrial: false,
     notes: '',
     endsAt: '',
+    storeId: '',
   })
   const [addonForm, setAddonForm] = useState({
     addonCode: '',
     quantity: 1,
     days: 30,
+  })
+  const [multiStoreForm, setMultiStoreForm] = useState({
+    maxStores: 1,
+    discount: 0,
   })
 
   const { data, isLoading, refetch } = useAdminUsers(page, 50)
@@ -96,6 +103,7 @@ export default function AdminUsersPage() {
   const assignAddon = useAssignAddon()
   const removeAddon = useRemoveAddon()
   const cancelSubscription = useCancelSubscription()
+  const updateMultiStore = useUpdateMultiStore()
 
   const users = data?.users ?? []
   const total = data?.total ?? 0
@@ -103,7 +111,8 @@ export default function AdminUsersPage() {
   const filteredUsers = users.filter(
     (user) =>
       user.email.toLowerCase().includes(search.toLowerCase()) ||
-      user.full_name?.toLowerCase().includes(search.toLowerCase())
+      user.full_name?.toLowerCase().includes(search.toLowerCase()) ||
+      (user as any).phone?.includes(search)
   )
 
   const handleBlockUser = async (userId: string) => {
@@ -140,8 +149,13 @@ export default function AdminUsersPage() {
 
   const openSubscriptionDialog = (userId: string) => {
     setSelectedUserId(userId)
-    setSubscriptionForm({ planCode: '', days: 30, bonusDays: 14, isTrial: false, notes: '', endsAt: '' })
+    setSubscriptionForm({ planCode: '', days: 30, bonusDays: 14, isTrial: false, notes: '', endsAt: '', storeId: '' })
     setAddonForm({ addonCode: '', quantity: 1, days: 30 })
+    const user = users.find(u => u.id === userId)
+    setMultiStoreForm({
+      maxStores: (user as any)?.max_stores || 1,
+      discount: (user as any)?.multi_store_discount || 0,
+    })
     setShowSubscriptionDialog(true)
   }
 
@@ -155,11 +169,27 @@ export default function AdminUsersPage() {
         isTrial: subscriptionForm.isTrial,
         notes: subscriptionForm.notes || undefined,
         endsAt: subscriptionForm.endsAt ? new Date(subscriptionForm.endsAt).toISOString() : undefined,
+        storeId: subscriptionForm.storeId && subscriptionForm.storeId !== 'none' ? subscriptionForm.storeId : undefined,
       })
       toast.success(`Подписка назначена (${subscriptionForm.days} + ${subscriptionForm.bonusDays || 0} бонус = ${subscriptionForm.days + (subscriptionForm.bonusDays || 0)} дней)`)
-      setSubscriptionForm({ planCode: '', days: 30, bonusDays: 14, isTrial: false, notes: '', endsAt: '' })
+      setSubscriptionForm({ planCode: '', days: 30, bonusDays: 14, isTrial: false, notes: '', endsAt: '', storeId: '' })
     } catch {
       toast.error('Ошибка назначения подписки')
+    }
+  }
+
+  const handleUpdateMultiStore = async () => {
+    if (!selectedUserId) return
+    try {
+      await updateMultiStore.mutateAsync({
+        userId: selectedUserId,
+        maxStores: multiStoreForm.maxStores,
+        multiStoreDiscount: multiStoreForm.discount,
+      })
+      toast.success(`Мультимагазинность: макс ${multiStoreForm.maxStores}, скидка ${multiStoreForm.discount}%`)
+      refetch()
+    } catch {
+      toast.error('Ошибка обновления настроек')
     }
   }
 
@@ -260,7 +290,7 @@ export default function AdminUsersPage() {
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
-          placeholder="Поиск по email или имени..."
+          placeholder="Поиск по email, имени или телефону..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="pl-10"
@@ -324,6 +354,12 @@ export default function AdminUsersPage() {
                             <Mail className="h-3 w-3" />
                             {user.email}
                           </p>
+                          {(user as any).phone && (
+                            <p className="text-sm text-muted-foreground flex items-center gap-1">
+                              <Phone className="h-3 w-3" />
+                              {(user as any).phone}
+                            </p>
+                          )}
                           {user.partner_name && (
                             <p className="text-xs text-muted-foreground mt-1">
                               Партнёр: {user.partner_name}
@@ -351,12 +387,17 @@ export default function AdminUsersPage() {
                         <div className="flex items-center gap-4 text-sm">
                           <span className="flex items-center gap-1">
                             <Store className="h-3 w-3 text-muted-foreground" />
-                            {user.stores_count}
+                            {user.stores_count}/{(user as any).max_stores || 1}
                           </span>
                           <span className="flex items-center gap-1">
                             <Package className="h-3 w-3 text-muted-foreground" />
                             {user.products_count}
                           </span>
+                          {((user as any).multi_store_discount || 0) > 0 && (
+                            <Badge variant="outline" className="text-xs">
+                              -{(user as any).multi_store_discount}%
+                            </Badge>
+                          )}
                         </div>
                       </td>
                       <td className="p-4">
@@ -580,6 +621,54 @@ export default function AdminUsersPage() {
                 </Card>
               )}
 
+              {/* Multi-store settings */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Store className="h-4 w-4" />
+                    Мультимагазинность
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Макс. магазинов</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={20}
+                        value={multiStoreForm.maxStores}
+                        onChange={(e) => setMultiStoreForm({ ...multiStoreForm, maxStores: parseInt(e.target.value) || 1 })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Скидка на доп. магазины (%)</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={multiStoreForm.discount}
+                        onChange={(e) => setMultiStoreForm({ ...multiStoreForm, discount: parseInt(e.target.value) || 0 })}
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Текущий лимит: {(selectedUser as any)?.max_stores || 1} магазинов,
+                    скидка: {(selectedUser as any)?.multi_store_discount || 0}%.
+                    Магазинов подключено: {selectedUser?.stores_count || 0}
+                  </p>
+                  <Button
+                    onClick={handleUpdateMultiStore}
+                    disabled={updateMultiStore.isPending}
+                    variant="outline"
+                    className="w-full"
+                  >
+                    {updateMultiStore.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                    Сохранить настройки
+                  </Button>
+                </CardContent>
+              </Card>
+
               {/* Assign subscription form */}
               <Card>
                 <CardHeader className="pb-3">
@@ -640,6 +729,30 @@ export default function AdminUsersPage() {
                       </p>
                     )}
                   </div>
+                  {/* Store selection for multi-store */}
+                  {(subscriptionDetails as any)?.stores && (subscriptionDetails as any).stores.length > 0 && (
+                    <div className="space-y-2">
+                      <Label>Привязать к магазину (опционально)</Label>
+                      <Select
+                        value={subscriptionForm.storeId}
+                        onValueChange={(v) => setSubscriptionForm({ ...subscriptionForm, storeId: v })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Без привязки (legacy)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Без привязки</SelectItem>
+                          {(subscriptionDetails as any).stores.map((store: any) => (
+                            <SelectItem key={store.id} value={store.id}>
+                              {store.name} ({store.merchant_id})
+                              {store.subscription_plan ? ` [${store.subscription_plan}]` : ' [нет подписки]'}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-4">
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input

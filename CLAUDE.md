@@ -81,7 +81,7 @@ rsync -av --exclude='.git' --exclude='node_modules' --exclude='.next' frontend/ 
 - `app/services/ai_salesman_service.py` — ИИ Продажник (handle_incoming_message + process_order_for_upsell)
 - `app/services/ai_lawyer_service.py` — ИИ-Юрист (RAG + Gemini chat)
 - `app/services/notification_service.py` — Уведомления (price, orders, support)
-- `app/services/orders_sync_service.py` — Фоновый sync заказов (каждые 8 мин)
+- `app/services/orders_sync_service.py` — Фоновый sync заказов (каждые 8 мин, ТОЛЬКО REST API, без GraphQL fallback)
 - `app/services/preorder_checker.py` — Фоновая проверка предзаказов (каждые 5 мин)
 - `app/services/kaspi_orders_api.py` — Kaspi REST API (X-Auth-Token, реальные телефоны через Base64 декодирование)
 - `app/services/kaspi_products_api.py` — Kaspi Products REST API (полные данные товаров: name, price, SKU)
@@ -206,7 +206,7 @@ UPDATE kaspi_stores SET needs_reauth = FALSE WHERE guid IS NOT NULL;
 - **Pricefeed API**: работает напрямую с VPS (KZ IP нужен)
 - **REST API** (`kaspi.kz/shop/api/v2/orders`): `X-Auth-Token` header, KZ IP required, `User-Agent` обязателен
 - **MC GraphQL**: `mc.shop.kaspi.kz/mc/facade/graphql`, cookies dict + `x-auth-version: 3`, НЕ Relay-схема, телефоны замаскированы
-- **Orders Sync**: Фоновая задача в бэкенде (НЕ в воркерах), каждые 8 мин (480s), REST API first → MC GraphQL fallback
+- **Orders Sync**: Фоновая задача в бэкенде (НЕ в воркерах), каждые 8 мин (480s), **ТОЛЬКО REST API** (GraphQL fallback убран 2026-02-17). Нет токена → магазин пропускается
 
 ### Kaspi REST API — `state` vs `status` (2026-02-15)
 - **ДВА разных параметра фильтрации**:
@@ -329,6 +329,23 @@ UPDATE kaspi_stores SET needs_reauth = FALSE WHERE guid IS NOT NULL;
 - **Endpoint**: `GET /lawyer/documents/{id}/pdf` → `StreamingResponse`
 - **Важно**: `pdf.x = pdf.l_margin` перед каждым блоком, `multi_cell(content_w, ...)` с явной шириной (НЕ `0`)
 - **Кириллица в заголовках**: RFC 5987 — `filename*=UTF-8''%D0%...pdf`
+
+### Sales & Analytics Rework (2026-02-17)
+- **GraphQL убран из orders sync**: `orders_sync_service.py` больше НЕ использует MC GraphQL. Нет API токена → магазин пропускается
+- **Ручной синк удалён**: `POST /sync-orders` endpoint и кнопка "Синхронизировать" убраны. Только автоматический фоновый синк каждые 8 мин
+- **Новые endpoints аналитики**:
+  - `GET /stores/{id}/order-pipeline?period=7d` — счётчики по статусам (active/completed/cancelled) + conversion_rate + cancellation_rate
+  - `GET /stores/{id}/order-breakdowns?period=7d` — разбивки по payment_mode, delivery_mode, городам (из delivery_address) + delivery_cost_total
+- **Статус-группировка для pipeline**:
+  - Active: `APPROVED_BY_BANK`, `ACCEPTED_BY_MERCHANT`
+  - Completed: `COMPLETED`
+  - Cancelled: `CANCELLED`, `CANCELLING`, `RETURNED`, `KASPI_DELIVERY_RETURN_REQUESTED`
+- **Label maps**: `PAYMENT_MODE_LABELS`, `DELIVERY_MODE_LABELS` в `routers/kaspi.py` — перевод ключей API в читаемые названия
+- **Город из адреса**: `SPLIT_PART(delivery_address, ',', 1)` — первая часть формата "Алматы, улица..."
+- **Frontend**: `sales/page.tsx` — pipeline cards + 2 bar charts (выручка + заказы) + 3 donut charts (оплата/доставка/города) + таблица городов
+- **Donut chart**: чистый SVG без библиотек, `DonutChart` + `DonutLegend` компоненты, палитра 6 цветов
+- **Schemas**: `OrderPipeline`, `PipelineGroup`, `OrderBreakdowns`, `BreakdownItem` в `schemas/kaspi.py`
+- **Hooks**: `useOrderPipeline()`, `useOrderBreakdowns()` в `use-analytics.ts`. `useSyncOrders()` удалён
 
 ### Alembic Multiple Heads (2026-02-15)
 - **Симптом**: Backend не стартует — `"Multiple head revisions are present"` → 502

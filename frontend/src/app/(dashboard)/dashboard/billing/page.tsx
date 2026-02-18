@@ -32,8 +32,9 @@ export default function BillingPage() {
 
   const activateTrial = useActivateTrial()
 
-  const handleContactSupport = () => {
-    window.open('https://wa.me/77474576759', '_blank')
+  const handleContactSupport = (message?: string) => {
+    const text = message ? `?text=${encodeURIComponent(message)}` : ''
+    window.open(`https://wa.me/77474576759${text}`, '_blank')
   }
 
   const daysRemaining = getDaysRemaining(features?.subscription_ends_at)
@@ -238,7 +239,7 @@ export default function BillingPage() {
                         className="w-full"
                         variant={isCurrentPlan ? 'secondary' : plan.code === 'standard' ? 'default' : 'outline'}
                         disabled={isCurrentPlan}
-                        onClick={handleContactSupport}
+                        onClick={() => handleContactSupport(`Здравствуйте! Хочу подключить тариф "${plan.name}"`)}
                       >
                         {isCurrentPlan ? (
                           t("billing.currentPlan")
@@ -295,7 +296,7 @@ export default function BillingPage() {
                           variant="outline"
                           size="sm"
                           className="w-full mt-4"
-                          onClick={handleContactSupport}
+                          onClick={() => handleContactSupport(`Здравствуйте! Хочу подключить модуль "${addon.name}"`)}
                         >
                           <MessageSquare className="h-4 w-4 mr-2" />
                           Подключить

@@ -68,16 +68,17 @@ class FeatureAccessService:
             - subscription_ends_at: datetime | None
         """
         async with pool.acquire() as conn:
-            # Get active subscription with plan
-            subscription = await conn.fetchrow("""
+            # Get ALL active subscriptions with plans (multi-store support)
+            subscriptions = await conn.fetch("""
                 SELECT s.*, p.code as plan_code, p.name as plan_name, p.features as plan_features,
                        p.analytics_limit as plan_analytics_limit,
-                       p.demping_limit as plan_demping_limit
+                       p.demping_limit as plan_demping_limit,
+                       p.price_tiyns as plan_price
                 FROM subscriptions s
                 LEFT JOIN plans p ON p.id = s.plan_id
                 WHERE s.user_id = $1 AND s.status = 'active'
                 AND s.current_period_end >= NOW()
-                ORDER BY s.created_at DESC LIMIT 1
+                ORDER BY p.price_tiyns DESC NULLS LAST, s.created_at DESC
             """, user_id)
 
             # Get active add-ons
@@ -90,21 +91,47 @@ class FeatureAccessService:
                 AND (ua.expires_at IS NULL OR ua.expires_at >= NOW())
             """, user_id)
 
-        # Compute effective features and limits
+        # Compute effective features and limits (aggregate across ALL active subscriptions)
         features: Set[str] = set()
         analytics_limit = 0
         demping_limit = 0
         plan_code = None
         plan_name = None
+        is_trial = False
+        trial_ends_at = None
+        subscription_ends_at = None
 
-        if subscription:
-            plan_code = subscription['plan_code']
-            plan_name = subscription['plan_name']
-            raw_features = subscription['plan_features']
+        for sub in subscriptions:
+            # Use the most expensive plan as the "primary" (first in ORDER BY)
+            if plan_code is None:
+                plan_code = sub['plan_code']
+                plan_name = sub['plan_name']
+
+            # Aggregate features from all subscriptions
+            raw_features = sub['plan_features']
             plan_features = json.loads(raw_features) if isinstance(raw_features, str) else (raw_features or [])
             features.update(plan_features)
-            analytics_limit = subscription['plan_analytics_limit'] or subscription.get('analytics_limit', 0) or 0
-            demping_limit = subscription['plan_demping_limit'] or subscription.get('demping_limit', 0) or 0
+
+            # Sum demping limits across all subscriptions
+            sub_demping = sub['plan_demping_limit'] or sub.get('demping_limit', 0) or 0
+            demping_limit += sub_demping
+
+            # Analytics: -1 (unlimited) wins, otherwise sum
+            sub_analytics = sub['plan_analytics_limit'] or sub.get('analytics_limit', 0) or 0
+            if sub_analytics == -1:
+                analytics_limit = -1
+            elif analytics_limit != -1:
+                analytics_limit += sub_analytics
+
+            # Trial: true if any subscription is trial
+            if sub['is_trial']:
+                is_trial = True
+                if sub['trial_ends_at'] and (trial_ends_at is None or sub['trial_ends_at'] > trial_ends_at):
+                    trial_ends_at = sub['trial_ends_at']
+
+            # Latest expiry across all subscriptions
+            if sub['current_period_end'] and (subscription_ends_at is None or sub['current_period_end'] > subscription_ends_at):
+                subscription_ends_at = sub['current_period_end']
 
         # Apply add-ons
         for addon in addons:
@@ -130,10 +157,10 @@ class FeatureAccessService:
             'features': list(features),
             'analytics_limit': analytics_limit,  # -1 = unlimited
             'demping_limit': demping_limit,
-            'has_active_subscription': subscription is not None,
-            'is_trial': subscription['is_trial'] if subscription else False,
-            'trial_ends_at': subscription['trial_ends_at'] if subscription else None,
-            'subscription_ends_at': subscription['current_period_end'] if subscription else None,
+            'has_active_subscription': len(subscriptions) > 0,
+            'is_trial': is_trial,
+            'trial_ends_at': trial_ends_at,
+            'subscription_ends_at': subscription_ends_at,
         }
 
     async def check_feature_access(

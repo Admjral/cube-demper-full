@@ -537,23 +537,30 @@ function TemplatesTab() {
   const triggerMap = Object.fromEntries(
     PRESET_TEMPLATES.filter((p) => p.triggerEvent).map((p) => [
       p.triggerEvent,
-      { icon: p.icon, labelRu: p.nameRu, labelEn: p.nameEn },
+      { icon: p.icon, labelRu: p.nameRu, labelEn: p.nameEn, labelKz: p.nameKz },
     ])
   )
+
+  const getLocalizedName = (preset: PresetTemplate) =>
+    locale === "kz" ? preset.nameKz : locale === "ru" ? preset.nameRu : preset.nameEn
+
+  const getLocalizedMessage = (preset: PresetTemplate) =>
+    locale === "kz" ? preset.messageKz : locale === "ru" ? preset.messageRu : preset.messageEn
 
   const getTriggerLabel = (event: string | null) => {
     if (!event) return { icon: "\u270F\uFE0F", label: t("wa.noTrigger") }
     const info = triggerMap[event]
     if (!info) return { icon: "\u270F\uFE0F", label: event }
-    return { icon: info.icon, label: locale === "ru" ? info.labelRu : info.labelEn }
+    const label = locale === "kz" ? info.labelKz : locale === "ru" ? info.labelRu : info.labelEn
+    return { icon: info.icon, label }
   }
 
   const handleSelectPreset = (preset: PresetTemplate) => {
     setEditingTemplate(null)
     setForm({
-      name: locale === "ru" ? preset.nameRu : preset.nameEn,
+      name: getLocalizedName(preset),
       name_en: preset.nameEn,
-      message: locale === "ru" ? preset.messageRu : preset.messageEn,
+      message: getLocalizedMessage(preset),
       variables: [],
       trigger_event: preset.triggerEvent,
     })

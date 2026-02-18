@@ -223,6 +223,38 @@ class TopProduct(BaseModel):
     revenue: int = 0
 
 
+class PipelineGroup(BaseModel):
+    """Count and revenue for a pipeline group"""
+    count: int = 0
+    revenue: int = 0
+
+
+class OrderPipeline(BaseModel):
+    """Order status pipeline with conversion metrics"""
+    active: PipelineGroup
+    completed: PipelineGroup
+    cancelled: PipelineGroup
+    total: PipelineGroup
+    conversion_rate: float = 0.0
+    cancellation_rate: float = 0.0
+
+
+class BreakdownItem(BaseModel):
+    """Single item in a breakdown chart"""
+    label: str
+    key: Optional[str] = None
+    count: int = 0
+    revenue: int = 0
+
+
+class OrderBreakdowns(BaseModel):
+    """Breakdowns by payment, delivery, and city"""
+    payment: List[BreakdownItem]
+    delivery: List[BreakdownItem]
+    cities: List[BreakdownItem]
+    delivery_cost_total: int = 0
+
+
 # ============================================================================
 # City-based Pricing Schemas
 # ============================================================================

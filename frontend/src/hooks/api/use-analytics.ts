@@ -1,25 +1,19 @@
 'use client'
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { dashboardKeys } from './use-dashboard'
-import type { SalesAnalytics, TopProduct } from '@/types/api'
+import type { SalesAnalytics, TopProduct, OrderPipeline, OrderBreakdowns } from '@/types/api'
 
 // Query keys
 export const analyticsKeys = {
   all: ['analytics'] as const,
   sales: (storeId: string, period: string) => [...analyticsKeys.all, 'sales', storeId, period] as const,
   topProducts: (storeId: string, period: string = '7d') => [...analyticsKeys.all, 'top-products', storeId, period] as const,
+  pipeline: (storeId: string, period: string) => [...analyticsKeys.all, 'pipeline', storeId, period] as const,
+  breakdowns: (storeId: string, period: string) => [...analyticsKeys.all, 'breakdowns', storeId, period] as const,
 }
 
-// Sync orders response
-export interface SyncOrdersResponse {
-  status: string
-  message: string
-  store_id: string
-}
-
-// Get sales analytics
+// Get sales analytics (daily time series)
 export function useSalesAnalytics(
   storeId: string | undefined,
   period: '7d' | '30d' | '90d' = '7d'
@@ -28,7 +22,7 @@ export function useSalesAnalytics(
     queryKey: analyticsKeys.sales(storeId || '', period),
     queryFn: () => api.get<SalesAnalytics>(`/kaspi/stores/${storeId}/analytics?period=${period}`),
     enabled: !!storeId,
-    staleTime: 60000, // Cache for 1 minute
+    staleTime: 60000,
   })
 }
 
@@ -42,19 +36,22 @@ export function useTopProducts(storeId: string | undefined, period: '7d' | '30d'
   })
 }
 
-// Sync orders from Kaspi
-export function useSyncOrders() {
-  const queryClient = useQueryClient()
+// Get order pipeline (status counts + conversion)
+export function useOrderPipeline(storeId: string | undefined, period: '7d' | '30d' | '90d' = '7d') {
+  return useQuery({
+    queryKey: analyticsKeys.pipeline(storeId || '', period),
+    queryFn: () => api.get<OrderPipeline>(`/kaspi/stores/${storeId}/order-pipeline?period=${period}`),
+    enabled: !!storeId,
+    staleTime: 60000,
+  })
+}
 
-  return useMutation({
-    mutationFn: ({ storeId, daysBack = 30 }: { storeId: string; daysBack?: number }) =>
-      api.post<SyncOrdersResponse>(`/kaspi/stores/${storeId}/sync-orders?days_back=${daysBack}`),
-    onSuccess: (_, { storeId }) => {
-      // Invalidate analytics and dashboard stats after a delay to allow sync to complete
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: analyticsKeys.all })
-        queryClient.invalidateQueries({ queryKey: dashboardKeys.all })
-      }, 5000)
-    },
+// Get order breakdowns (payment, delivery, cities)
+export function useOrderBreakdowns(storeId: string | undefined, period: '7d' | '30d' | '90d' = '7d') {
+  return useQuery({
+    queryKey: analyticsKeys.breakdowns(storeId || '', period),
+    queryFn: () => api.get<OrderBreakdowns>(`/kaspi/stores/${storeId}/order-breakdowns?period=${period}`),
+    enabled: !!storeId,
+    staleTime: 60000,
   })
 }

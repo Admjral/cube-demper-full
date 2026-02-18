@@ -45,6 +45,7 @@ export default function PartnerLayout({
 
   return (
     <div className="min-h-screen bg-background">
+      <meta name="robots" content="noindex, nofollow" />
       {/* Header */}
       <header className="glass-header sticky top-0 z-50">
         <div className="container mx-auto px-4 h-14 sm:h-16 flex items-center justify-between">

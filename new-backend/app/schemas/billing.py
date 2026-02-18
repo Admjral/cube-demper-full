@@ -32,6 +32,7 @@ class SubscriptionResponse(BaseModel):
 class CreateSubscriptionRequest(BaseModel):
     """Schema for creating subscription"""
     plan: str = Field(..., description="Plan: basic or pro")
+    store_id: Optional[str] = Field(None, description="Store ID for multi-store subscriptions")
 
 
 class PaymentResponse(BaseModel):

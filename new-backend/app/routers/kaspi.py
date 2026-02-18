@@ -26,6 +26,10 @@ from ..schemas.kaspi import (
     StoreStats,
     SalesAnalytics,
     TopProduct,
+    OrderPipeline,
+    PipelineGroup,
+    OrderBreakdowns,
+    BreakdownItem,
 )
 from ..schemas.products import ProductResponse, ProductListResponse, ProductFilters, ProductAnalytics
 from ..core.database import get_db_pool
@@ -283,16 +287,16 @@ async def authenticate_store(
         - Success: { "status": "success", "store_id": "...", "merchant_id": "..." }
         - SMS Required: { "status": "sms_required", "merchant_id": "..." }
     """
-    # Check store limit: 1 store per account
+    # Check store limit (dynamic, admin-controlled per user)
     async with pool.acquire() as conn:
-        store_count = await conn.fetchval(
-            "SELECT COUNT(*) FROM kaspi_stores WHERE user_id = $1 AND is_active = TRUE",
+        row = await conn.fetchrow(
+            "SELECT COUNT(*) as cnt, COALESCE((SELECT max_stores FROM users WHERE id = $1), 1) as max_stores FROM kaspi_stores WHERE user_id = $1 AND is_active = TRUE",
             current_user['id']
         )
-        if store_count >= 1:
+        if row['cnt'] >= row['max_stores']:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Лимит магазинов: 1 магазин на аккаунт"
+                detail=f"Лимит магазинов: {row['max_stores']}. Обратитесь в поддержку для расширения."
             )
 
     try:
@@ -495,16 +499,16 @@ async def authenticate_store_phone(
     Returns:
         - SMS Sent: { "status": "sms_sent", "phone": "7705***" }
     """
-    # Check store limit: 1 store per account
+    # Check store limit (dynamic, admin-controlled per user)
     async with pool.acquire() as conn:
-        store_count = await conn.fetchval(
-            "SELECT COUNT(*) FROM kaspi_stores WHERE user_id = $1 AND is_active = TRUE",
+        row = await conn.fetchrow(
+            "SELECT COUNT(*) as cnt, COALESCE((SELECT max_stores FROM users WHERE id = $1), 1) as max_stores FROM kaspi_stores WHERE user_id = $1 AND is_active = TRUE",
             current_user['id']
         )
-        if store_count >= 1:
+        if row['cnt'] >= row['max_stores']:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Лимит магазинов: 1 магазин на аккаунт"
+                detail=f"Лимит магазинов: {row['max_stores']}. Обратитесь в поддержку для расширения."
             )
 
     try:
@@ -2066,6 +2070,207 @@ async def get_top_products(
         ]
 
 
+# Label maps for human-readable breakdown names
+PAYMENT_MODE_LABELS = {
+    "PAY_WITH_CREDIT": "Кредит",
+    "PREPAID": "Безналичная оплата",
+}
+DELIVERY_MODE_LABELS = {
+    "DELIVERY_PICKUP": "Самовывоз",
+    "DELIVERY_LOCAL": "Доставка по городу",
+    "DELIVERY_REGIONAL_TODOOR": "Kaspi Доставка (область)",
+    "DELIVERY_REGIONAL_PICKUP": "Межрегиональный самовывоз",
+}
+
+ACTIVE_STATUSES = {"APPROVED_BY_BANK", "ACCEPTED_BY_MERCHANT"}
+COMPLETED_STATUSES = {"COMPLETED"}
+CANCELLED_STATUSES = {"CANCELLED", "CANCELLING", "RETURNED", "KASPI_DELIVERY_RETURN_REQUESTED"}
+
+
+@router.get("/stores/{store_id}/order-pipeline", response_model=OrderPipeline)
+async def get_order_pipeline(
+    store_id: str,
+    current_user: Annotated[dict, require_feature("analytics")],
+    pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
+    period: str = '7d'
+):
+    """Get order pipeline with status counts and conversion metrics"""
+    if period not in ['7d', '30d', '90d']:
+        period = '7d'
+    days = {'7d': 7, '30d': 30, '90d': 90}[period]
+    start_date = datetime.utcnow() - timedelta(days=days)
+
+    async with pool.acquire() as conn:
+        store = await conn.fetchrow(
+            "SELECT id FROM kaspi_stores WHERE id = $1 AND user_id = $2",
+            uuid.UUID(store_id), current_user['id']
+        )
+        if not store:
+            raise HTTPException(status_code=404, detail="Store not found")
+
+        rows = await conn.fetch(
+            """
+            SELECT status, COUNT(*) as cnt, COALESCE(SUM(total_price), 0) as rev
+            FROM orders
+            WHERE store_id = $1 AND order_date >= $2
+            GROUP BY status
+            """,
+            uuid.UUID(store_id), start_date
+        )
+
+    active = PipelineGroup(count=0, revenue=0)
+    completed = PipelineGroup(count=0, revenue=0)
+    cancelled = PipelineGroup(count=0, revenue=0)
+    total_count = 0
+    total_revenue = 0
+
+    for row in rows:
+        s = row['status'] or ''
+        c, r = row['cnt'], row['rev']
+        total_count += c
+        total_revenue += r
+        if s in ACTIVE_STATUSES:
+            active.count += c
+            active.revenue += r
+        elif s in COMPLETED_STATUSES:
+            completed.count += c
+            completed.revenue += r
+        elif s in CANCELLED_STATUSES:
+            cancelled.count += c
+            cancelled.revenue += r
+        else:
+            # Unknown status — count in total but not in groups
+            pass
+
+    decided = completed.count + cancelled.count
+    conversion_rate = round((completed.count / decided * 100), 1) if decided > 0 else 0.0
+    cancellation_rate = round((cancelled.count / total_count * 100), 1) if total_count > 0 else 0.0
+
+    return OrderPipeline(
+        active=active,
+        completed=completed,
+        cancelled=cancelled,
+        total=PipelineGroup(count=total_count, revenue=total_revenue),
+        conversion_rate=conversion_rate,
+        cancellation_rate=cancellation_rate,
+    )
+
+
+@router.get("/stores/{store_id}/order-breakdowns", response_model=OrderBreakdowns)
+async def get_order_breakdowns(
+    store_id: str,
+    current_user: Annotated[dict, require_feature("analytics")],
+    pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
+    period: str = '7d'
+):
+    """Get order breakdowns by payment mode, delivery mode, and city"""
+    if period not in ['7d', '30d', '90d']:
+        period = '7d'
+    days = {'7d': 7, '30d': 30, '90d': 90}[period]
+    start_date = datetime.utcnow() - timedelta(days=days)
+
+    async with pool.acquire() as conn:
+        store = await conn.fetchrow(
+            "SELECT id FROM kaspi_stores WHERE id = $1 AND user_id = $2",
+            uuid.UUID(store_id), current_user['id']
+        )
+        if not store:
+            raise HTTPException(status_code=404, detail="Store not found")
+
+        sid = uuid.UUID(store_id)
+        excluded = ('CANCELLED', 'CANCELLING', 'RETURNED')
+
+        # Payment mode breakdown
+        payment_rows = await conn.fetch(
+            """
+            SELECT payment_mode, COUNT(*) as cnt, COALESCE(SUM(total_price), 0) as rev
+            FROM orders
+            WHERE store_id = $1 AND order_date >= $2
+                AND status NOT IN ('CANCELLED', 'CANCELLING', 'RETURNED')
+            GROUP BY payment_mode
+            ORDER BY cnt DESC
+            """,
+            sid, start_date
+        )
+
+        # Delivery mode breakdown
+        delivery_rows = await conn.fetch(
+            """
+            SELECT delivery_mode, COUNT(*) as cnt, COALESCE(SUM(total_price), 0) as rev
+            FROM orders
+            WHERE store_id = $1 AND order_date >= $2
+                AND status NOT IN ('CANCELLED', 'CANCELLING', 'RETURNED')
+            GROUP BY delivery_mode
+            ORDER BY cnt DESC
+            """,
+            sid, start_date
+        )
+
+        # City breakdown (first part of delivery_address before comma)
+        city_rows = await conn.fetch(
+            """
+            SELECT
+                TRIM(SPLIT_PART(delivery_address, ',', 1)) as city,
+                COUNT(*) as cnt,
+                COALESCE(SUM(total_price), 0) as rev
+            FROM orders
+            WHERE store_id = $1 AND order_date >= $2
+                AND delivery_address IS NOT NULL AND delivery_address != ''
+                AND status NOT IN ('CANCELLED', 'CANCELLING', 'RETURNED')
+            GROUP BY TRIM(SPLIT_PART(delivery_address, ',', 1))
+            ORDER BY cnt DESC
+            """,
+            sid, start_date
+        )
+
+        # Total delivery cost for seller
+        delivery_cost_row = await conn.fetchrow(
+            """
+            SELECT COALESCE(SUM(delivery_cost), 0) as total
+            FROM orders
+            WHERE store_id = $1 AND order_date >= $2
+                AND status NOT IN ('CANCELLED', 'CANCELLING', 'RETURNED')
+            """,
+            sid, start_date
+        )
+
+    payment = [
+        BreakdownItem(
+            label=PAYMENT_MODE_LABELS.get(r['payment_mode'] or '', r['payment_mode'] or 'Другое'),
+            key=r['payment_mode'] or '',
+            count=r['cnt'],
+            revenue=r['rev'],
+        )
+        for r in payment_rows if r['payment_mode']
+    ]
+
+    delivery = [
+        BreakdownItem(
+            label=DELIVERY_MODE_LABELS.get(r['delivery_mode'] or '', r['delivery_mode'] or 'Другое'),
+            key=r['delivery_mode'] or '',
+            count=r['cnt'],
+            revenue=r['rev'],
+        )
+        for r in delivery_rows if r['delivery_mode']
+    ]
+
+    cities = [
+        BreakdownItem(
+            label=r['city'],
+            count=r['cnt'],
+            revenue=r['rev'],
+        )
+        for r in city_rows if r['city']
+    ]
+
+    return OrderBreakdowns(
+        payment=payment,
+        delivery=delivery,
+        cities=cities,
+        delivery_cost_total=delivery_cost_row['total'] if delivery_cost_row else 0,
+    )
+
+
 # ============================================================================
 # Additional Frontend Compatibility Endpoints
 # ============================================================================
@@ -2339,73 +2544,6 @@ async def _sync_prices_task(products: list, merchant_uid: str, store_id: str):
             continue
 
     logger.info(f"Price sync completed for store {store_id}: {updated}/{len(products)} updated")
-
-
-@router.post("/stores/{store_id}/sync-orders", status_code=status.HTTP_202_ACCEPTED)
-async def sync_store_orders(
-    store_id: str,
-    background_tasks: BackgroundTasks,
-    current_user: Annotated[dict, require_feature("orders_view")],
-    pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
-    days_back: int = 30
-):
-    """Sync orders for a specific store from Kaspi API"""
-    async with pool.acquire() as conn:
-        # Verify store ownership and get merchant_id
-        store = await conn.fetchrow(
-            "SELECT id, merchant_id, guid FROM kaspi_stores WHERE id = $1 AND user_id = $2",
-            uuid.UUID(store_id),
-            current_user['id']
-        )
-
-        if not store:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Store not found"
-            )
-
-        if not store['guid']:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Store not authenticated"
-            )
-
-    # Add background task to sync orders
-    background_tasks.add_task(
-        _sync_store_orders_task,
-        store_id=store_id,
-        merchant_id=store['merchant_id'],
-        days_back=days_back
-    )
-
-    return {
-        "status": "accepted",
-        "message": "Orders sync started in background",
-        "store_id": store_id
-    }
-
-
-async def _sync_store_orders_task(store_id: str, merchant_id: str, days_back: int = 30):
-    """Background task to sync store orders from Kaspi MC GraphQL"""
-    from ..services.api_parser import sync_orders_to_db
-    from ..services.kaspi_mc_service import get_kaspi_mc_service, KaspiMCError
-
-    try:
-        logger.info(f"Starting orders sync for store {store_id}, merchant {merchant_id}")
-
-        mc = get_kaspi_mc_service()
-        orders = await mc.fetch_orders_for_sync(merchant_id=merchant_id, limit=200)
-
-        if orders:
-            result = await sync_orders_to_db(store_id, orders)
-            logger.info(f"Orders sync complete for store {store_id}: {result}")
-        else:
-            logger.info(f"No orders found for store {store_id}")
-
-    except KaspiMCError as e:
-        logger.error(f"MC error syncing orders for store {store_id}: {e}")
-    except Exception as e:
-        logger.error(f"Error syncing orders for store {store_id}: {e}")
 
 
 @router.get("/products/{product_id}/price-history")

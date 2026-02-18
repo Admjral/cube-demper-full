@@ -90,6 +90,57 @@ async def get_current_subscription(
         )
 
 
+@router.get("/subscription/stores")
+async def get_subscription_stores(
+    current_user: Annotated[dict, Depends(get_current_user)],
+    pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
+):
+    """Get user's stores with their subscription status.
+    Returns each store with its linked subscription info (plan, status, expiry, discount).
+    """
+    async with pool.acquire() as conn:
+        user_row = await conn.fetchrow(
+            "SELECT max_stores, multi_store_discount FROM users WHERE id = $1",
+            current_user['id']
+        )
+        max_stores = user_row['max_stores'] if user_row else 1
+        discount = user_row['multi_store_discount'] if user_row else 0
+
+        stores = await conn.fetch(
+            """
+            SELECT
+                ks.id as store_id, ks.name, ks.merchant_id, ks.is_active,
+                s.plan, s.status as sub_status,
+                s.current_period_end as expires_at,
+                s.discount_percent
+            FROM kaspi_stores ks
+            LEFT JOIN subscriptions s ON s.store_id = ks.id AND s.status = 'active' AND s.current_period_end >= NOW()
+            WHERE ks.user_id = $1
+            ORDER BY ks.created_at ASC
+            """,
+            current_user['id']
+        )
+
+        result = []
+        for s in stores:
+            result.append({
+                "store_id": str(s['store_id']),
+                "name": s['name'],
+                "merchant_id": s['merchant_id'],
+                "is_active": s['is_active'],
+                "plan": s['plan'],
+                "status": s['sub_status'] or "no_subscription",
+                "expires_at": s['expires_at'].isoformat() if s['expires_at'] else None,
+                "discount_percent": s['discount_percent'] if s['discount_percent'] is not None else discount,
+            })
+
+        return {
+            "stores": result,
+            "max_stores": max_stores,
+            "multi_store_discount": discount
+        }
+
+
 @router.post("/subscribe", response_model=SubscriptionResponse, status_code=status.HTTP_201_CREATED)
 async def create_subscription(
     subscription_request: CreateSubscriptionRequest,
@@ -108,6 +159,8 @@ async def create_subscription(
             detail="Invalid plan. Must be 'basic', 'standard', or 'premium'"
         )
 
+    store_uuid = uuid.UUID(subscription_request.store_id) if subscription_request.store_id else None
+
     async with pool.acquire() as conn:
         # Get plan details from DB
         plan_row = await conn.fetchrow(
@@ -117,13 +170,46 @@ async def create_subscription(
         if not plan_row:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Plan not found")
 
+        # Validate store belongs to user (if store_id provided)
+        if store_uuid:
+            store_owner = await conn.fetchval(
+                "SELECT user_id FROM kaspi_stores WHERE id = $1",
+                store_uuid
+            )
+            if not store_owner or str(store_owner) != str(current_user['id']):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Store not found")
+
         products_limit = plan_row['demping_limit']
         price_tiyns = plan_row['price_tiyns']
-        # Deactivate old subscriptions
-        await conn.execute(
-            "UPDATE subscriptions SET status = 'cancelled' WHERE user_id = $1 AND status = 'active'",
-            current_user['id']
-        )
+
+        # Determine discount for additional stores
+        discount_percent = 0
+        if store_uuid:
+            user_row = await conn.fetchrow(
+                "SELECT max_stores, multi_store_discount FROM users WHERE id = $1",
+                current_user['id']
+            )
+            other_active = await conn.fetchval(
+                """SELECT COUNT(*) FROM subscriptions
+                WHERE user_id = $1 AND status = 'active' AND current_period_end >= NOW()
+                AND (store_id IS NULL OR store_id != $2)""",
+                current_user['id'], store_uuid
+            )
+            if other_active > 0 and user_row:
+                discount_percent = user_row['multi_store_discount'] or 0
+                price_tiyns = int(price_tiyns * (100 - discount_percent) / 100)
+
+        # Deactivate old subscriptions (only for this store, or all if no store_id)
+        if store_uuid:
+            await conn.execute(
+                "UPDATE subscriptions SET status = 'cancelled' WHERE user_id = $1 AND store_id = $2 AND status = 'active'",
+                current_user['id'], store_uuid
+            )
+        else:
+            await conn.execute(
+                "UPDATE subscriptions SET status = 'cancelled' WHERE user_id = $1 AND status = 'active'",
+                current_user['id']
+            )
 
         # Create new subscription
         now = datetime.now()
@@ -132,9 +218,10 @@ async def create_subscription(
             INSERT INTO subscriptions (
                 user_id, plan_id, plan, status, products_limit,
                 analytics_limit, demping_limit,
-                current_period_start, current_period_end
+                current_period_start, current_period_end,
+                store_id, discount_percent
             )
-            VALUES ($1, $2, $3, 'active', $4, $5, $6, $7, $8)
+            VALUES ($1, $2, $3, 'active', $4, $5, $6, $7, $8, $9, $10)
             RETURNING *
             """,
             current_user['id'],
@@ -144,10 +231,12 @@ async def create_subscription(
             plan_row['analytics_limit'],
             plan_row['demping_limit'],
             now,
-            now + timedelta(days=30)
+            now + timedelta(days=30),
+            store_uuid,
+            discount_percent
         )
 
-        # Create payment record
+        # Create payment record (with discounted price)
         await conn.execute(
             """
             INSERT INTO payments (user_id, amount, status, plan)
