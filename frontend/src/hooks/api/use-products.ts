@@ -32,9 +32,8 @@ export const dempingKeys = {
 // =============================================
 
 interface ProductsQueryParams {
-  skip?: number
-  limit?: number
-  is_active?: boolean
+  page?: number
+  page_size?: number
   bot_active?: boolean
   search?: string
 }
@@ -45,16 +44,13 @@ export function useProducts(storeId: string | undefined, params?: ProductsQueryP
     queryKey: [...productKeys.list(storeId || ''), params],
     queryFn: async () => {
       const queryParams = new URLSearchParams()
-      if (params?.skip) queryParams.set('skip', params.skip.toString())
-      if (params?.limit) queryParams.set('limit', params.limit.toString())
-      if (params?.is_active !== undefined) queryParams.set('is_active', params.is_active.toString())
+      if (params?.page) queryParams.set('page', params.page.toString())
+      if (params?.page_size) queryParams.set('page_size', params.page_size.toString())
       if (params?.bot_active !== undefined) queryParams.set('bot_active', params.bot_active.toString())
       if (params?.search) queryParams.set('search', params.search)
 
       const queryString = queryParams.toString()
-      const response = await api.get<ProductListResponse>(`/kaspi/stores/${storeId}/products${queryString ? `?${queryString}` : ''}`)
-      // Return just the products array for easier consumption
-      return response.products
+      return api.get<ProductListResponse>(`/kaspi/stores/${storeId}/products${queryString ? `?${queryString}` : ''}`)
     },
     enabled: !!storeId,
     staleTime: 30000,

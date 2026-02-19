@@ -5,7 +5,7 @@ import Image from "next/image"
 import { useT } from "@/lib/i18n"
 import { SubscriptionGate } from "@/components/shared/subscription-gate"
 import { FeatureGate } from "@/components/shared/feature-gate"
-import { useNicheSearch, useNicheCategories } from "@/hooks/api/use-niche-search"
+import { useNicheSearch } from "@/hooks/api/use-niche-search"
 import type { NicheSearchParams, NicheProduct } from "@/types/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -62,6 +62,30 @@ function getCompetitionBadge(merchantCount: number, t: (key: string) => string) 
   return <Badge className="bg-red-500/20 text-red-500 hover:bg-red-500/30">{t("niche.competitionHigh")}</Badge>
 }
 
+const ROOT_CATEGORIES = [
+  "Одежда",
+  "Красота и здоровье",
+  "Аксессуары",
+  "Товары для дома и дачи",
+  "Украшения",
+  "Детские товары",
+  "Аптека",
+  "Телефоны и гаджеты",
+  "Автотовары",
+  "Обувь",
+  "Подарки, товары для праздников",
+  "Досуг, книги",
+  "Мебель",
+  "Строительство, ремонт",
+  "Компьютеры",
+  "Спорт, туризм",
+  "Канцелярские товары",
+  "Бытовая техника",
+  "ТВ, Аудио, Видео",
+  "Товары для животных",
+  "Продукты питания",
+]
+
 export default function NicheSearchPage() {
   const t = useT()
   const [searchParams, setSearchParams] = useState<NicheSearchParams>({
@@ -75,19 +99,18 @@ export default function NicheSearchPage() {
 
   // Используем реальные API хуки
   const { data: searchData, isLoading: isLoadingProducts, error: productsError, refetch } = useNicheSearch(searchParams)
-  const { data: categoriesData, isLoading: isLoadingCategories } = useNicheCategories()
 
-  const isLoading = isLoadingProducts || isLoadingCategories
+  const isLoading = isLoadingProducts
   const hasError = !!productsError
   const products = searchData?.products ?? []
-  const categories = categoriesData ?? []
   const totalProducts = searchData?.total ?? 0
 
   // Handlers
-  const handleCategoryChange = (categoryId: string) => {
+  const handleCategoryChange = (value: string) => {
     setSearchParams(prev => ({
       ...prev,
-      category_id: categoryId === 'all' ? undefined : categoryId,
+      category_name: value === 'all' ? undefined : value,
+      category_id: undefined,
       page: 1,
     }))
   }
@@ -233,7 +256,7 @@ export default function NicheSearchPage() {
                   {t("niche.category")}
                 </label>
                 <Select
-                  value={searchParams.category_id || 'all'}
+                  value={searchParams.category_name || 'all'}
                   onValueChange={handleCategoryChange}
                 >
                   <SelectTrigger>
@@ -243,9 +266,9 @@ export default function NicheSearchPage() {
                     <SelectItem value="all">
                       {t("niche.allCategories")}
                     </SelectItem>
-                    {categories.map(cat => (
-                      <SelectItem key={cat.id} value={cat.id}>
-                        {cat.name}
+                    {ROOT_CATEGORIES.map(name => (
+                      <SelectItem key={name} value={name}>
+                        {name}
                       </SelectItem>
                     ))}
                   </SelectContent>

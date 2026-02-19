@@ -8,6 +8,7 @@ import { authClient } from '@/lib/auth'
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8010'
 
 export type LayoutType = '1_on_1' | '4_on_1' | '6_on_1' | '8_on_1' | '9_on_1' | '16_on_1'
+export type PaperSize = 'a4' | 'thermal_80mm'
 
 export interface LayoutInfo {
   value: LayoutType
@@ -45,15 +46,16 @@ export async function getLayoutTypes(): Promise<LayoutTypesResponse> {
  */
 export async function processInvoices(
   file: File,
-  layout: LayoutType
+  layout: LayoutType,
+  paperSize: PaperSize = 'a4'
 ): Promise<Blob> {
   const token = authClient.getToken()
-  
+
   const formData = new FormData()
   formData.append('file', file)
 
   const response = await fetch(
-    `${API_URL}/invoices/process-invoices?layout=${layout}`,
+    `${API_URL}/invoices/process-invoices?layout=${layout}&paper_size=${paperSize}`,
     {
       method: 'POST',
       headers: {
@@ -86,11 +88,13 @@ export function useProcessInvoices() {
     mutationFn: async ({
       file,
       layout,
+      paperSize = 'a4',
     }: {
       file: File
       layout: LayoutType
+      paperSize?: PaperSize
     }) => {
-      return processInvoices(file, layout)
+      return processInvoices(file, layout, paperSize)
     },
   })
 }

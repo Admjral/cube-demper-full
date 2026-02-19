@@ -4,7 +4,7 @@ import { useState, useCallback } from "react"
 import { useT } from "@/lib/i18n"
 import { SubscriptionGate } from "@/components/shared/subscription-gate"
 import { FeatureGate } from "@/components/shared/feature-gate"
-import { useProcessInvoices, LayoutType } from "@/hooks/api/use-invoices"
+import { useProcessInvoices, LayoutType, PaperSize } from "@/hooks/api/use-invoices"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -88,6 +88,7 @@ export default function InvoiceMergerPage() {
   const t = useT()
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [layout, setLayout] = useState<LayoutType>("4_on_1")
+  const [paperSize, setPaperSize] = useState<PaperSize>("a4")
   const [isDragOver, setIsDragOver] = useState(false)
 
   const processInvoices = useProcessInvoices()
@@ -142,7 +143,8 @@ export default function InvoiceMergerPage() {
     try {
       const pdfBlob = await processInvoices.mutateAsync({
         file: selectedFile,
-        layout,
+        layout: paperSize === 'thermal_80mm' ? '1_on_1' : layout,
+        paperSize,
       })
 
       // Создаём ссылку для скачивания
@@ -248,7 +250,7 @@ export default function InvoiceMergerPage() {
           </CardContent>
         </Card>
 
-        {/* Настройки сетки */}
+        {/* Настройки */}
         <Card className="glass-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -260,68 +262,122 @@ export default function InvoiceMergerPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Формат бумаги */}
             <div className="space-y-2">
-              <Label>
-                {t("invoice.gridType")}
-              </Label>
+              <Label>{t("invoice.paperSize")}</Label>
               <Select
-                value={layout}
-                onValueChange={(v: string) => setLayout(v as LayoutType)}
+                value={paperSize}
+                onValueChange={(v: string) => setPaperSize(v as PaperSize)}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {LAYOUT_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      <div className="flex items-center gap-2">
-                        <option.icon className="h-4 w-4" />
-                        <span>{option.label}</span>
-                        <span className="text-muted-foreground">
-                          ({option.grid})
-                        </span>
-                      </div>
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="a4">
+                    <div className="flex items-center gap-2">
+                      <LayoutGrid className="h-4 w-4" />
+                      <span>{t("invoice.paperA4")}</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="thermal_80mm">
+                    <div className="flex items-center gap-2">
+                      <Printer className="h-4 w-4" />
+                      <span>{t("invoice.paperThermal")}</span>
+                    </div>
+                  </SelectItem>
                 </SelectContent>
               </Select>
+              {paperSize === 'thermal_80mm' && (
+                <p className="text-xs text-muted-foreground">
+                  {t("invoice.thermalHint")}
+                </p>
+              )}
             </div>
 
-            {/* Визуализация выбранной сетки */}
-            <div className="p-4 bg-muted/30 rounded-xl">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-medium">
-                  {t("invoice.gridPreview")}
-                </span>
-                <span className="text-sm text-muted-foreground">
-                  {selectedLayoutOption?.description}
-                </span>
-              </div>
+            {/* Сетка — только для A4 */}
+            {paperSize === 'a4' && (
+              <>
+                <div className="space-y-2">
+                  <Label>
+                    {t("invoice.gridType")}
+                  </Label>
+                  <Select
+                    value={layout}
+                    onValueChange={(v: string) => setLayout(v as LayoutType)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {LAYOUT_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          <div className="flex items-center gap-2">
+                            <option.icon className="h-4 w-4" />
+                            <span>{option.label}</span>
+                            <span className="text-muted-foreground">
+                              ({option.grid})
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-              {/* Сетка-превью */}
-              <div
-                className="aspect-[1/1.414] bg-white rounded border max-w-[200px] mx-auto p-2"
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: `repeat(${
-                    layout === "1_on_1" ? 1 : layout === "4_on_1" || layout === "6_on_1" || layout === "8_on_1" ? 2 : layout === "9_on_1" ? 3 : 4
-                  }, 1fr)`,
-                  gridTemplateRows: `repeat(${
-                    layout === "1_on_1" ? 1 : layout === "4_on_1" ? 2 : layout === "6_on_1" ? 3 : layout === "8_on_1" ? 4 : layout === "9_on_1" ? 3 : 4
-                  }, 1fr)`,
-                  gap: "4px",
-                }}
-              >
-                {Array.from({
-                  length: layout === "1_on_1" ? 1 : layout === "4_on_1" ? 4 : layout === "6_on_1" ? 6 : layout === "8_on_1" ? 8 : layout === "9_on_1" ? 9 : 16,
-                }).map((_, i) => (
+                {/* Визуализация выбранной сетки */}
+                <div className="p-4 bg-muted/30 rounded-xl">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-medium">
+                      {t("invoice.gridPreview")}
+                    </span>
+                    <span className="text-sm text-muted-foreground">
+                      {selectedLayoutOption?.description}
+                    </span>
+                  </div>
+
+                  {/* Сетка-превью */}
                   <div
-                    key={i}
-                    className="bg-primary/20 rounded-sm border border-primary/30"
-                  />
-                ))}
+                    className="aspect-[1/1.414] bg-white rounded border max-w-[200px] mx-auto p-2"
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: `repeat(${
+                        layout === "1_on_1" ? 1 : layout === "4_on_1" || layout === "6_on_1" || layout === "8_on_1" ? 2 : layout === "9_on_1" ? 3 : 4
+                      }, 1fr)`,
+                      gridTemplateRows: `repeat(${
+                        layout === "1_on_1" ? 1 : layout === "4_on_1" ? 2 : layout === "6_on_1" ? 3 : layout === "8_on_1" ? 4 : layout === "9_on_1" ? 3 : 4
+                      }, 1fr)`,
+                      gap: "4px",
+                    }}
+                  >
+                    {Array.from({
+                      length: layout === "1_on_1" ? 1 : layout === "4_on_1" ? 4 : layout === "6_on_1" ? 6 : layout === "8_on_1" ? 8 : layout === "9_on_1" ? 9 : 16,
+                    }).map((_, i) => (
+                      <div
+                        key={i}
+                        className="bg-primary/20 rounded-sm border border-primary/30"
+                      />
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Превью для термопринтера */}
+            {paperSize === 'thermal_80mm' && (
+              <div className="p-4 bg-muted/30 rounded-xl">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-medium">
+                    {t("invoice.gridPreview")}
+                  </span>
+                  <span className="text-sm text-muted-foreground">
+                    80mm
+                  </span>
+                </div>
+                <div className="bg-white rounded border max-w-[80px] mx-auto p-1" style={{ minHeight: '120px' }}>
+                  <div className="bg-primary/20 rounded-sm border border-primary/30 w-full h-full" style={{ minHeight: '110px' }} />
+                </div>
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -338,7 +394,7 @@ export default function InvoiceMergerPage() {
                 </p>
                 <p className="text-sm text-muted-foreground">
                   {selectedFile
-                    ? `${t("invoice.file")} ${selectedFile.name} • ${t("invoice.grid")} ${selectedLayoutOption?.label}`
+                    ? `${t("invoice.file")} ${selectedFile.name} • ${paperSize === 'thermal_80mm' ? t("invoice.paperThermal") : `${t("invoice.grid")} ${selectedLayoutOption?.label}`}`
                     : t("invoice.uploadZip")}
                 </p>
               </div>

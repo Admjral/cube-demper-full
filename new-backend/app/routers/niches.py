@@ -22,7 +22,9 @@ async def get_categories(
     current_user: Annotated[dict, require_feature("niche_search")],
     parent_id: Optional[str] = None,
     sort_by: str = Query("total_revenue", enum=["total_revenue", "total_products", "total_sellers", "name"]),
-    order: str = Query("desc", enum=["asc", "desc"])
+    order: str = Query("desc", enum=["asc", "desc"]),
+    limit: int = Query(50, ge=1, le=500),
+    search: Optional[str] = None,
 ):
     """
     Получить список категорий с метриками
@@ -31,7 +33,24 @@ async def get_categories(
     """
     async with pool.acquire() as conn:
         order_dir = "DESC" if order == "desc" else "ASC"
-        parent_filter = "parent_id = $1" if parent_id else "parent_id IS NULL"
+
+        conditions = []
+        params: list = []
+        param_idx = 1
+
+        if parent_id:
+            conditions.append(f"parent_id = ${param_idx}")
+            params.append(uuid.UUID(parent_id))
+            param_idx += 1
+        else:
+            conditions.append("parent_id IS NULL")
+
+        if search:
+            conditions.append(f"name ILIKE ${param_idx}")
+            params.append(f"%{escape_like(search)}%")
+            param_idx += 1
+
+        where_clause = " AND ".join(conditions)
 
         query = f"""
             SELECT
@@ -40,15 +59,13 @@ async def get_categories(
                 avg_price, total_revenue, status,
                 created_at, updated_at
             FROM niche_categories
-            WHERE {parent_filter}
+            WHERE {where_clause}
             ORDER BY {sort_by} {order_dir}
+            LIMIT ${param_idx}
         """
+        params.append(limit)
 
-        if parent_id:
-            rows = await conn.fetch(query, uuid.UUID(parent_id))
-        else:
-            rows = await conn.fetch(query.replace("$1", "NULL").replace("parent_id = NULL", "parent_id IS NULL"))
-
+        rows = await conn.fetch(query, *params)
         categories = [NicheCategory.from_row(dict(row)).to_dict() for row in rows]
 
         return {
@@ -146,6 +163,7 @@ async def get_products(
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)],
     current_user: Annotated[dict, require_feature("niche_search")],
     category_id: Optional[str] = None,
+    category_name: Optional[str] = None,
     min_revenue: Optional[int] = None,
     max_revenue: Optional[int] = None,
     min_sales: Optional[int] = None,
@@ -181,12 +199,27 @@ async def get_products(
                 cat_uuid
             )
             if has_children:
-                # Parent category — search in all subcategories
-                conditions.append(f"np.category_id IN (SELECT id FROM niche_categories WHERE parent_id = ${param_idx})")
+                # Parent category — search in parent + all subcategories
+                conditions.append(f"np.category_id IN (SELECT id FROM niche_categories WHERE id = ${param_idx} OR parent_id = ${param_idx})")
             else:
                 # Subcategory — direct match
                 conditions.append(f"np.category_id = ${param_idx}")
             params.append(cat_uuid)
+            param_idx += 1
+
+        if category_name and not category_id:
+            # Find parent category by name, then include all its subcategories
+            # Also match direct name (for subcategories) and root_category field
+            conditions.append(f"""np.category_id IN (
+                SELECT id FROM niche_categories WHERE name = ${param_idx}
+                UNION
+                SELECT id FROM niche_categories WHERE parent_id IN (
+                    SELECT id FROM niche_categories WHERE name = ${param_idx}
+                )
+                UNION
+                SELECT id FROM niche_categories WHERE root_category = ${param_idx}
+            )""")
+            params.append(category_name)
             param_idx += 1
 
         if min_revenue:

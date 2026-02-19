@@ -286,7 +286,7 @@ const translations: Record<Locale, Record<string, string>> = {
     // === Приоритет ===
     "priority.title": "Приоритет",
     "priority.description": "Проверка каждые 3 мин вместо обычного интервала",
-    "priority.limit": "Макс. 10 приоритетных товаров на магазин",
+    "priority.limit": "Макс. 200 приоритетных товаров на магазин",
 
     // === Синхронизация цен ===
     "priceBot.syncPrices": "Обновить цены",
@@ -304,6 +304,8 @@ const translations: Record<Locale, Record<string, string>> = {
     "priceBot.now": "Сейчас",
     "priceBot.minAgo": "мин. назад",
     "priceBot.hoursAgo": "ч. назад",
+    "priceBot.showing": "Показано",
+    "priceBot.of": "из",
 
     // === Склейка накладных ===
     "invoice.title": "Склейка накладных",
@@ -330,6 +332,10 @@ const translations: Record<Locale, Record<string, string>> = {
     "invoice.step2": "Загрузите архив и выберите тип сетки",
     "invoice.step3": "Нажмите «Создать и скачать PDF»",
     "invoice.step4": "Распечатайте готовый PDF на принтере",
+    "invoice.paperSize": "Формат бумаги",
+    "invoice.paperA4": "A4 (обычный принтер)",
+    "invoice.paperThermal": "Термопринтер 80mm",
+    "invoice.thermalHint": "Для XPrinter и аналогов. Каждая накладная на отдельной странице шириной 80mm",
     "invoice.tip": "Совет: для экономии бумаги используйте сетку 9 на 1 или 16 на 1",
     "invoice.success": "PDF успешно создан и скачан!",
     "invoice.error": "Ошибка обработки:",
@@ -1100,7 +1106,7 @@ const translations: Record<Locale, Record<string, string>> = {
     // === Басымдық ===
     "priority.title": "Басымдық",
     "priority.description": "3 мин сайын тексеру (әдеттегі аралықтың орнына)",
-    "priority.limit": "Дүкен үшін ең көбі 10 басымды тауар",
+    "priority.limit": "Дүкен үшін ең көбі 200 басымды тауар",
 
     // === Бағаларды синхрондау ===
     "priceBot.syncPrices": "Бағаларды жаңарту",
@@ -1118,6 +1124,8 @@ const translations: Record<Locale, Record<string, string>> = {
     "priceBot.now": "Қазір",
     "priceBot.minAgo": "мин. бұрын",
     "priceBot.hoursAgo": "сағ. бұрын",
+    "priceBot.showing": "Көрсетілген",
+    "priceBot.of": "ішінен",
 
     // === Жүкқұжаттарды біріктіру ===
     "invoice.title": "Жүкқұжаттарды біріктіру",
@@ -1144,6 +1152,10 @@ const translations: Record<Locale, Record<string, string>> = {
     "invoice.step2": "Мұрағатты жүктеп, тор түрін таңдаңыз",
     "invoice.step3": "«PDF құру және жүктеу» батырмасын басыңыз",
     "invoice.step4": "Дайын PDF-ті принтерде басып шығарыңыз",
+    "invoice.paperSize": "Қағаз форматы",
+    "invoice.paperA4": "A4 (қарапайым принтер)",
+    "invoice.paperThermal": "Термопринтер 80мм",
+    "invoice.thermalHint": "XPrinter және ұқсас принтерлер үшін. Әр жүкқұжат 80мм енді бөлек бетте",
     "invoice.tip": "Кеңес: қағазды үнемдеу үшін 9-дан-1 немесе 16-дан-1 торын пайдаланыңыз",
     "invoice.success": "PDF сәтті құрылып жүктелді!",
     "invoice.error": "Өңдеу қатесі:",

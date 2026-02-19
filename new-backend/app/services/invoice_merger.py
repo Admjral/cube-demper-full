@@ -27,8 +27,17 @@ logger = logging.getLogger(__name__)
 A4_WIDTH = 595.27
 A4_HEIGHT = 841.89
 
+# Термопринтер 80mm в points (80mm / 25.4 * 72)
+THERMAL_80MM_WIDTH = 226.77
+
 # Отступы в points
 CELL_PADDING = 10
+
+
+class PaperSize(str, Enum):
+    """Формат бумаги для итогового PDF"""
+    A4 = "a4"
+    THERMAL_80MM = "thermal_80mm"
 
 
 class LayoutType(str, Enum):
@@ -217,39 +226,21 @@ def _calculate_scale_and_position(
     return transformation
 
 
-def merge_invoices(
+def _merge_thermal_80mm(
     input_pdfs: List[Tuple[str, bytes]],
-    layout_type: LayoutType
 ) -> bytes:
     """
-    Объединяет несколько PDF-накладных на листах A4 в заданной сетке.
-    
-    Args:
-        input_pdfs: Список кортежей (имя файла, содержимое PDF в байтах)
-        layout_type: Тип сетки (4_on_1, 9_on_1, 16_on_1)
-        
-    Returns:
-        Содержимое результирующего PDF в байтах
-        
-    Raises:
-        InvoiceMergerError: При ошибках обработки
+    Объединяет накладные для термопринтера 80mm.
+
+    Каждая накладная — отдельная страница шириной 80mm (226.77pt).
+    Высота пропорциональна оригиналу. Если оригинал уже <= 80mm —
+    сохраняем оригинальный размер без масштабирования.
     """
-    if not input_pdfs:
-        raise EmptyArchiveError("Нет PDF-файлов для обработки")
-    
-    # Получаем конфигурацию сетки
-    grid = GridConfig.from_layout(layout_type)
-    cells_per_page = grid.cols * grid.rows
-    
-    logger.info(f"Объединение {len(input_pdfs)} накладных в сетку {grid.cols}x{grid.rows}")
-    
-    # Создаём writer для результирующего PDF
     writer = PdfWriter()
-    
-    # Читаем все страницы
+
     pages: List[Tuple[str, PageObject]] = []
     errors: List[str] = []
-    
+
     for filename, content in input_pdfs:
         try:
             page = _read_pdf_page(content, filename)
@@ -257,32 +248,126 @@ def merge_invoices(
         except InvalidPDFError as e:
             errors.append(str(e))
             logger.warning(f"Пропущен файл: {e}")
-    
+
     if not pages:
         raise InvalidPDFError(
             f"Не удалось прочитать ни один PDF. Ошибки: {'; '.join(errors)}"
         )
-    
+
     if errors:
         logger.warning(f"Пропущено {len(errors)} файлов из-за ошибок")
-    
+
+    for filename, invoice_page in pages:
+        media_box = invoice_page.mediabox
+        page_width = float(media_box.width)
+        page_height = float(media_box.height)
+        origin_x = float(media_box.lower_left[0])
+        origin_y = float(media_box.lower_left[1])
+
+        if page_width <= THERMAL_80MM_WIDTH:
+            # Оригинал уже <= 80mm — без масштабирования
+            out_width = page_width
+            out_height = page_height
+            scale = 1.0
+        else:
+            # Масштабируем до 80mm ширины
+            scale = THERMAL_80MM_WIDTH / page_width
+            out_width = THERMAL_80MM_WIDTH
+            out_height = page_height * scale
+
+        new_page = PageObject.create_blank_page(width=out_width, height=out_height)
+
+        offset_x = -origin_x * scale
+        offset_y = -origin_y * scale
+
+        transformation = Transformation().scale(scale, scale).translate(offset_x, offset_y)
+        new_page.merge_transformed_page(invoice_page, transformation)
+
+        writer.add_page(new_page)
+        logger.debug(f"Термо 80mm: '{filename}' {page_width:.0f}x{page_height:.0f} -> {out_width:.0f}x{out_height:.0f} (scale={scale:.3f})")
+
+    output = io.BytesIO()
+    writer.write(output)
+    output.seek(0)
+
+    result = output.read()
+    logger.info(f"Создан термо-PDF размером {len(result)} байт, {len(writer.pages)} страниц")
+
+    return result
+
+
+def merge_invoices(
+    input_pdfs: List[Tuple[str, bytes]],
+    layout_type: LayoutType,
+    paper_size: PaperSize = PaperSize.A4,
+) -> bytes:
+    """
+    Объединяет несколько PDF-накладных на листах в заданной сетке.
+
+    Args:
+        input_pdfs: Список кортежей (имя файла, содержимое PDF в байтах)
+        layout_type: Тип сетки (4_on_1, 9_on_1, 16_on_1)
+        paper_size: Формат бумаги (a4, thermal_80mm)
+
+    Returns:
+        Содержимое результирующего PDF в байтах
+
+    Raises:
+        InvoiceMergerError: При ошибках обработки
+    """
+    if not input_pdfs:
+        raise EmptyArchiveError("Нет PDF-файлов для обработки")
+
+    # Термопринтер — отдельная логика
+    if paper_size == PaperSize.THERMAL_80MM:
+        return _merge_thermal_80mm(input_pdfs)
+
+    # Получаем конфигурацию сетки
+    grid = GridConfig.from_layout(layout_type)
+    cells_per_page = grid.cols * grid.rows
+
+    logger.info(f"Объединение {len(input_pdfs)} накладных в сетку {grid.cols}x{grid.rows}")
+
+    # Создаём writer для результирующего PDF
+    writer = PdfWriter()
+
+    # Читаем все страницы
+    pages: List[Tuple[str, PageObject]] = []
+    errors: List[str] = []
+
+    for filename, content in input_pdfs:
+        try:
+            page = _read_pdf_page(content, filename)
+            pages.append((filename, page))
+        except InvalidPDFError as e:
+            errors.append(str(e))
+            logger.warning(f"Пропущен файл: {e}")
+
+    if not pages:
+        raise InvalidPDFError(
+            f"Не удалось прочитать ни один PDF. Ошибки: {'; '.join(errors)}"
+        )
+
+    if errors:
+        logger.warning(f"Пропущено {len(errors)} файлов из-за ошибок")
+
     # Группируем страницы по листам A4
     for page_idx in range(0, len(pages), cells_per_page):
         batch = pages[page_idx:page_idx + cells_per_page]
-        
+
         # Создаём новую пустую страницу A4
         new_page = PageObject.create_blank_page(width=A4_WIDTH, height=A4_HEIGHT)
-        
+
         # Размещаем накладные в ячейках сетки
         for i, (filename, invoice_page) in enumerate(batch):
             # Вычисляем позицию ячейки в сетке
             col = i % grid.cols
             row = grid.rows - 1 - (i // grid.cols)  # Снизу вверх в PDF координатах
-            
+
             # Вычисляем координаты ячейки
             cell_x = CELL_PADDING + col * (grid.cell_width + CELL_PADDING)
             cell_y = CELL_PADDING + row * (grid.cell_height + CELL_PADDING)
-            
+
             # Получаем трансформацию для размещения страницы в ячейке
             transformation = _calculate_scale_and_position(
                 invoice_page,
@@ -291,47 +376,49 @@ def merge_invoices(
                 cell_x,
                 cell_y
             )
-            
+
             # Применяем трансформацию и добавляем на страницу
             new_page.merge_transformed_page(invoice_page, transformation)
-            
+
             logger.debug(f"Добавлена накладная '{filename}' в ячейку ({col}, {row})")
-        
+
         writer.add_page(new_page)
         logger.debug(f"Создан лист {page_idx // cells_per_page + 1} с {len(batch)} накладными")
-    
+
     # Записываем результат в байты
     output = io.BytesIO()
     writer.write(output)
     output.seek(0)
-    
+
     result = output.read()
     logger.info(f"Создан PDF размером {len(result)} байт, {len(writer.pages)} страниц")
-    
+
     return result
 
 
 def process_zip_archive(
     zip_file: BinaryIO,
-    layout_type: LayoutType
+    layout_type: LayoutType,
+    paper_size: PaperSize = PaperSize.A4,
 ) -> bytes:
     """
     Главная функция: обрабатывает ZIP-архив и возвращает объединённый PDF.
-    
+
     Args:
         zip_file: Файловый объект ZIP-архива с накладными
         layout_type: Тип сетки для размещения
-        
+        paper_size: Формат бумаги (a4, thermal_80mm)
+
     Returns:
         Содержимое результирующего PDF в байтах
-        
+
     Raises:
         InvoiceMergerError: При любых ошибках обработки
     """
     # Извлекаем PDF из архива
     pdf_files = _extract_pdfs_from_zip(zip_file)
-    
+
     # Объединяем накладные
-    result = merge_invoices(pdf_files, layout_type)
-    
+    result = merge_invoices(pdf_files, layout_type, paper_size)
+
     return result

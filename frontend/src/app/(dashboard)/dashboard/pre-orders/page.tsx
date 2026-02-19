@@ -17,6 +17,7 @@ import {
 import Link from "next/link"
 import { FeatureGate } from "@/components/shared/feature-gate"
 import { formatPrice } from "@/lib/utils"
+import type { KaspiProduct } from "@/types/api"
 import { ProductDempingDialog } from "@/components/shared/product-demping-dialog"
 import { useState } from "react"
 
@@ -71,12 +72,13 @@ export default function PreOrdersPage() {
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
 
   const {
-    data: products,
+    data: productsData,
     isLoading,
-  } = useProducts(selectedStore?.id)
+  } = useProducts(selectedStore?.id, { page_size: 500 })
 
+  const products = productsData?.products
   // Filter only products with active pre-orders
-  const preOrderProducts = products?.filter((p) => p.pre_order_days > 0) || []
+  const preOrderProducts = products?.filter((p: KaspiProduct) => p.pre_order_days > 0) || []
 
   return (
     <SubscriptionGate>

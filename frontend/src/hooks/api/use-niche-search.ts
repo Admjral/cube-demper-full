@@ -27,6 +27,7 @@ export function useNicheSearch(params: NicheSearchParams, enabled = true) {
       const searchParams = new URLSearchParams()
 
       if (params.category_id) searchParams.set('category_id', params.category_id)
+      if (params.category_name) searchParams.set('category_name', params.category_name)
       if (params.min_price) searchParams.set('min_price', params.min_price.toString())
       if (params.max_price) searchParams.set('max_price', params.max_price.toString())
       if (params.min_sales) searchParams.set('min_sales', params.min_sales.toString())

@@ -13,6 +13,7 @@ import logging
 from ..services.invoice_merger import (
     process_zip_archive,
     LayoutType,
+    PaperSize,
     InvoiceMergerError,
     InvalidPDFError,
     EmptyArchiveError,
@@ -67,7 +68,11 @@ async def process_invoices(
     layout: Annotated[
         LayoutType,
         Query(description="Тип сетки для размещения накладных")
-    ] = LayoutType.FOUR_ON_ONE
+    ] = LayoutType.FOUR_ON_ONE,
+    paper_size: Annotated[
+        PaperSize,
+        Query(description="Формат бумаги: a4 или thermal_80mm")
+    ] = PaperSize.A4,
 ):
     """
     Обрабатывает ZIP-архив с накладными и возвращает объединённый PDF.
@@ -105,7 +110,7 @@ async def process_invoices(
     if file.content_type and file.content_type not in allowed_content_types:
         logger.warning(f"Неожиданный content-type: {file.content_type}")
     
-    logger.info(f"Получен запрос на склейку накладных: {file.filename}, layout={layout.value}")
+    logger.info(f"Получен запрос на склейку накладных: {file.filename}, layout={layout.value}, paper_size={paper_size.value}")
     
     try:
         # Читаем содержимое файла с ограничением размера (50 MB)
@@ -119,7 +124,7 @@ async def process_invoices(
         zip_buffer = io.BytesIO(content)
         
         # Обрабатываем архив
-        result_pdf = process_zip_archive(zip_buffer, layout)
+        result_pdf = process_zip_archive(zip_buffer, layout, paper_size)
         
         # Генерируем имя файла для скачивания
         output_filename = f"merged_invoices_{layout.value}.pdf"
