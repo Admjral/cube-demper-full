@@ -23,6 +23,7 @@ import {
   Grid2X2,
   Grid3X3,
   LayoutGrid,
+  Square,
   CheckCircle,
   AlertCircle,
   Printer,
@@ -39,6 +40,13 @@ interface LayoutOption {
 }
 
 const LAYOUT_OPTIONS: LayoutOption[] = [
+  {
+    value: "1_on_1",
+    label: "1 на 1",
+    description: "1 накладная на листе — полный размер",
+    icon: Square,
+    grid: "1×1",
+  },
   {
     value: "4_on_1",
     label: "4 на 1",
@@ -296,16 +304,16 @@ export default function InvoiceMergerPage() {
                 style={{
                   display: "grid",
                   gridTemplateColumns: `repeat(${
-                    layout === "4_on_1" || layout === "6_on_1" || layout === "8_on_1" ? 2 : layout === "9_on_1" ? 3 : 4
+                    layout === "1_on_1" ? 1 : layout === "4_on_1" || layout === "6_on_1" || layout === "8_on_1" ? 2 : layout === "9_on_1" ? 3 : 4
                   }, 1fr)`,
                   gridTemplateRows: `repeat(${
-                    layout === "4_on_1" ? 2 : layout === "6_on_1" ? 3 : layout === "8_on_1" ? 4 : layout === "9_on_1" ? 3 : 4
+                    layout === "1_on_1" ? 1 : layout === "4_on_1" ? 2 : layout === "6_on_1" ? 3 : layout === "8_on_1" ? 4 : layout === "9_on_1" ? 3 : 4
                   }, 1fr)`,
                   gap: "4px",
                 }}
               >
                 {Array.from({
-                  length: layout === "4_on_1" ? 4 : layout === "6_on_1" ? 6 : layout === "8_on_1" ? 8 : layout === "9_on_1" ? 9 : 16,
+                  length: layout === "1_on_1" ? 1 : layout === "4_on_1" ? 4 : layout === "6_on_1" ? 6 : layout === "8_on_1" ? 8 : layout === "9_on_1" ? 9 : 16,
                 }).map((_, i) => (
                   <div
                     key={i}

@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
     где накладные объединены на листах формата A4 в заданной сетке.
     
     **Типы сеток:**
+    - `1_on_1` — 1 накладная на листе (без сетки, полный размер)
     - `4_on_1` — сетка 2x2 (4 накладных на листе)
     - `6_on_1` — сетка 2x3 (6 накладных на листе)
     - `8_on_1` — сетка 2x4 (8 накладных на листе)
@@ -175,6 +176,12 @@ async def get_layout_types():
     """
     return {
         "layouts": [
+            {
+                "value": LayoutType.ONE_ON_ONE.value,
+                "label": "1 на 1",
+                "description": "1 накладная на листе A4 (полный размер)",
+                "grid": "1x1"
+            },
             {
                 "value": LayoutType.FOUR_ON_ONE.value,
                 "label": "4 на 1",

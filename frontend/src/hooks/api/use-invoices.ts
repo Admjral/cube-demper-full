@@ -7,7 +7,7 @@ import { authClient } from '@/lib/auth'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8010'
 
-export type LayoutType = '4_on_1' | '6_on_1' | '8_on_1' | '9_on_1' | '16_on_1'
+export type LayoutType = '1_on_1' | '4_on_1' | '6_on_1' | '8_on_1' | '9_on_1' | '16_on_1'
 
 export interface LayoutInfo {
   value: LayoutType

@@ -2,10 +2,11 @@
 Сервис для склейки накладных (Invoice Merger Service)
 
 Объединяет несколько PDF-накладных на одном листе A4 в сетке:
+- 1 на 1 (1x1) — одна накладная на страницу
 - 4 на 1 (2x2)
 - 6 на 1 (2x3)
 - 8 на 1 (2x4)
-- 9 на 1 (3x3)  
+- 9 на 1 (3x3)
 - 16 на 1 (4x4)
 
 Использует библиотеку pypdf для манипуляции PDF.
@@ -32,6 +33,7 @@ CELL_PADDING = 10
 
 class LayoutType(str, Enum):
     """Типы сеток для размещения накладных"""
+    ONE_ON_ONE = "1_on_1"       # 1x1
     FOUR_ON_ONE = "4_on_1"      # 2x2
     SIX_ON_ONE = "6_on_1"       # 2x3
     EIGHT_ON_ONE = "8_on_1"     # 2x4
@@ -50,7 +52,9 @@ class GridConfig:
     @classmethod
     def from_layout(cls, layout: LayoutType) -> "GridConfig":
         """Создаёт конфигурацию сетки на основе типа layout"""
-        if layout == LayoutType.FOUR_ON_ONE:
+        if layout == LayoutType.ONE_ON_ONE:
+            cols, rows = 1, 1
+        elif layout == LayoutType.FOUR_ON_ONE:
             cols, rows = 2, 2
         elif layout == LayoutType.SIX_ON_ONE:
             cols, rows = 2, 3
@@ -186,31 +190,30 @@ def _calculate_scale_and_position(
     media_box = page.mediabox
     page_width = float(media_box.width)
     page_height = float(media_box.height)
-    
-    # Если страница в альбомной ориентации и ячейка портретная,
-    # или наоборот - поворачиваем страницу
-    page_is_landscape = page_width > page_height
-    cell_is_landscape = cell_width > cell_height
-    
-    # Для накладных обычно лучше не поворачивать, просто масштабируем
-    # Но если разница значительная, учитываем это
-    
+
+    # Учитываем origin mediabox (может быть ненулевым — частая причина
+    # неправильного размера при печати на XPrinter и термопринтерах)
+    origin_x = float(media_box.lower_left[0])
+    origin_y = float(media_box.lower_left[1])
+
     # Вычисляем масштаб с сохранением пропорций
     scale_x = cell_width / page_width
     scale_y = cell_height / page_height
     scale = min(scale_x, scale_y)  # Берём меньший, чтобы вписаться полностью
-    
+
     # Вычисляем размеры после масштабирования
     scaled_width = page_width * scale
     scaled_height = page_height * scale
-    
-    # Центрируем в ячейке
-    offset_x = cell_x + (cell_width - scaled_width) / 2
-    offset_y = cell_y + (cell_height - scaled_height) / 2
-    
+
+    # Центрируем в ячейке, компенсируя origin offset
+    # После scale(s) точка (origin_x, origin_y) уходит в (origin_x*s, origin_y*s)
+    # Нужно сместить обратно, чтобы контент начинался с cell_x/cell_y
+    offset_x = cell_x + (cell_width - scaled_width) / 2 - origin_x * scale
+    offset_y = cell_y + (cell_height - scaled_height) / 2 - origin_y * scale
+
     # Создаём трансформацию: сначала масштаб, потом смещение
     transformation = Transformation().scale(scale, scale).translate(offset_x, offset_y)
-    
+
     return transformation
 
 
