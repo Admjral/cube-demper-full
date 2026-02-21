@@ -441,6 +441,83 @@ async def _fetch_offers_via_relay(product_id: str, city_id: str) -> Optional[dic
     return resp.json()
 
 
+async def _fetch_product_view_via_relay(product_id: str) -> Optional[dict]:
+    """Fetch product-view through Railway relay service."""
+    relay_url = settings.offers_relay_url
+    relay_secret = settings.offers_relay_secret
+    if not relay_url or not relay_secret:
+        return None
+
+    client = await get_http_client()
+    resp = await client.post(
+        f"{relay_url}/relay/product-view",
+        json={"product_id": product_id},
+        headers={"Authorization": f"Bearer {relay_secret}"},
+        timeout=15.0,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+async def fetch_product_image_url(product_id: str) -> Optional[str]:
+    """
+    Fetch product image URL from Kaspi public product-view API.
+
+    Uses GET https://kaspi.kz/yml/product-view/pl/{product_id}
+    which returns product detail JSON with galleryImages array.
+
+    Args:
+        product_id: Kaspi external product ID (numeric)
+
+    Returns:
+        Full CDN image URL or None
+    """
+    if not product_id:
+        return None
+
+    # Try relay first (VPS IP may be blocked)
+    if settings.offers_relay_url and settings.offers_relay_secret:
+        try:
+            data = await _fetch_product_view_via_relay(product_id)
+            if data:
+                images = data.get("galleryImages") or data.get("images") or []
+                if images:
+                    return f"https://resources.cdn-kaspi.kz/img/m/p/{images[0]}"
+        except Exception as e:
+            logger.warning(f"Relay product-view failed for {product_id}: {e}")
+
+    # Direct request
+    await wait_for_offers_ban()
+    offers_limiter = get_offers_rate_limiter()
+    await offers_limiter.acquire()
+
+    url = f"https://kaspi.kz/yml/product-view/pl/{product_id}"
+    headers = _get_random_headers()
+
+    try:
+        client = await get_offers_http_client()
+        response = await client.get(url, headers=headers)
+
+        if response.status_code == 403:
+            await offers_ban_pause()
+            return None
+
+        if response.status_code != 200:
+            logger.warning(f"Product-view API {response.status_code} for {product_id}")
+            return None
+
+        data = response.json()
+        images = data.get("galleryImages") or data.get("images") or []
+        if images:
+            return f"https://resources.cdn-kaspi.kz/img/m/p/{images[0]}"
+
+        return None
+
+    except Exception as e:
+        logger.warning(f"Error fetching product image for {product_id}: {e}")
+        return None
+
+
 async def parse_product_by_sku(
     product_id: str,
     session: dict = None,

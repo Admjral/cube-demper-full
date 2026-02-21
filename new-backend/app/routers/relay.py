@@ -130,3 +130,43 @@ async def relay_offers(
     except Exception as e:
         logger.error(f"Relay offers error: {e}")
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Upstream request failed")
+
+
+class RelayProductViewRequest(BaseModel):
+    product_id: str
+
+
+@router.post("/product-view")
+async def relay_product_view(
+    request: RelayProductViewRequest,
+    authorization: str = Header(...),
+):
+    """
+    Relay endpoint: fetch Kaspi product detail (public API).
+    Returns JSON with galleryImages for product photos.
+    """
+    _validate_relay_secret(authorization)
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            url = f"https://kaspi.kz/yml/product-view/pl/{request.product_id}"
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                "Accept": "application/json",
+                "Accept-Language": "ru-RU,ru;q=0.9",
+                "X-KS-City": "750000000",
+            }
+            response = await client.get(url, headers=headers)
+
+            if response.status_code == 403:
+                raise HTTPException(status_code=403, detail="Kaspi returned 403 (IP ban)")
+
+            response.raise_for_status()
+            return response.json()
+    except HTTPException:
+        raise
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail="Upstream timeout")
+    except Exception as e:
+        logger.error(f"Relay product-view error: {e}")
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Upstream request failed")

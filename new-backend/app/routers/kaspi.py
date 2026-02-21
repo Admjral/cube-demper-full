@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Body, Depends, HTTPException, status, BackgroundTasks
 from typing import Annotated, List, Optional, Dict, Any
 from pydantic import BaseModel
+import asyncio
 import asyncpg
 import uuid
 import logging
@@ -49,6 +50,7 @@ from ..services.api_parser import (
     sync_product,
     batch_sync_products,
     parse_product_by_sku,
+    fetch_product_image_url,
 )
 from ..core.security import encrypt_session
 from ..utils.security import escape_like, clamp_page_size, DEMPING_SETTINGS_FIELDS, CITY_PRICE_FIELDS
@@ -392,6 +394,9 @@ async def authenticate_store(
             detail=str(e)
         )
 
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions (409 conflict, etc.) as-is
+
     except Exception as e:
         logger.error(f"Unexpected error during Kaspi auth: {e}", exc_info=True)
         raise HTTPException(
@@ -715,30 +720,10 @@ async def _sync_store_products_task(store_id: str, merchant_id: str):
             # Fetch products from Kaspi API
             products = await get_products(merchant_id, session)
 
-            # Collect all kaspi_product_ids from API response
-            new_product_ids = [p['kaspi_product_id'] for p in products]
-
-            # Delete products that are no longer in Kaspi API
-            # This ensures we remove products that were deleted or became unavailable
-            if new_product_ids:
-                deleted_count = await conn.execute(
-                    """
-                    DELETE FROM products
-                    WHERE store_id = $1 AND kaspi_product_id != ALL($2)
-                    """,
-                    uuid.UUID(store_id),
-                    new_product_ids
-                )
-                logger.info(f"Deleted old products not in current sync: {deleted_count}")
-            else:
-                # If no products from API, delete all products for this store
-                await conn.execute(
-                    "DELETE FROM products WHERE store_id = $1",
-                    uuid.UUID(store_id)
-                )
-                logger.info(f"Deleted all products for store {store_id} (no products from API)")
-
             # Upsert products to database
+            # NOTE: We do NOT delete old products here because GraphQL and REST API
+            # return different kaspi_product_id formats (hex vs numeric_numeric),
+            # and deleting by ID mismatch would destroy user settings (bot_active, etc.)
             for product_data in products:
                 # Convert availabilities dict to JSON string for PostgreSQL
                 availabilities = product_data.get('availabilities')
@@ -749,9 +734,9 @@ async def _sync_store_products_task(store_id: str, merchant_id: str):
                     """
                     INSERT INTO products (
                         store_id, kaspi_product_id, kaspi_sku, external_kaspi_id,
-                        name, price, availabilities, bot_active, category
+                        name, price, availabilities, bot_active, category, image_url
                     )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, false, $8)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, false, $8, $9)
                     ON CONFLICT (store_id, kaspi_product_id)
                     DO UPDATE SET
                         name = $5,
@@ -760,6 +745,7 @@ async def _sync_store_products_task(store_id: str, merchant_id: str):
                         kaspi_sku = COALESCE($3, products.kaspi_sku),
                         external_kaspi_id = COALESCE($4, products.external_kaspi_id),
                         category = COALESCE($8, products.category),
+                        image_url = COALESCE($9, products.image_url),
                         updated_at = NOW()
                     """,
                     uuid.UUID(store_id),
@@ -770,6 +756,7 @@ async def _sync_store_products_task(store_id: str, merchant_id: str):
                     product_data['price'],
                     availabilities,
                     product_data.get('category'),
+                    product_data.get('image_url'),
                 )
 
             # Update store products count and last sync
@@ -784,6 +771,26 @@ async def _sync_store_products_task(store_id: str, merchant_id: str):
             )
 
             logger.info(f"Synced {len(products)} products for store {store_id}")
+
+            # Backfill images for products that don't have them
+            missing_images = await conn.fetch(
+                """SELECT id, external_kaspi_id FROM products
+                   WHERE store_id = $1 AND image_url IS NULL AND external_kaspi_id IS NOT NULL""",
+                uuid.UUID(store_id)
+            )
+            if missing_images:
+                logger.info(f"Backfilling images for {len(missing_images)} products in store {store_id}")
+                for product in missing_images:
+                    try:
+                        image_url = await fetch_product_image_url(product['external_kaspi_id'])
+                        if image_url:
+                            await conn.execute(
+                                "UPDATE products SET image_url = $1, updated_at = NOW() WHERE id = $2",
+                                image_url, product['id']
+                            )
+                    except Exception as img_err:
+                        logger.warning(f"Image backfill failed for {product['id']}: {img_err}")
+                    await asyncio.sleep(0.5)
 
     except Exception as e:
         logger.error(f"Error syncing store {store_id}: {e}")
@@ -839,7 +846,7 @@ async def list_products(
             f"""
             SELECT p.id, p.store_id, p.kaspi_product_id, p.kaspi_sku, p.external_kaspi_id,
                    p.name, p.price, p.min_profit, p.bot_active, p.last_check_time,
-                   p.availabilities, p.created_at, p.updated_at,
+                   p.availabilities, p.created_at, p.updated_at, p.image_url,
                    COALESCE(p.pre_order_days, 0) as pre_order_days,
                    COALESCE(p.is_priority, false) as is_priority,
                    COALESCE(p.delivery_demping_enabled, false) as delivery_demping_enabled
@@ -861,6 +868,7 @@ async def list_products(
                 external_kaspi_id=p['external_kaspi_id'],
                 name=p['name'],
                 price=p['price'],
+                image_url=p.get('image_url'),
                 min_profit=p['min_profit'],
                 bot_active=p['bot_active'],
                 delivery_demping_enabled=p.get('delivery_demping_enabled', False) or False,
@@ -891,6 +899,7 @@ async def update_product(
     pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
 ):
     """Update product settings"""
+    logger.info(f"PATCH /products/{product_id}: {update_data.model_dump(exclude_none=True)}")
     async with pool.acquire() as conn:
         # Verify ownership
         product = await conn.fetchrow(
@@ -991,7 +1000,8 @@ async def update_product(
                         status_code=status.HTTP_403_FORBIDDEN,
                         detail={"error": "feature_not_available", "feature": "priority_products", "message": msg}
                     )
-            # Enforce limit: max 10 priority products per store
+            # Enforce limit: max 200 priority products per store
+            # (Offers API = 8 RPS → ~1440 requests per 3 min, pricefeed = 1.5 RPS → ~270 per 3 min)
             if update_data.is_priority:
                 priority_count = await conn.fetchval(
                     """
@@ -1001,10 +1011,10 @@ async def update_product(
                     product['store_id'],
                     uuid.UUID(product_id)
                 )
-                if priority_count >= 10:
+                if priority_count >= 200:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Maximum 10 priority products per store"
+                        detail="Maximum 200 priority products per store"
                     )
             param_count += 1
             updates.append(f"is_priority = ${param_count}")
@@ -2334,28 +2344,35 @@ async def _sync_products_to_db(
                 price = attributes.get("price") or 0  # price is NOT NULL
                 sku = attributes.get("sku") or attributes.get("code")
 
-                # Note: description column doesn't exist in current schema
-                # Only saving: name, price, kaspi_sku, external_kaspi_id
+                # Build image URL from Kaspi CDN
+                images = attributes.get("images", [])
+                image_url = (
+                    f"https://resources.cdn-kaspi.kz/img/m/p/{images[0]}"
+                    if images
+                    else None
+                )
 
                 # Save with full data (UPSERT)
                 await conn.execute("""
                     INSERT INTO products (
                         store_id, external_kaspi_id, kaspi_sku, name,
-                        price, updated_at
+                        price, image_url, updated_at
                     )
-                    VALUES ($1, $2, $3, $4, $5, NOW())
+                    VALUES ($1, $2, $3, $4, $5, $6, NOW())
                     ON CONFLICT (store_id, external_kaspi_id)
                     DO UPDATE SET
                         name = EXCLUDED.name,
                         price = EXCLUDED.price,
                         kaspi_sku = EXCLUDED.kaspi_sku,
+                        image_url = COALESCE(EXCLUDED.image_url, products.image_url),
                         updated_at = NOW()
                 """,
                     uuid.UUID(store_id),
                     product_id,
                     sku,
                     name,
-                    price
+                    price,
+                    image_url
                 )
 
                 synced_count += 1
@@ -2454,6 +2471,49 @@ async def sync_store_products_by_id(
         "store_id": store_id,
         "source": "graphql"
     }
+
+
+@router.post("/stores/{store_id}/sync-images")
+async def sync_store_images(
+    store_id: str,
+    current_user: Annotated[dict, require_feature("demping")],
+    pool: Annotated[asyncpg.Pool, Depends(get_db_pool)]
+):
+    """Fetch and save product images for products missing image_url."""
+    async with pool.acquire() as conn:
+        store = await conn.fetchrow(
+            "SELECT id FROM kaspi_stores WHERE id = $1 AND user_id = $2",
+            uuid.UUID(store_id),
+            current_user['id']
+        )
+        if not store:
+            raise HTTPException(status_code=404, detail="Store not found")
+
+        products = await conn.fetch(
+            """SELECT id, external_kaspi_id FROM products
+               WHERE store_id = $1 AND image_url IS NULL AND external_kaspi_id IS NOT NULL""",
+            uuid.UUID(store_id)
+        )
+
+        updated = 0
+        for product in products:
+            try:
+                image_url = await fetch_product_image_url(product['external_kaspi_id'])
+                if image_url:
+                    await conn.execute(
+                        "UPDATE products SET image_url = $1, updated_at = NOW() WHERE id = $2",
+                        image_url,
+                        product['id']
+                    )
+                    updated += 1
+                    logger.info(f"Image saved for product {product['id']}: {image_url}")
+            except Exception as e:
+                logger.warning(f"Failed to fetch image for product {product['id']}: {e}")
+
+            # Rate limit delay
+            await asyncio.sleep(0.5)
+
+        return {"updated": updated, "total": len(products)}
 
 
 @router.post("/stores/{store_id}/sync-prices", status_code=status.HTTP_202_ACCEPTED)

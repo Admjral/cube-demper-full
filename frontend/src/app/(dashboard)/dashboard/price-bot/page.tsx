@@ -52,7 +52,9 @@ import {
   CheckSquare,
   Square,
   Zap,
+  Package,
 } from "lucide-react"
+import Image from "next/image"
 import Link from "next/link"
 import { toast } from "sonner"
 import type { KaspiProduct } from "@/types/api"
@@ -134,6 +136,7 @@ export default function PriceBotPage() {
   const hasValidToken = stores?.some(s => s.api_key_set && s.api_key_valid) ?? false
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all")
+  const [currentPage, setCurrentPage] = useState(1)
   const [showSettingsDialog, setShowSettingsDialog] = useState(false)
   const [editingProduct, setEditingProduct] = useState<KaspiProduct | null>(null)
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
@@ -148,14 +151,23 @@ export default function PriceBotPage() {
   const [formWorkHoursStart, setFormWorkHoursStart] = useState("00:00")
   const [formWorkHoursEnd, setFormWorkHoursEnd] = useState("23:59")
 
+  const PAGE_SIZE = 50
+
   const {
-    data: products,
+    data: productsData,
     isLoading: productsLoading,
     error: productsError,
   } = useProducts(selectedStore?.id, {
     bot_active: statusFilter === "all" ? undefined : statusFilter === "active",
     search: searchQuery || undefined,
+    page: currentPage,
+    page_size: PAGE_SIZE,
   })
+
+  const products = productsData?.products
+  const totalProducts = productsData?.total ?? 0
+  const totalPages = Math.ceil(totalProducts / PAGE_SIZE)
+  const hasMore = productsData?.has_more ?? false
 
   const {
     data: dempingSettings,
@@ -261,8 +273,7 @@ export default function PriceBotPage() {
     setShowSettingsDialog(true)
   }
 
-  const activeBotsCount = products?.filter((p) => p.bot_active || p.delivery_demping_enabled).length || 0
-  const totalProducts = products?.length || 0
+  const activeBotsCount = products?.filter((p: KaspiProduct) => p.bot_active || p.delivery_demping_enabled).length || 0
   const checkInterval = dempingSettings?.check_interval_minutes || 15
   const PRIORITY_INTERVAL = 3
 
@@ -286,15 +297,27 @@ export default function PriceBotPage() {
     return `~${remaining} мин.`
   }
 
+  // Reset page when filters change
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value)
+    setCurrentPage(1)
+    setSelectedProductIds(new Set())
+  }
+
+  const handleStatusFilterChange = (value: "all" | "active" | "inactive") => {
+    setStatusFilter(value)
+    setCurrentPage(1)
+    setSelectedProductIds(new Set())
+  }
+
   // Selection handlers
   const isAllSelected = products && products.length > 0 && selectedProductIds.size === products.length
-  const isSomeSelected = selectedProductIds.size > 0 && !isAllSelected
 
   const toggleSelectAll = () => {
     if (isAllSelected) {
       setSelectedProductIds(new Set())
     } else if (products) {
-      setSelectedProductIds(new Set(products.map(p => p.id)))
+      setSelectedProductIds(new Set(products.map((p: KaspiProduct) => p.id)))
     }
   }
 
@@ -472,13 +495,13 @@ export default function PriceBotPage() {
                   <Input
                     placeholder={t("priceBot.searchProducts")}
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={(e) => handleSearchChange(e.target.value)}
                     className="pl-10"
                   />
                 </div>
                 <Select
                   value={statusFilter}
-                  onValueChange={(v) => setStatusFilter(v as "all" | "active" | "inactive")}
+                  onValueChange={(v) => handleStatusFilterChange(v as "all" | "active" | "inactive")}
                 >
                   <SelectTrigger className="w-full sm:w-[180px]">
                     <SelectValue placeholder={t("common.status")} />
@@ -579,12 +602,28 @@ export default function PriceBotPage() {
                   >
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1 min-w-0" >
-                          <div className="flex items-center gap-1.5">
-                            {product.is_priority && <Zap className="h-4 w-4 text-yellow-500 flex-shrink-0" />}
-                            <h3 className="font-medium truncate">{product.name}</h3>
+                        <div className="flex items-start gap-3 flex-1 min-w-0">
+                          {product.image_url ? (
+                            <Image
+                              src={product.image_url}
+                              alt={product.name}
+                              width={40}
+                              height={40}
+                              className="rounded-md object-cover flex-shrink-0"
+                              unoptimized
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded-md bg-muted flex items-center justify-center flex-shrink-0">
+                              <Package className="h-5 w-5 text-muted-foreground" />
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              {product.is_priority && <Zap className="h-4 w-4 text-yellow-500 flex-shrink-0" />}
+                              <h3 className="font-medium truncate">{product.name}</h3>
+                            </div>
+                            <p className="text-sm text-muted-foreground">{product.kaspi_sku}</p>
                           </div>
-                          <p className="text-sm text-muted-foreground">{product.kaspi_sku}</p>
                         </div>
                         <div className="p-2 -m-2" onClick={(e) => e.stopPropagation()}>
                           <Switch
@@ -682,13 +721,29 @@ export default function PriceBotPage() {
                               />
                             </td>
                             <td className="p-4" onClick={() => setSelectedProductId(product.id)}>
-                              <div className="flex items-center gap-1.5">
-                                {product.is_priority && <Zap className="h-4 w-4 text-yellow-500 flex-shrink-0" />}
-                                <div>
-                                  <p className="font-medium">{product.name}</p>
-                                  <p className="text-sm text-muted-foreground">
-                                    {product.kaspi_sku}
-                                  </p>
+                              <div className="flex items-center gap-3">
+                                {product.image_url ? (
+                                  <Image
+                                    src={product.image_url}
+                                    alt={product.name}
+                                    width={32}
+                                    height={32}
+                                    className="rounded-md object-cover flex-shrink-0"
+                                    unoptimized
+                                  />
+                                ) : (
+                                  <div className="w-8 h-8 rounded-md bg-muted flex items-center justify-center flex-shrink-0">
+                                    <Package className="h-4 w-4 text-muted-foreground" />
+                                  </div>
+                                )}
+                                <div className="flex items-center gap-1.5">
+                                  {product.is_priority && <Zap className="h-4 w-4 text-yellow-500 flex-shrink-0" />}
+                                  <div>
+                                    <p className="font-medium">{product.name}</p>
+                                    <p className="text-sm text-muted-foreground">
+                                      {product.kaspi_sku}
+                                    </p>
+                                  </div>
                                 </div>
                               </div>
                             </td>
@@ -731,6 +786,71 @@ export default function PriceBotPage() {
                   </div>
                 </CardContent>
               </Card>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    {t("priceBot.showing")} {(currentPage - 1) * PAGE_SIZE + 1}-{Math.min(currentPage * PAGE_SIZE, totalProducts)} {t("priceBot.of")} {totalProducts}
+                  </p>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(1)}
+                      disabled={currentPage === 1}
+                    >
+                      &laquo;
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      &lsaquo;
+                    </Button>
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .filter(page => page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1)
+                      .reduce<(number | string)[]>((acc, page, idx, arr) => {
+                        if (idx > 0 && page - (arr[idx - 1] as number) > 1) acc.push('...')
+                        acc.push(page)
+                        return acc
+                      }, [])
+                      .map((item, idx) =>
+                        typeof item === 'string' ? (
+                          <span key={`ellipsis-${idx}`} className="px-2 text-muted-foreground">...</span>
+                        ) : (
+                          <Button
+                            key={item}
+                            variant={item === currentPage ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setCurrentPage(item)}
+                            className="min-w-[36px]"
+                          >
+                            {item}
+                          </Button>
+                        )
+                      )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={!hasMore}
+                    >
+                      &rsaquo;
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(totalPages)}
+                      disabled={!hasMore}
+                    >
+                      &raquo;
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </>

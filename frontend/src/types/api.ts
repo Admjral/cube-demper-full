@@ -219,6 +219,7 @@ export interface KaspiProduct {
   external_kaspi_id: string | null
   name: string
   price: number // in tiyns
+  image_url: string | null
   min_profit: number
   bot_active: boolean
   delivery_demping_enabled: boolean
@@ -491,6 +492,7 @@ export interface ProductCityPricesRequest {
 
 export interface NicheSearchParams {
   category_id?: string
+  category_name?: string
   min_price?: number
   max_price?: number
   min_sales?: number
@@ -542,7 +544,12 @@ export interface NicheCategory {
 export interface NicheStats {
   total_products: number
   total_categories: number
-  avg_sales: number
-  avg_revenue: number
-  last_updated: string
+  total_revenue: number
+  avg_coefficient: number
+  top_categories: Array<{
+    name: string
+    total_revenue: number
+    total_products: number
+    total_sellers: number
+  }>
 }
